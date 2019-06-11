@@ -40,7 +40,7 @@ template<> IntegerPoint ImageWindow<double>::CalculateFlowPeakInteger(void) cons
 		}
     return result;
 }
-	
+
 template<> coord2 ImageWindow<double>::CalculateFlowPeak(void) const
 {
     IntegerPoint resultInt = CalculateFlowPeakInteger();
@@ -63,7 +63,7 @@ template<> coord2 ImageWindow<double>::CalculateFlowPeak(void) const
 		double cd = PixelXY(minX, minY-1);
         result.y += (cd-cu)/(2*cd-4*c+2*cu);
 	}
-    
+
 	return result;
 }
 
@@ -71,7 +71,7 @@ template<> double ImageWindow<double>::CalculateSNR(int threshold) const
 {
     // First determine the integer location of the peak value (minimum of SAD)
     IntegerPoint peakPos = CalculateFlowPeakInteger();
-    
+
     // Look for the smallest value outside a region around that point
     double nextMinVal = DBL_MAX;
     for (int y = 0; y < height; y++)
@@ -84,7 +84,7 @@ template<> double ImageWindow<double>::CalculateSNR(int threshold) const
                     nextMinVal = PixelXY(x, y);
             }
         }
-    
+
     // Calculate the ratio of values.
     // Due to our use of SAD, we cannot interpret this the same way as would be done in standard PIV,
     // but it should at least be reasonable to say that a larger difference is good!
@@ -115,7 +115,7 @@ template<int correlationType, class TYPE> void CrossCorrelateImageWindows(ImageW
     int w1Height = window1.height;
 	int maxDX = window2.width - window1.width;
 	int maxDY = window2.height - window1.height;
-	
+
     for (int dy = 0; dy <= maxDY; dy++)
         for (int dx = 0; dx <= maxDX; dx++)
         {
@@ -174,7 +174,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, unsigned char>(Image
                 for (; x < w1Width; x++)
                     sum += abs(window1.PixelXY(x, y) - window2.PixelXY(x+dx, y+dy));
             }
-            sum += ExtractLongLongPairSum(&sumVec);
+            //sum += ExtractLongLongPairSum(&sumVec);
             result.SetXY(dx, dy, sum);
         }
 }
@@ -188,14 +188,14 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, unsigned short>(Imag
 	int maxDX = window2.width - window1.width;
 	int maxDY = window2.height - window1.height;
 	//__m128i zeros = _mm_set1_epi16(0);
-	
+
 #ifdef Py_ERRORS_H
 	if (maxDX * maxDY >= (1<<15))
 		PyErr_Format(PyErr_NewException((char*)"exceptions.TypeError", NULL, NULL), "WOAH - that's a seriously big correlation matrix! This integer-based SAD code only accepts IWs that lead to correlation matrices with up to 2^15 entries.");
 #else
 	ALWAYS_ASSERT(maxDX * maxDY < (1<<15));
 #endif
-	
+
 #if 1
     /*  There may be specific circumstances where I want to force the IWs to be smaller in size, but to still be centered
         in the same places as they would be if they were larger. Under those circumstances it is not trivial to provide
@@ -203,7 +203,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, unsigned short>(Imag
         this function to reduce the actual area over which we do the processing.
         To do that, set inset to a positive value.  */
     const int inset = 0;
-    
+
     // Do the main comparison loop
 	for (int dy = 0; dy <= maxDY; dy++)
         for (int dx = 0; dx <= maxDX; dx++)
@@ -233,7 +233,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, unsigned short>(Imag
 				for (; x < w1Width-inset; x++)
                     sum += abs(window1.PixelXY(x, y) - window2.PixelXY(x+dx, y+dy));
             }
-            sum += SumOver32BitInts(&sumVec);
+            //sum += SumOver32BitInts(&sumVec);
             result.SetXY(dx, dy, sum);
         }
 #elif 0
@@ -245,7 +245,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, unsigned short>(Imag
 	for (int dy = 0; dy <= maxDY; dy++)
         for (int dx = 0; dx <= maxDX; dx++)
 			result[dy][dx] = 0;
-	
+
 	for (int dy = 0; dy <= maxDY; dy++)
 		for (int y = 0; y < w1Height; y++)
         {
@@ -286,7 +286,7 @@ void Check16BitData(ImageWindow<int> &window1)
 	// are larger than 2^16-1. The test should be quick, and it will catch what would otherwise be nasty bugs
     int w1Width = window1.width;
     int w1Height = window1.height;
-	
+
 	//__m128i orVec = (__m128i)_mm_setzero_ps();
 	int orRest = 0;
 	for (int y = 0; y < w1Height; y++)
@@ -297,7 +297,7 @@ void Check16BitData(ImageWindow<int> &window1)
 		for (; x < w1Width; x++)
 			orRest |= window1.PixelXY(x, y);
 	}
-	int result = orRest | OrOver32BitInts(&orVec);
+	//int result = orRest | OrOver32BitInts(&orVec);
 #ifdef Py_ERRORS_H
 	if (result & 0xFFFF0000)
         PyErr_Format(PyErr_NewException((char*)"exceptions.TypeError", NULL, NULL), "ERROR - you passed in values greater than 2^16 - 1 to the fast SAD code!");
@@ -310,13 +310,13 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, int>(ImageWindow<int
 {
     // Specialized version for SAD with 32-bit data, BUT we assume we will not overflow an int when we sum across a small IW.
     // This probably implies that it should be used with 16-bit input data, and small IW pixel counts <=2^16 !
-    
+
     // For every possible shift of 'a' relative to 'b', calculate the SAD
     int w1Width = window1.width;
     int w1Height = window1.height;
 	int maxDX = window2.width - window1.width;
 	int maxDY = window2.height - window1.height;
-	
+
 	Check16BitData(window1);
 	Check16BitData(window2);
 #ifdef Py_ERRORS_H
@@ -325,7 +325,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, int>(ImageWindow<int
 #else
 	ALWAYS_ASSERT(maxDX * maxDY < (1<<15));
 #endif
-	
+
 	// Now get down to business!
 	for (int dy = 0; dy <= maxDY; dy++)
         for (int dx = 0; dx <= maxDX; dx++)
@@ -340,7 +340,7 @@ template<> void CrossCorrelateImageWindows<kCorrelationSAD, int>(ImageWindow<int
                 for (; x < w1Width; x++)
                     sum += abs(window1.PixelXY(x, y) - window2.PixelXY(x+dx, y+dy));
             }
-            sum += SumOver32BitInts(&sumVec);
+            //sum += SumOver32BitInts(&sumVec);
             result.SetXY(dx, dy, sum);
         }
 }
