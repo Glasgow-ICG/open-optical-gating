@@ -297,7 +297,7 @@ void Check16BitData(ImageWindow<int> &window1)
 		for (; x < w1Width; x++)
 			orRest |= window1.PixelXY(x, y);
 	}
-	int result = orRest // *REMOVED FOR PI* | OrOver32BitInts(&orVec);
+	int result = orRest; // *REMOVED FOR PI* | OrOver32BitInts(&orVec);
 #ifdef Py_ERRORS_H
 	if (result & 0xFFFF0000)
         PyErr_Format(PyErr_NewException((char*)"exceptions.TypeError", NULL, NULL), "ERROR - you passed in values greater than 2^16 - 1 to the fast SAD code!");

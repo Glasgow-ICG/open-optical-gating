@@ -27,7 +27,7 @@ j_py_sad_correlation = Extension('j_py_sad_correlation',
 	include_dirs = ['/usr/local/include', numpy.get_include()],
 	sources = ['j_py_sad_correlation.cpp', 'common/jPythonArray.cpp', 'common/jPythonCommon.cpp', 'common/PIVImageWindow.cpp', 'common/jAssert.cpp', 'common/DebugPrintf_Unix.cpp'],
 	extra_link_args = ARCH,
-	extra_compile_args = ['-O4', '-mssse3'] + ARCH
+	extra_compile_args = ['-O4'] + ARCH
 )
 BUILD_MODULES.append(j_py_sad_correlation)
 
