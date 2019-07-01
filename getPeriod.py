@@ -179,7 +179,7 @@ if __name__ == '__main__':
                             referenceFrame=20.994110773833857)
 
     # load sequence
-    sequenceName = '../notebooks/localdata/2017-02-09 18.35.13 vid overnight/Stack 0004/Brightfield - Prosilica/'
+    sequenceName = sys.argc[1]
     sequenceObj = jid.LoadAllImages(sequenceName,True,1,0,-1,None)
     sequence, idx = hlp.convertObj(sequenceObj)
 
