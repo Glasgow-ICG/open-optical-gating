@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[dev-packages]
+
+[packages]
+numpy = "*"
+scipy = "*"
+pprint = "*"
+matplotlib = "*"
+pillow = "*"
+
+[requires]
+python_version = "3.6"
