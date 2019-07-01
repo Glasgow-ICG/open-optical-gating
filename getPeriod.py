@@ -179,7 +179,7 @@ if __name__ == '__main__':
                             referenceFrame=20.994110773833857)
 
     # load sequence
-    sequenceName = sys.argc[1]
+    sequenceName = sys.argv[1]
     sequenceObj = jid.LoadAllImages(sequenceName,True,1,0,-1,None)
     sequence, idx = hlp.convertObj(sequenceObj)
 
