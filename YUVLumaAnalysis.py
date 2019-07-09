@@ -64,10 +64,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 			# Gets the current timestamp
 			self.timestamp[self.frame_num] = time.localtime()
-			# predictTrigger(frameSummaryHistory, settings, fitBackToBarrier=True, log=False, output="seconds"))
-			# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-			# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
-			# targetSyncPhase should be in [0,2pi]
+
 
 		self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 		end = time.time()
@@ -89,7 +86,6 @@ def get_period(sequenceName):
 
 	os.system('python3 getPeriod.py' + sequenceName)
 
-	return sequenceObj,referenceFrameIdx, settings['referencePeriod']
 # Synchronises the capture of a full zebrafish heart.
 def caputre_full_heart(resolution,framerate):
 
@@ -99,11 +95,14 @@ def caputre_full_heart(resolution,framerate):
 	camera.framerate = framerate
 
 	# Caputres reference data (for now just uses sample data)
-	sequenceObj,referenceFrameIdx, settings['referencePeriod'] = get_period('sample_period')
+	get_period('sample_period')
 
 	brightfield_stream = YUVLumaAnalysis(camera)
 
-
+	# predictTrigger(frameSummaryHistory, settings, fitBackToBarrier=True, log=False, output="seconds"))
+	# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
+	# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+	# targetSyncPhase should be in [0,2pi]
 
 
 for i in range(20):
