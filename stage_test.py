@@ -42,7 +42,7 @@ def test_address():
 def interactive_commands(ser):
 
 	# Informs user
-	print('Entering interactive Newport shell.\nEnter e to exit.')
+	print('Entering interactive Newport shell.\nEnter q to quit.')
 
 	# Sets command values
 	encoding = 'utf-8'
@@ -55,7 +55,7 @@ def interactive_commands(ser):
 		command = input("Command:\n")
 
 		#Checks if command is the exit command
-		if command == 'e':
+		if command == 'q':
 			break
 
 		else:
