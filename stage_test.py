@@ -6,47 +6,72 @@ import serial
 def test_address():
 
 	# Opens the usb port and sets initial parameters
+	timeout = 0.1 
+	baudrate=57600
+	bytesize=8
+	parity='N'
+	stopbits=1
+	xonxoff=True
+	ser = serial.Serial('/dev/ttyUSB0',timeout=timeout,baudrate=baudrate, bytesize=bytesize, parity=parity, stopbits=stopbits,xonxoff=xonxoff)
+	
 	encoding = 'utf-8'
-	timeout = 3
-	request_info_command = 'CS'
-	bites_max = 100
-	ser = serial.Serial('/dev/ttyUSB0',timeout=timeout)
+	request_info_command = 'ID'
+	terminate=chr(13)+chr(10)
+	command_value='?'
 
 	# Prints inforamtion to user
 	print('USB Information:\n'+str(ser))
 	print('Command sent: '+request_info_command)
-	print('Encoding: '+encoding)
-	print('Maximum bites read: '+str(bites_max)+'\n')
+	print('Encoding: '+encoding+'\n')
 
-#	ser.write(('SVO A 1\nMOV A 0\n').encode(encoding))
 	# Loops through all addresses, selecting them, sending a command and then waits for a response.
-	for i in range(48,71):
+	for i in range(1,32):
 		
-		# As the ASCII 58-64 are not used in numbering
-		if i < 58 or i > 64: 
+		# Sends command
+		command = str(i)+request_info_command+command_value+terminate
+		ser.write(command.encode(encoding))
 
-			# Performs the following: selects address, sends command, listens for response. 			
-			ser.write((chr(1)+chr(i)+','+request_info_command+'\r').encode(encoding))
+		# Gets and prints recieved signal
+		read_signal = ser.readline()
+		print('Address '+str(i)+':\t'+read_signal.decode(encoding))
 
 
-			# Checks response
-			if ser.read(bites_max):
-				# Correct naming convention
-				if i < 58:
-					print('Address '+str(i-48)+' has responded!')
-				else:
-					print('Address '+str(i-55)+' has responded!')
+	return ser
 
-			else:
+# Creates a terminal command for the stages
+def interactive_commands(ser):
 
-				# Correct naming convention
-				if i < 58:
-					print('Address '+str(i-48)+' timed out.')
-				else:
-					print('Address '+str(i-55)+' timed out.')
-	# Closes the USB port
+	# Informs user
+	print('Entering interactive Newport shell.\nEnter e to exit.')
+
+	# Sets command values
+	encoding = 'utf-8'
+	terminate = chr(13)+chr(10)
+
+	# Creates an inf loop until user exits
+	while True: 
+
+		# Gets user command
+		command = input("Command:\n")
+
+		#Checks if command is the exit command
+		if command == 'e':
+			break
+
+		else:
+			# Sends the command
+			ser.write((command+terminate).encode(encoding))
+
+			# Reads result and prints output to screen
+			ser_read = ser.readline()
+			print(ser_read.decode(encoding))
+
+	
+	# Closes USB port
 	ser.close()
-	print('\nUSB port closed.')
-
-
-test_address()
+	print('USB port closed.')
+		
+		
+# Tests address and runs user command prompt
+ser = test_address()
+interactive_commands(ser)

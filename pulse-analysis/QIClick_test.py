@@ -22,11 +22,11 @@ def init():
 	return pins
 
 
-# Defines the triggering function
-def trigger(pin):
+# Defines the  pulse triggering function
+def trigger_pulse(pin,duration):
 
 	gpio.output(pin,1)
-	time.sleep(0.1)
+	time.sleep(duration)
 	gpio.output(pin,0)
 
 	return 0
@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
 	# Initialises the program
 	pins = init()
-	timeout = 3 
+	timeout = 1 
 
 
 	# Tests inital readout signals
@@ -46,9 +46,9 @@ if __name__ == '__main__':
 	if gpio.input(pins[2]):
 		print('SYNC-B signal present on start up.')
 
-	# Triggers image capture
-	trigger(pins[0])
-	print('Trigger fired, check QI software for image acquisition.')
+	# Triggers image capture (using the edge detection -use the trigger_pulse function for pulse detection)
+	gpio.output(pins[0],1)
+	print('Trigger fired, check QI software for a successful image capture.')
 
 
 	# Waits for SYNC-B signal
@@ -86,6 +86,6 @@ if __name__ == '__main__':
 		print('Program has encountered an unkown error at SYNC-A.')
 
 
-	# Cleans up GPIO pins
+	# Cleans up GPIO pins and ensures trigger is turned off
 	gpio.output(pins[0],0)
 	gpio.cleanup()
