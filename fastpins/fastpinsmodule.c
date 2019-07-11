@@ -47,29 +47,29 @@ static PyObject *fastpins_setpin(PyObject *self, PyObject *args){
 	}
 
 	return Py_BuildValue("i",0);
-	
-}	
-/// Function that triggers GPIO pins
+
+}
+/// Function that triggers the laser and camera in pulse mode
 static PyObject *fastpins_pulse(PyObject *self, PyObject *args){
 
 	/* Function inputs:
 		delay_time = the time delay (in microseconds) before triggering the pins
 		pulse_time = the time (in microseconds) that the output signal will last
-		pins = the pin numbers to be triggered
-		size = the number of above pins
+		laser_pin = the pin number of the laser trigger GPIO pin
+		camera_pin = the pin number of the fluorescence camera GPIO pin
 	*/
 
 	// Defines argument variables
 	float delay_time, pulse_time;
-	int  size=1, pin; 
+	int  laser_pin, camera_pin;
 
 	// Converts arguments from python to C
-	if (!PyArg_ParseTuple(args,"ffi", &delay_time, &pulse_time, &pin))
+	if (!PyArg_ParseTuple(args,"ffii", &delay_time, &pulse_time, &laser_pin, &camera_pin))
 	{
 		return NULL;
 	}
 
- 
+
 	// Defines indexing variable
 	int i;
 
@@ -77,24 +77,61 @@ static PyObject *fastpins_pulse(PyObject *self, PyObject *args){
 	delayMicroseconds(delay_time);
 
 	// Triggers the pins
-	for(i=0;i<size;i++)
-	{
-		digitalWrite (pin,HIGH);
-	}
+	digitalWrite (camera_pin,HIGH);
+	digitalWrite (laser_pin,HIGH);
 
 	// Leaves the pins active
 	delayMicroseconds(pulse_time);
 
 	// Deactivates pins
-	for(i=0;i<size;i++)
-	{
-		digitalWrite (pin,LOW);
-	}
+	digitalWrite (laser_pin, LOW);
+	digitalWrite (camera_pin,LOW);
 
 	Py_RETURN_NONE;
 
 }
 
+/// Function that triggers the laser and camera in edge mode
+static PyObject *fastpins_edge(PyObject *self, PyObject *args){
+
+	/* Function inputs:
+		delay_time = the time delay (in microseconds) before triggering the pins
+		laser_pin = the pin number of the laser trigger GPIO pin
+		camera_pin = the pin number of the fluorescence camera GPIO pin
+		synca_pin = the pin connected to the SYNC-A output (pin should be set up to read)
+	*/
+
+	// Defines argument variables
+	float delay_time;
+	int  laser_pin, camera_pin,synca_pin;
+
+	// Converts arguments from python to C
+	if (!PyArg_ParseTuple(args,"fiii", &delay_time, &laser_pin, &camera_pin, &synca_pin))
+	{
+		return NULL;
+	}
+
+
+	// Defines indexing variable
+	int i;
+
+	// Delays the trigger
+	delayMicroseconds(delay_time);
+
+	// Triggers the pins
+	digitalWrite (camera_pin,HIGH);
+	digitalWrite (laser_pin,HIGH);
+
+	// Waits until capture is complete
+	while (digitalRead(synca_pin) == 1){}
+
+	// Deactivates pins
+	digitalWrite (laser_pin, LOW);
+	digitalWrite (camera_pin,LOW);
+
+	Py_RETURN_NONE;
+
+}
 
 // Function to read the current state of a single pin
 static PyObject *fastpins_read(PyObject *self, PyObject *args)
@@ -110,13 +147,9 @@ static PyObject *fastpins_read(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "i", &pin))
 		return NULL;
 
-	// Sets up the pin (until init function is included)
-	wiringPiSetupPhys();
-	pinMode(pin,0);
-
 	// Reads the pin value
 	pin_read_value = digitalRead(pin);
-	
+
 	return Py_BuildValue("i",pin_read_value);
 }
 
@@ -128,6 +161,7 @@ static PyMethodDef fastpinsMethods[] = {
 	{"init",fastpins_init, METH_NOARGS},
 	{"setpin",fastpins_setpin,METH_VARARGS},
 	{"pulse",fastpins_pulse,METH_VARARGS},
+	{"edge",faspins_edge,METH_VARARGS},
 	{NULL,NULL} /*Sentinel*/
 
 };
