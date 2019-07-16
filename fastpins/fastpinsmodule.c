@@ -103,10 +103,10 @@ static PyObject *fastpins_edge(PyObject *self, PyObject *args){
 
 	// Defines argument variables
 	float delay_time;
-	int  laser_pin, camera_pin,synca_pin;
+	int  laser_pin, camera_pin,syncb_pin;
 
 	// Converts arguments from python to C
-	if (!PyArg_ParseTuple(args,"fiii", &delay_time, &laser_pin, &camera_pin, &synca_pin))
+	if (!PyArg_ParseTuple(args,"fiii", &delay_time, &laser_pin, &camera_pin, &syncb_pin))
 	{
 		return NULL;
 	}
@@ -123,7 +123,7 @@ static PyObject *fastpins_edge(PyObject *self, PyObject *args){
 	digitalWrite (laser_pin,HIGH);
 
 	// Waits until capture is complete
-	while (digitalRead(synca_pin) == 1){}
+	while (digitalRead(syncb_pin) == 1){}
 
 	// Deactivates pins
 	digitalWrite (laser_pin, LOW);

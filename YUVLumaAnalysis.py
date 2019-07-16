@@ -10,6 +10,7 @@ import os
 # Local imports
 import j_py_sad_correlation as jps
 import fastpins as fp
+import getPeriod as gp
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -30,25 +31,27 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.width, self.height = camera.resolution
 		self.timer = 0 #measure how long each frame takes to capture in case this is necesary for simulator
 
-		# Defines the arrays for the timestamp, phase and sad
+		# Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
 		self.temp_ary_length = 680
 		self.ref_frame_length = 20
-		self.sad = np.zeros((self.temp_ary_length,self.ref_frame_length))
-		self.phase = np.zeros(self.temp_ary_length)
-		self.timestamp = np.zeros(self.temp_ary_length)
+		self.sad = np.zeros(self.temp_ary_length)
+		self.frameSummaryHistory = np.zeros((self.ref_frame_length,3))
 
 
 		if make_refs:
 
 			# Obtains a period of reference frames (if specified)
-			self.ref_frames = jps.doEstablishPeriodProcessingForFrame(ref_frames,settings)
+			self.ref_frames, self.settings = get_period(ref_frames,settings)
 				# sequence is 3D stack in form of ref_frames[t,x,y]
-# - Determine all settings parameters and the ability to update them
+
 		else:
 			self.ref_frames = ref_frames
 
 
 	def analyze(self, frame):
+
+		# To-do:
+		#		- frameSummaryHistory reset to zero after each trigger?
 
 		start = time.time()
 		frame = frame[:,:,0] # Select just Y values from frame
@@ -60,17 +63,29 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		if self.frame_num<self.ref_frame_length and self.make_refs:
 			self.ref_frames[self.frame_num,:,:] = frame
 
+			self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+			end = time.time()
+			self.timer += (end - start)
+
 		else:
 			# Gets the phase and sad of the current frame (settings ignored until format is known)
-			self.phase, self.sad[self.frame_num,:],_ = jps.compareFrame(frame, self.ref_frames)
+			self.frameSummaryHistory[self.frame_num,1], self.sad_ = jps.compareFrame(frame, self.ref_frames)
 
 			# Gets the current timestamp
-			self.timestamp[self.frame_num] = time.localtime()
+			self.frameSummaryHistory[self.frame_num,0] = time.localtime()
+
+			# Gets the argmin of SAD and adds to frameSummaryHistory array
+			self.frameSummaryHistory[self.frame_num,2] = np.argmin(self.sad)
+
+			self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+			end = time.time()
+			self.timer += (end - start)
 
 
-		self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
-		end = time.time()
-		self.timer += (end - start)
+			return predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds"))
+			# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
+			# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+			# targetSyncPhase should be in [0,2pi]
 
 # Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
 def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
@@ -88,7 +103,7 @@ def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 	#	- Set up stage parameters (increment, acceleration, velocity etc)
 	#	- Return information regarding set up (all successful/ all failed)
 
-	
+
 	# Initialises fastpins module
 	fp.init()
 
@@ -96,7 +111,7 @@ def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 	fp.setpin(laser_trigger_pin, 1, 0) #PUD resistor needs to be specified but will be ignored in setup
 
 	# Sets up fluorescence camera pins
-	fp.setpin(fluorescence_camera_pins[0],1,0) #Trigger
+	fp.setpin(fluorescence_camera_pins[0],1,0) 	#Trigger
 	fp.setpin(fluorescence_camera_pins[1],0,0)	#SYNC-A
 	fp.setpin(fluorescence_camera_pins[2],0,0)	#SYNC-B
 
@@ -132,8 +147,9 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 	# Captures an image in edge mode
 	if edge_trigger:
 
-		fp.edge(delay, laser_trigger_pin, fluorescence_camera_pins[0], fluorescence_camera_pins[1])
+		fp.edge(delay, laser_trigger_pin, fluorescence_camera_pins[0], fluorescence_camera_pins[2])
 
+	# Captures in trigger mode
 	else:
 
 		fp.pulse(delay, duration, laser_trigger_pin, fluorescence_camera_pins[0])
@@ -197,9 +213,26 @@ def move_stage(ser, address, increment, encoding, terminate):
 
 
 # Gets the period from sample set
-def get_period(sequenceName):
+def get_period(brightfield_sequence, settings):
 
-	os.system('python3 getPeriod.py' + sequenceName)
+	# Function inputs
+	#		brightfield_sequence = (numpy array) a 3D array of the brightfiled picam data
+	#		settings = the settings
+
+	# If the settings are empty creates settings
+	if not settings:
+		    settings = hlp.initialiseSettings(drift=[-5,-2],
+		                            framerate=80,
+		                            referencePeriod=42.410156325856882,
+		                            barrierFrame=4.9949327669365964,
+		                            predictionLatency=0.01,
+		                            referenceFrame=20.994110773833857)
+
+	# Calculates period from getPeriod.py
+	brightfield_period, settings = gp.doEstablishPeriodProcessingForFrame(brightfiled_sequence, settings)
+
+	return brightfield_period, settings
+
 
 # Synchronises the capture of a full zebrafish heart.
 def caputre_full_heart(resolution,framerate):
@@ -214,10 +247,7 @@ def caputre_full_heart(resolution,framerate):
 
 	brightfield_stream = YUVLumaAnalysis(camera)
 
-	# predictTrigger(frameSummaryHistory, settings, fitBackToBarrier=True, log=False, output="seconds"))
-	# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-	# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
-	# targetSyncPhase should be in [0,2pi]
+
 
 
 for i in range(20):
