@@ -1,0 +1,16 @@
+This codebase is not yet wrapped up as a proper installable library. In order to import it from code that does not live in this folder, use:
+	import sys
+	sys.path.insert(0, '/Volumes/Development/Spim_GUI/j_postacquisition/')
+(or whatever path).
+
+Note also that I really need to package this up into a proper namespace, so I am no longer doing "from x import *"!
+
+
+A good preamble is:
+
+% matplotlib inline
+import sys
+import matplotlib.pyplot as plt
+sys.path.insert(0, '/Development/Spim_GUI/j_postacquisition/')
+from analyze_dataset import *
+
