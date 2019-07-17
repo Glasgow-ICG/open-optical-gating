@@ -12,7 +12,7 @@ import math
 import os
 
 import sys
-sys.path.insert(0, '../j_postacquisition/')
+sys.path.insert(0, os.path.join(os.getcwd(),'j_postacquisition'))
 import image_loading as jid
 import plist_wrapper as plw
 sys.path.insert(0, '../py_sad_correlation/')
