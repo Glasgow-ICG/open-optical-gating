@@ -7,6 +7,7 @@ import time
 import os
 import sys
 import serial
+import re
 
 # Local imports
 import j_py_sad_correlation as jps
@@ -21,7 +22,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, ref_frames = None, frame_num = 0,  size=None):
+	def __init__(self, camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, ref_frames = None, frame_num = 0,  size=None):
 
 
 		# Function inputs:
@@ -48,6 +49,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		super(YUVLumaAnalysis, self).__init__(camera)
 		self.frame_num = frame_num
 		self.width, self.height = camera.resolution
+		self.framerate = brightfield_framerate
 
 		# Defines laser, fluorescence camera and usb serial information
 		self.laser_trigger_pin = laser_trigger_pin
@@ -63,6 +65,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.ref_frame_length = 20
 		self.sad = np.zeros(self.temp_ary_length)
 		self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
+		self.dtype = 'uint8'
 
 		# Sets the get_period variable to prep the analyse function for acquiring a period
 		self.get_period_status = 2 
@@ -70,7 +73,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		# Initialises reference frames if not specified
 		if not ref_frames:
 
-			self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype='uint8')
+			self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype=self.dtype)
 		else:
 			self.ref_frames = ref_frames
 
@@ -78,7 +81,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	def analyze(self, frame):
 
 		# To-do:
-		#	- Update passing empty settings to get_period
 		#	- Stage captures over heart z values (rather than until software limit)
 		#	- Allow time for stage to move and camera to capture?
 
@@ -104,7 +106,8 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 				# Obtains a reference period
 				self.ref_frames, self.settings = get_period(self.ref_frames,{})
-				
+				(self.settings).update({'framerate':self.framerate})	
+
 				# User selects the period
 				self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
 
@@ -113,13 +116,15 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		
 			# Resets frame number	
 			self.frame_num = 0
+			self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype=self.dtype)
+			self.get_period_status = 2 
 
 
 		# Once period has been selected, analyses brightfield data for phase triggering
 		else:
 
 			# Clears framerateSummaryHistory if it exceeds the reference frame length 
-			if self.frame_num <= self.ref_frame_length:
+			if self.frame_num >= self.ref_frame_length:
 
 				self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
 				self.frame_num = 0
@@ -209,8 +214,8 @@ def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 	return ser
 
 
-# A function that ensures the stages are set to the correct mode
-def set_stages_to_recieve_input(ser,address,encoding,terminator):
+# A function that ensures the stage is set to the correct mode
+def set_stage_to_recieve_input(ser,address,encoding,terminator):
 	
 	# Function inputs:
 	#	ser = the serial object for the usb (already set up in initialisation function)
@@ -272,7 +277,79 @@ def set_stages_to_recieve_input(ser,address,encoding,terminator):
 	
 	return 0
 
+# Gets the user set limits of the of the specific address
+def set_user_stage_limits(ser, address, encoding, terminator):
 
+	# Function inputs:
+	#	ser = the serial object for the usb
+	#	address = the address number (int or str) for the stage to be controlled
+	#	terminator = the required string to terminate a command
+	#	encoding = the encoding needed for the usb stages (str) (usually 'utf-8')
+
+	# To-do:
+	#	- Read disable state responses?
+
+	# Commands
+	move_absolute = 'PA'
+	get_current_position = 'TP'
+	toggle_disable_state = 'MM'
+
+	# Activates the stages to recieve input and checks the result
+	if set_stage_to_recieve_input(ser, address, encoding, terminator) != 0:
+		print('Could not set user stage limits. Check stages.')
+		return 1		
+
+	# Disables the stages and gets user to move to edge of the zebrafish heart
+	command = str(address)+toggle_disable_state+str(0)+terminator
+	ser.write(command.encode(encoding))
+	# Read response?
+
+	# Waits the user to move the stage
+	moving = '' 
+	while not moving:
+		moving = input('Please move the stage to the edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
+
+	# Gets the position of the stage
+	command = str(address)+get_current_position+terminator
+	ser.write(command.encode(encoding))
+	response = (ser.readline()).decode(encoding)
+	first_limit = float(re.sub('\\'+str(address)+get_current_position+'$','',response))	 	
+
+	# Waits the user to move the stage
+	input('Please move the stage to the other edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
+
+	# Gets the position of the stage
+	command = str(address)+get_current_position+terminator
+	ser.write(command.encode(encoding))
+	response = (ser.readline()).decode(encoding)
+	second_limit = float(re.sub('\\'+str(address)+get_current_position+'$','',response))	 	
+
+	# Checks acquired position with user.	
+	print('Limits acquired. The stage will now move to from the one edge of the heart, to the other and then back again.\nPlease check to see if the limits are correct.')
+	relative_increment = first_limit - second_limit
+	time.sleep(3) # Gives the user a chance to read
+
+		# Enables the stage
+	command = str(address)+toggle_disable_state+str(1)+terminator
+	ser.write(command.encode(encoding))	
+
+		# Moves the stages
+	move_stage(ser,address, relative_increment, encoding, terminator)
+	time.sleep(3)
+	move_stage(ser, address, -relative_increment, encoding, terminator)
+
+		# Checks results with user
+	correct = input('Were these limits correct?\nPress y for yes or anything else for no.')
+		# If results are incorrect, relaunches function
+	if correct != 'y':
+		set_user_stage_limits(ser, address, terminator, encoding)
+
+	# Returns limits in the order of smallest, largest
+	if second_limit > first_limit:
+		return first_limit, second_limit
+	else:
+		return second_limit, first_limit 	
+	
 # Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=True, duration=100):
 
@@ -333,13 +410,13 @@ def move_stage(ser, address, increment, encoding, terminate):
 		command = str(address)+'SL?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
-		negative_software_limit = float(response.remove(str(address)+'SL'))
+		negative_software_limit = float(re.sub('//'+str(address)+'SL$','',response))
 
 		#Gets positive software limit
 		command = str(address)+'SR?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
-		positive_software_limit = float(response.remove(str(address)+'SR'))
+		positive_software_limit = float(re.sub('//'+str(address)+'SR$','',response))
 
 		# Checks if movement request is within software limit
 		if (current_position + float(increment)) > negative_software_limit and (current_position + float(increment)) < positive_software_limit :
@@ -364,12 +441,7 @@ def get_period(brightfield_sequence, settings):
 
 	# If the settings are empty creates settings
 	if not settings:
-		    settings = hlp.initialiseSettings(drift=[-5,-2],
-		                            framerate=80,
-		                            referencePeriod=42.410156325856882,
-		                            barrierFrame=4.9949327669365964,
-		                            predictionLatency=0.01,
-		                            referenceFrame=20.994110773833857)
+		    settings = hlp.initialiseSettings()
 
 	# Calculates period from getPeriod.py
 	brightfield_period, settings = gp.doEstablishPeriodProcessingForFrame(brightfield_sequence, settings)
@@ -393,7 +465,7 @@ def select_period(brightfield_period_frames, settings):
 	# Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
 	if frame < 0:
 		
-		return self.settings, 1
+		return settings, 1
 
 	# Converts frame number to period
 	period = 2*np.pi*frame/period_length_in_frames
@@ -422,7 +494,7 @@ if __name__ == '__main__':
 	brightfield_resolution = 256
 	brightfield_framerate = 20
 
-	analyse_time = 10
+	analyse_time = 100
 
 	# Sets up pins and usb
 	usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
@@ -433,17 +505,15 @@ if __name__ == '__main__':
 		sys.exit()
 
 	# Sets up stage to recieve input
-	set_stages_to_recieve_input(usb_serial,plane_address,encoding,terminator)
+	neg_limit, pos_limit = set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
 
 	# Sets up brightfield camera and YUVLumaAnalysis object
 	camera = picamera.PiCamera()
 	camera.resolution = (brightfield_resolution,brightfield_resolution)
 	camera.framerate = brightfield_framerate
-	analyse_camera = YUVLumaAnalysis(camera,laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment)
+	analyse_camera = YUVLumaAnalysis(camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment)
 	
 	# Starts analysing brightfield data
-	start = time.time()
 	camera.start_recording(analyse_camera, format = 'yuv')
 	camera.wait_recording(analyse_time)
 	camera.stop_recording()
-	end = time.time()
