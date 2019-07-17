@@ -1,7 +1,6 @@
-# Python imports
+#Python imports
 import picamera
 import numpy as np
-import matplotlib.pyplot as plt
 import io
 from picamera import array
 import time
@@ -11,6 +10,7 @@ import os
 import j_py_sad_correlation as jps
 import fastpins as fp
 import getPeriod as gp
+import realTimeSync.py as rts
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -18,40 +18,68 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera, ref_frames = None, frame_num = 1, make_refs = True, size=None):
+	def __init__(self, camera, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, ref_frames = None, frame_num = 0, make_refs = True, size=None):
 
-		#initialises relevant variables as class attributes. This is the best way i could think of to pass
-		#any external variables needed for analysis to this class (is there a better way? Not sure in Python)
-		#camera = object representing PiCam,
-		#frame = optiononal input to tell the object which frame in a sequence we are on
+
+		# Function inputs:
+		#	camera = the raspberry picam PiCamera object
+		#	laser_trigger_pin = the pin number (int) of the laser trigger
+		#	fluorescence_camera_pins = an array (int) of fluorescence camera pin numbers containg (trigger,SYNC-A, SYNC-B)
+		#	usb_serial = the usb serial object for controlling the movement stages
+		#	plane_address = the address of the stage that moves the zebrafish through the light sheet
+		#	encoding = the encoding used to control the Newport stages (usually utf-8)
+		#	terminator = the character set used to terminate a command sent to the Newport stages
+		#	increment = the required increment to move the stage by after each image capture
+		
+		# Optional inputs:
+		#	ref_frames = a set of reference frames containg a whole period for the zebrafish
+		# 	frame_num = the current frame number
+		#	make_refs = whether a period needs to be obtained
+		# 	size = ??? <- Need to find out what this does
+
+
+		# To-do:
+		#	- Find out what the size parameter does
+		# 	- Make sure that period is acquired at the start
+		#		- Could do in analyse function only on first instance
 
 		super(YUVLumaAnalysis, self).__init__(camera)
 		self.frame_num = frame_num
 		self.make_refs = make_refs
 		self.width, self.height = camera.resolution
-		self.timer = 0 #measure how long each frame takes to capture in case this is necesary for simulator
+		self.timer = 0 #measure how long each frame takes to capture incase this is necesary for simulator
+
+		# Defines laser, fluorescence camera and usb serial information
+		self.laser_trigger_pin = laser_trigger_pin
+		self.fluorescence_camera_pins = fluorescence_camera_pins
+		self.usb_serial = usb_serial
+		self.plane_address = plane_address
+		self.encoding = encoding
+		self.terminator = terminator
+		self.increment = increment
 
 		# Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
 		self.temp_ary_length = 680
 		self.ref_frame_length = 20
 		self.sad = np.zeros(self.temp_ary_length)
-		self.frameSummaryHistory = np.zeros((self.ref_frame_length,3))
+		self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
 
 
+		# Gets period refence frames
 		if make_refs:
 
 			# Obtains a period of reference frames (if specified)
-			self.ref_frames, self.settings = get_period(ref_frames,settings)
+			self.ref_frames, self.settings = get_period(ref_frames,{})
 				# sequence is 3D stack in form of ref_frames[t,x,y]
 
 		else:
 			self.ref_frames = ref_frames
 
+		# User selects period
+		self.settings = select_period(self.ref_frames, self.settings)		
 
 	def analyze(self, frame):
 
-		# To-do:
-		#		- frameSummaryHistory reset to zero after each trigger?
 
 		start = time.time()
 		frame = frame[:,:,0] # Select just Y values from frame
@@ -59,13 +87,20 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
 
+
 		# For the first set of frames (if make_refs is True), assigns current frame as a reference frame
-		if self.frame_num<self.ref_frame_length and self.make_refs:
+		if self.frame_num < self.ref_frame_length and self.make_refs:
 			self.ref_frames[self.frame_num,:,:] = frame
 
 			self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 			end = time.time()
 			self.timer += (end - start)
+
+		# Clears framerateSummaryHistory if it exceeds the reference frame length 
+		elif self.frame_num == self.ref_frame_length:
+
+			self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
+			self.frame_num = 0
 
 		else:
 			# Gets the phase and sad of the current frame (settings ignored until format is known)
@@ -81,11 +116,23 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			end = time.time()
 			self.timer += (end - start)
 
-
-			return predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds"))
+			# Gets the trigger response
+			trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
 			# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 			# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 			# targetSyncPhase should be in [0,2pi]
+			
+			# Captures the image (in edge mode) and then moves the stage if triggered
+			if trigger_response > 0:
+
+				trigger_response *= 1e6 # Converts to microseconds
+				trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)	
+
+				#time.sleep(1) # Allows time for successful image capture
+				stage_result = move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+
+
+
 
 # Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
 def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
@@ -97,37 +144,106 @@ def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 	#	usb_information = a list containing the information used to set up the usb for controlling the Newport stages
 	#							(USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
 
-	# To-do:
-	#	- Check pins to see if set up correctly
-	#	- Check set stages in correct mode
-	#	- Set up stage parameters (increment, acceleration, velocity etc)
-	#	- Return information regarding set up (all successful/ all failed)
-
 
 	# Initialises fastpins module
-	fp.init()
+	try:
+		fp.init()
+	except:
+		print('Error setting up fastpins module.')
+		return 1
 
 	# Sets up laser trigger pin
-	fp.setpin(laser_trigger_pin, 1, 0) #PUD resistor needs to be specified but will be ignored in setup
+	try:
+		fp.setpin(laser_trigger_pin, 1, 0) #PUD resistor needs to be specified but will be ignored in setup
+	except:
+		print('Error setting up laser pin.')
+		return 2
 
 	# Sets up fluorescence camera pins
-	fp.setpin(fluorescence_camera_pins[0],1,0) 	#Trigger
-	fp.setpin(fluorescence_camera_pins[1],0,0)	#SYNC-A
-	fp.setpin(fluorescence_camera_pins[2],0,0)	#SYNC-B
+	try:
+		fp.setpin(fluorescence_camera_pins[0],1,0) 	#Trigger
+		fp.setpin(fluorescence_camera_pins[1],0,0)	#SYNC-A
+		fp.setpin(fluorescence_camera_pins[2],0,0)	#SYNC-B
+	except:
+		print('Error setting up fluorescence camera pins.')
+		return 3
 
 	# Sets up USB for Newport stages
-	ser = serial.Serial(usb_information[0],
+	try:
+		ser = serial.Serial(usb_information[0],
 						timeout=usb_information[1],
 						baudrate=usb_information[2],
 						bytesize=usb_information[3],
 						parity=usb_information[4],
 						stopbits=usb_information[5],
 						xonxoff=usb_information[6])
+	except:
+		print('Error setting up usb.')
+		return 4
 
 	# Serial object is the only new object
 	return ser
 
 
+# A function that ensures the stages are set to the correct mode
+def set_stages_to_recieve_input(ser,address,encoding,terminator):
+	
+	# Function inputs:
+	#	ser = the serial object for the usb (already set up in initialisation function)
+	#	address = the address number (int) of the stage to ensure is in the correct state
+	#	encoding = the encoding needed for the stage controllers (usually utf-8)
+	#	terminator = the terminating characters sent at the end of each command
+
+
+	# To-do:
+	#	- Checks address is correct
+	#	- Perform error checks rather than printing responses
+	#	- Set up stage parameters (increment, acceleration, velocity etc)
+
+	# Information:
+	#	The easiest way to do this is to reset each controller on start up so the initial state is known.
+	#	Currently, all initial parameters are left but if they need to be changed should be done so in this function.
+
+	#Command list
+	reset = 'RS'
+	ready = 'OR'
+	config = 'PW'
+	request_info = 'VE'
+
+	# Checks address is correct
+	command = str(address)+str(request_info)+str(terminator)
+	ser.write(command.encode(encoding))
+	response = (ser.readline())
+	if not response:
+		print('No information recieved when requesting version information.\nCommand sent: '+command)
+		return 1
+
+	# Resets the controllers
+	command = str(address)+str(reset)+str(terminator)
+	ser.write(command.encode(encoding))
+	response = (ser.readline())
+	print(response.decode(encoding))
+
+
+	# Enters config stage (currently does nothing but here for easy of adding configuration"
+	command = str(address)+str(config)+str(0)+str(terminator)
+	ser.write(command.encode(encoding))
+	response = (ser.readline())
+	print(response.decode(encoding))
+	
+	# Leaves config state
+	command = str(address)+str(config)+str(1)+str(terminator)
+	ser.write(command.encode(encoding))
+	response = (ser.readline())
+	print(response.decode(encoding))
+	
+	# Readies controller
+	command = str(address)+str(ready)+str(terminator)
+	ser.write(command.encode(encoding))
+	response = (ser.readline())
+	print(response.decode(encoding))
+	
+	return 0
 
 
 # Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
@@ -234,32 +350,62 @@ def get_period(brightfield_sequence, settings):
 	return brightfield_period, settings
 
 
-# Synchronises the capture of a full zebrafish heart.
-def caputre_full_heart(resolution,framerate):
+# Selects the period from a set of reference frames
+def select_period(brightfield_period_frames, settings):
 
-	# Sets up picamera and YUVLumaAnalysis object
+	# Function inputs:
+	#	brightfield_period_frames = a 3D array consisting of evenly spaced frames containing exactly one period
+	#	settings = the settings dictionary (for more information see the helper.py file
+
+	# Defines initial variables
+	period_length_in_frames = brightfield_period_frames.shape[0]
+
+	# For now it is a simple command line interface (which is not helpful at all)
+	frame = int(input('Please select a frame between 0 and '+str(period_length_in_frames - 1)))
+
+	# Converts frame number to period
+	period = 2*np.pi*frame/period_length_in_frames
+
+	# Updates settings dictionary with reference data
+	settings.update({'referenceFrame':frame})
+	settings.update({'referencePeriod':period_length_in_frames})
+	settings.update({'targetSyncPhase':period})
+
+	return settings
+
+# Main script to capture a zebrafish heart
+
+if __name__ == '__main__':
+
+	# Defines initial variables
+	laser_trigger_pin = 22
+	fluorescence_camera_pins = 8,10,12 # Trigger, SYNC-A, SYNC-B
+	usb_information = ('/dev/ttyUSB0',0.1,57600,8,None,1,True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
+
+	econding = 'utf-8'
+	terminator = chr(13)+chr(10)
+	increment = 1
+
+	brightfield_resolution = 256
+	brightfield_framerate = 20
+
+	analyse_time = 100
+
+	# Sets up pins and usb
+	usb_serial = init_controls(laser_trigger_pin, fulorescence_camera_pins, usb_information)
+
+	# Sets up stage to recieve input
+	set_stages_to_recieve_input(usb_serial,plane_address,encoding,terminator)
+
+	# Sets up brightfield camera and YUVLumaAnalysis object
 	camera = picamera.PiCamera()
-	camera.resolution = (resolution)
-	camera.framerate = framerate
-
-	# Caputres reference data (for now just uses sample data)
-	get_period('sample_period')
-
-	brightfield_stream = YUVLumaAnalysis(camera)
-
-
-
-
-for i in range(20):
-	camera = picamera.PiCamera()
-	res = (i+8)*32
-	camera.resolution = (res,res)
-	camera.framerate = framerate
-
-	output = YUVLumaAnalysis(camera)
-
+	camera.resolution = (brightfield_resolution,brightfield_resolution)
+	camera.framerate = brightfield_framerate
+	analyse_camera = YUVLumaAnalysis(camera,laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment)
+	
+	# Starts analysing brightfield data
 	start = time.time()
 	camera.start_recording(output, format = 'yuv')
-	camera.wait_recording(10)
+	camera.wait_recording(analyse_time)
 	camera.stop_recording()
 	end = time.time()
