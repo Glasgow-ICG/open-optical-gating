@@ -1,7 +1,6 @@
 #Python imports
 import picamera
 import numpy as np
-import matplotlib.pyplot as plt
 import io
 from picamera import array
 import time
@@ -40,7 +39,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 
 		# To-do:
-		#	Find out what the size parameter does
+		#	- Find out what the size parameter does
+		# 	- Make sure that period is acquired at the start
+		#		- Could do in analyse function only on first instance
 
 		super(YUVLumaAnalysis, self).__init__(camera)
 		self.frame_num = frame_num
@@ -68,7 +69,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		if make_refs:
 
 			# Obtains a period of reference frames (if specified)
-			self.ref_frames, self.settings = get_period(ref_frames,settings)
+			self.ref_frames, self.settings = get_period(ref_frames,{})
 				# sequence is 3D stack in form of ref_frames[t,x,y]
 
 		else:
@@ -86,10 +87,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
 
-		# Clears framerateSummaryHistory if it exceeds the reference frame length
-		if self.frame_num >= self.ref_frame_length:
-			self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
-			self.frame_num = 0
 
 		# For the first set of frames (if make_refs is True), assigns current frame as a reference frame
 		if self.frame_num < self.ref_frame_length and self.make_refs:
@@ -98,6 +95,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 			end = time.time()
 			self.timer += (end - start)
+
+		# Clears framerateSummaryHistory if it exceeds the reference frame length 
+		elif self.frame_num == self.ref_frame_length:
+
+			self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
+			self.frame_num = 0
 
 		else:
 			# Gets the phase and sad of the current frame (settings ignored until format is known)
@@ -114,7 +117,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			self.timer += (end - start)
 
 			# Gets the trigger response
-			trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds"))
+			trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
 			# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 			# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 			# targetSyncPhase should be in [0,2pi]
@@ -126,7 +129,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)	
 
 				#time.sleep(1) # Allows time for successful image capture
-				stage_result = move_stage(self.usb_serial, self.plane_address,self.increment self.encoding, self.terminator)
+				stage_result = move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
 
 
 
