@@ -22,7 +22,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, ref_frames = None, frame_num = 0,  size=None):
+	def __init__(self, camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, negative_limit, positive_limit, current_position, ref_frames = None, frame_num = 0,  size=None):
 
 
 		# Function inputs:
@@ -33,7 +33,10 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		#	plane_address = the address of the stage that moves the zebrafish through the light sheet
 		#	encoding = the encoding used to control the Newport stages (usually utf-8)
 		#	terminator = the character set used to terminate a command sent to the Newport stages
-		#	increment = the required increment to move the stage by after each image capture
+		#	increment = the required increment to move the stage by after each image capture (float)
+		#	negative_limit = the smallest z value (float) of the edge of the zebrafish heart (selected by the user)
+		#	positive_limit = the largest z value (float) of the edge of the zebrafish heart (selected by the user)
+		#	current_position = the current z value of the stage.
 		
 		# Optional inputs:
 		#	ref_frames = a set of reference frames containg a whole period for the zebrafish
@@ -59,6 +62,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.encoding = encoding
 		self.terminator = terminator
 		self.increment = increment
+		self.negative_limit = negative_limit
+		self.positive_limit = positive_limit
+		self.current_position = current_position
 
 		# Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
 		self.temp_ary_length = 680
@@ -83,78 +89,86 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		# To-do:
 		#	- Stage captures over heart z values (rather than until software limit)
 		#	- Allow time for stage to move and camera to capture?
+		# 	- Act on status of stage (stage_result)
 
 		frame = frame[:,:,0] # Select just Y values from frame
 
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
 		
-		# Captures a set of reference frames for obtaining a reference period
-		if self.get_period_status == 2:	
-		
-			# Obtains a minimum amount of reference frames
-			if self.frame_num < self.ref_frame_length:
+		# Ensures stage is always within user defined limits
+		if self.current_position <= self.positive_limit and self.current_position >= self.negative_limit:
 
-				# Adds current frame to reference
-				self.ref_frames[self.frame_num,:,:] = frame
-				
-				# Increases frame number
-				self.frame_num += 1	
+			# Captures a set of reference frames for obtaining a reference period
+			if self.get_period_status == 2:	
+			
+				# Obtains a minimum amount of reference frames
+				if self.frame_num < self.ref_frame_length:
 
-			# Once a suitible reference size has been obtained, gets a period and the user selects the phase
-			else:
+					# Adds current frame to reference
+					self.ref_frames[self.frame_num,:,:] = frame
+					
+					# Increases frame number
+					self.frame_num += 1	
 
-				# Obtains a reference period
-				self.ref_frames, self.settings = get_period(self.ref_frames,{})
-				(self.settings).update({'framerate':self.framerate})	
+				# Once a suitible reference size has been obtained, gets a period and the user selects the phase
+				else:
 
-				# User selects the period
-				self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
+					# Obtains a reference period
+					self.ref_frames, self.settings = get_period(self.ref_frames,{})
+					(self.settings).update({'framerate':self.framerate})	
 
-		# Clears ref_frames and resets frame number to reselect period
-		elif self.get_period_status == 1:
-		
-			# Resets frame number	
-			self.frame_num = 0
-			self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype=self.dtype)
-			self.get_period_status = 2 
+					# User selects the period
+					self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
 
-
-		# Once period has been selected, analyses brightfield data for phase triggering
-		else:
-
-			# Clears framerateSummaryHistory if it exceeds the reference frame length 
-			if self.frame_num >= self.ref_frame_length:
-
-				self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
+			# Clears ref_frames and resets frame number to reselect period
+			elif self.get_period_status == 1:
+			
+				# Resets frame number	
 				self.frame_num = 0
+				self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype=self.dtype)
+				self.get_period_status = 2 
 
+
+			# Once period has been selected, analyses brightfield data for phase triggering
 			else:
-				# Gets the phase and sad of the current frame (settings ignored until format is known)
-				self.frameSummaryHistory[self.frame_num,1], self.sad_ = jps.compareFrame(frame, self.ref_frames)
 
-				# Gets the current timestamp
-				self.frameSummaryHistory[self.frame_num,0] = time.localtime()
+				# Clears framerateSummaryHistory if it exceeds the reference frame length 
+				if self.frame_num >= self.ref_frame_length:
 
-				# Gets the argmin of SAD and adds to frameSummaryHistory array
-				self.frameSummaryHistory[self.frame_num,2] = np.argmin(self.sad)
+					self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
+					self.frame_num = 0
 
-				self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+				else:
+					# Gets the phase and sad of the current frame (settings ignored until format is known)
+					self.frameSummaryHistory[self.frame_num,1], self.sad_ = jps.compareFrame(frame, self.ref_frames)
 
-				# Gets the trigger response
-				trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
-				# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-				# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
-				# targetSyncPhase should be in [0,2pi]
-				
-				# Captures the image (in edge mode) and then moves the stage if triggered
-				if trigger_response > 0:
+					# Gets the current timestamp
+					self.frameSummaryHistory[self.frame_num,0] = time.localtime()
 
-					trigger_response *= 1e6 # Converts to microseconds
-					trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)	
+					# Gets the argmin of SAD and adds to frameSummaryHistory array
+					self.frameSummaryHistory[self.frame_num,2] = np.argmin(self.sad)
 
-					#time.sleep(1) # Allows time for successful image capture
-					stage_result = move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+					self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+
+					# Gets the trigger response
+					trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
+					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
+					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+					# targetSyncPhase should be in [0,2pi]
+					
+					# Captures the image (in edge mode) and then moves the stage if triggered
+					if trigger_response > 0:
+
+						trigger_response *= 1e6 # Converts to microseconds
+						trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)	
+
+						#time.sleep(1) # Allows time for successful image capture
+						stage_result, self.current_position = move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+
+						# Do something with the stage result:
+						#	0 = Continue as normal
+						#	1 or 2 = Pause capture
 
 
 
@@ -313,7 +327,8 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	command = str(address)+get_current_position+terminator
 	ser.write(command.encode(encoding))
 	response = (ser.readline()).decode(encoding)
-	first_limit = float(re.sub('\\'+str(address)+get_current_position+'$','',response))	 	
+	first_limit = float(re.sub(str(address)+get_current_position,'',response))	 	
+	print(first_limit)
 
 	# Waits the user to move the stage
 	input('Please move the stage to the other edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
@@ -322,7 +337,8 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	command = str(address)+get_current_position+terminator
 	ser.write(command.encode(encoding))
 	response = (ser.readline()).decode(encoding)
-	second_limit = float(re.sub('\\'+str(address)+get_current_position+'$','',response))	 	
+	second_limit = float(re.sub(str(address)+get_current_position,'',response))	 	
+	print(second_limit)
 
 	# Checks acquired position with user.	
 	print('Limits acquired. The stage will now move to from the one edge of the heart, to the other and then back again.\nPlease check to see if the limits are correct.')
@@ -334,21 +350,32 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	ser.write(command.encode(encoding))	
 
 		# Moves the stages
-	move_stage(ser,address, relative_increment, encoding, terminator)
+	stage_response, current_position = move_stage(ser,address, relative_increment, encoding, terminator)
+
+	if stage_response != 0:
+		return None, None, None
+
 	time.sleep(3)
-	move_stage(ser, address, -relative_increment, encoding, terminator)
+	stage_response, current_position = move_stage(ser,address, -relative_increment, encoding, terminator)
+
+	if stage_response != 0:
+		return None, None, None
 
 		# Checks results with user
 	correct = input('Were these limits correct?\nPress y for yes or anything else for no.')
 		# If results are incorrect, relaunches function
 	if correct != 'y':
-		set_user_stage_limits(ser, address, terminator, encoding)
+		first_limit, second_limit, current_position = set_user_stage_limits(ser, address, encoding, terminator)
 
 	# Returns limits in the order of smallest, largest
 	if second_limit > first_limit:
-		return first_limit, second_limit
+
+		# Ensures stage is at the smallest limit
+
+		stage_response, current_position = move_stage(ser,address, relative_increment, encoding, terminator)
+		return first_limit, second_limit, current_position
 	else:
-		return second_limit, first_limit 	
+		return second_limit, first_limit, current_position  	
 	
 # Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=True, duration=100):
@@ -379,6 +406,7 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 # Moves stage by an increment to move the zebrafish through the plane
 def move_stage(ser, address, increment, encoding, terminate):
 
+
 	# Function inputs
 	#		ser = the serial object return by the init_controls function
 	#		address = the address of the stage to be moved
@@ -401,35 +429,43 @@ def move_stage(ser, address, increment, encoding, terminate):
 
 		print('Error. No response obtained from stage '+str(address)+'.\nCheck stage is switched on and responsive.')
 
-		return 1
+		return 1, None 
 
 	else:
-		current_position = float(response.remove(str(address)+'TP')) #Extracts position from response
+		current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
 
 		# Gets negative software limit
 		command = str(address)+'SL?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
-		negative_software_limit = float(re.sub('//'+str(address)+'SL$','',response))
+		negative_software_limit = float(re.sub(str(address)+'SL','',response))
 
 		#Gets positive software limit
 		command = str(address)+'SR?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
-		positive_software_limit = float(re.sub('//'+str(address)+'SR$','',response))
+		positive_software_limit = float(re.sub(str(address)+'SR','',response))
 
 		# Checks if movement request is within software limit
 		if (current_position + float(increment)) > negative_software_limit and (current_position + float(increment)) < positive_software_limit :
 
+			# Moves the stage
 			command = str(address)+'PR'+str(increment)+str(terminate)
 			ser.write(command.encode(encoding))
 
-			return 0
+			# Gets the new position
+			command = str(address) + 'TP?' + str(terminate)
+			ser.write(command.encode(encoding))
+			response = (ser.readline()).decode(encoding)
+			current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
+
+			return 0, current_position
 
 		else:
 
-			print('Error. Cannot move stage by increment '+str(increment)+ ' as would be outside software limits of '+str(negative_software_limit) + ' - ' + str(positive_software_limit) )
-			return 2
+			print('Error. Cannot move stage by increment '+str(increment)+' at position '+str(current_position)+' as would be outside software limits of '+str(negative_software_limit) + ' - ' + str(positive_software_limit) )
+			return 2, current_position
+
 
 
 # Gets the period from sample set
@@ -488,8 +524,8 @@ if __name__ == '__main__':
 
 	encoding = 'utf-8'
 	terminator = chr(13)+chr(10)
-	increment = 1
-	plane_address = 2
+	increment = 0.1
+	plane_address = 1 
 
 	brightfield_resolution = 256
 	brightfield_framerate = 20
@@ -505,13 +541,13 @@ if __name__ == '__main__':
 		sys.exit()
 
 	# Sets up stage to recieve input
-	neg_limit, pos_limit = set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
+	neg_limit, pos_limit, current_position = set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
 
 	# Sets up brightfield camera and YUVLumaAnalysis object
 	camera = picamera.PiCamera()
 	camera.resolution = (brightfield_resolution,brightfield_resolution)
 	camera.framerate = brightfield_framerate
-	analyse_camera = YUVLumaAnalysis(camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment)
+	analyse_camera = YUVLumaAnalysis(camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, neg_limit, pos_limit, current_position)
 	
 	# Starts analysing brightfield data
 	camera.start_recording(analyse_camera, format = 'yuv')
