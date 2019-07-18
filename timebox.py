@@ -15,6 +15,7 @@ import fastpins as fp
 import getPeriod as gp
 import realTimeSync as rts
 import helper as hlp
+import stage_control_functions as scf
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -37,7 +38,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		#	negative_limit = the smallest z value (float) of the edge of the zebrafish heart (selected by the user)
 		#	positive_limit = the largest z value (float) of the edge of the zebrafish heart (selected by the user)
 		#	current_position = the current z value of the stage.
-		
+
 		# Optional inputs:
 		#	ref_frames = a set of reference frames containg a whole period for the zebrafish
 		# 	frame_num = the current frame number
@@ -74,7 +75,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.dtype = 'uint8'
 
 		# Sets the get_period variable to prep the analyse function for acquiring a period
-		self.get_period_status = 2 
+		self.get_period_status = 2
 
 		# Initialises reference frames if not specified
 		if not ref_frames:
@@ -95,45 +96,45 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
-		
+
 		# Ensures stage is always within user defined limits
 		if self.current_position <= self.positive_limit and self.current_position >= self.negative_limit:
 
 			# Captures a set of reference frames for obtaining a reference period
-			if self.get_period_status == 2:	
-			
+			if self.get_period_status == 2:
+
 				# Obtains a minimum amount of reference frames
 				if self.frame_num < self.ref_frame_length:
 
 					# Adds current frame to reference
 					self.ref_frames[self.frame_num,:,:] = frame
-					
+
 					# Increases frame number
-					self.frame_num += 1	
+					self.frame_num += 1
 
 				# Once a suitible reference size has been obtained, gets a period and the user selects the phase
 				else:
 
 					# Obtains a reference period
 					self.ref_frames, self.settings = get_period(self.ref_frames,{})
-					(self.settings).update({'framerate':self.framerate})	
+					(self.settings).update({'framerate':self.framerate})
 
 					# User selects the period
 					self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
 
 			# Clears ref_frames and resets frame number to reselect period
 			elif self.get_period_status == 1:
-			
-				# Resets frame number	
+
+				# Resets frame number
 				self.frame_num = 0
 				self.ref_frames = np.empty((self.ref_frame_length, self.width, self.height), dtype=self.dtype)
-				self.get_period_status = 2 
+				self.get_period_status = 2
 
 
 			# Once period has been selected, analyses brightfield data for phase triggering
 			else:
 
-				# Clears framerateSummaryHistory if it exceeds the reference frame length 
+				# Clears framerateSummaryHistory if it exceeds the reference frame length
 				if self.frame_num >= self.ref_frame_length:
 
 					self.frameSummaryHistory = np.empty((self.ref_frame_length,3))
@@ -156,15 +157,15 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 					# targetSyncPhase should be in [0,2pi]
-					
+
 					# Captures the image (in edge mode) and then moves the stage if triggered
 					if trigger_response > 0:
 
 						trigger_response *= 1e6 # Converts to microseconds
-						trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)	
+						trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_trigger_pins)
 
 						#time.sleep(1) # Allows time for successful image capture
-						stage_result, self.current_position = move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+						stage_result, self.current_position = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
 
 						# Do something with the stage result:
 						#	0 = Continue as normal
@@ -228,155 +229,7 @@ def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 	return ser
 
 
-# A function that ensures the stage is set to the correct mode
-def set_stage_to_recieve_input(ser,address,encoding,terminator):
-	
-	# Function inputs:
-	#	ser = the serial object for the usb (already set up in initialisation function)
-	#	address = the address number (int) of the stage to ensure is in the correct state
-	#	encoding = the encoding needed for the stage controllers (usually utf-8)
-	#	terminator = the terminating characters sent at the end of each command
 
-
-	# To-do:
-	#	- Perform error checks rather than printing responses
-	#	- Set up stage parameters (increment, acceleration, velocity etc)
-
-	# Information:
-	#	The easiest way to do this is to reset each controller on start up so the initial state is known.
-	#	Currently, all initial parameters are left but if they need to be changed should be done so in this function.
-
-	#Command list
-	reset = 'RS'
-	ready = 'OR'
-	config = 'PW'
-	request_info = 'VE'
-
-	# Checks address is correct
-	command = str(address)+str(request_info)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if not response:
-		print('No information recieved when requesting version information.\nCommand sent: '+command)
-		return 1
-
-	# Resets the controllers
-	command = str(address)+str(reset)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
-
-
-	# Enters config stage (currently does nothing but here for easy of adding configuration"
-	command = str(address)+str(config)+str(0)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
-	
-	# Leaves config state
-	command = str(address)+str(config)+str(1)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
-	
-	# Readies controller
-	command = str(address)+str(ready)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
-	
-	return 0
-
-# Gets the user set limits of the of the specific address
-def set_user_stage_limits(ser, address, encoding, terminator):
-
-	# Function inputs:
-	#	ser = the serial object for the usb
-	#	address = the address number (int or str) for the stage to be controlled
-	#	terminator = the required string to terminate a command
-	#	encoding = the encoding needed for the usb stages (str) (usually 'utf-8')
-
-	# To-do:
-	#	- Read disable state responses?
-
-	# Commands
-	move_absolute = 'PA'
-	get_current_position = 'TP'
-	toggle_disable_state = 'MM'
-
-	# Activates the stages to recieve input and checks the result
-	if set_stage_to_recieve_input(ser, address, encoding, terminator) != 0:
-		print('Could not set user stage limits. Check stages.')
-		return 1		
-
-	# Disables the stages and gets user to move to edge of the zebrafish heart
-	command = str(address)+toggle_disable_state+str(0)+terminator
-	ser.write(command.encode(encoding))
-	# Read response?
-
-	# Waits the user to move the stage
-	moving = '' 
-	while not moving:
-		moving = input('Please move the stage to the edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
-
-	# Gets the position of the stage
-	command = str(address)+get_current_position+terminator
-	ser.write(command.encode(encoding))
-	response = (ser.readline()).decode(encoding)
-	first_limit = float(re.sub(str(address)+get_current_position,'',response))	 	
-	print(first_limit)
-
-	# Waits the user to move the stage
-	input('Please move the stage to the other edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
-
-	# Gets the position of the stage
-	command = str(address)+get_current_position+terminator
-	ser.write(command.encode(encoding))
-	response = (ser.readline()).decode(encoding)
-	second_limit = float(re.sub(str(address)+get_current_position,'',response))	 	
-	print(second_limit)
-
-	# Checks acquired position with user.	
-	print('Limits acquired. The stage will now move to from the one edge of the heart, to the other and then back again.\nPlease check to see if the limits are correct.')
-	relative_increment = first_limit - second_limit
-	time.sleep(3) # Gives the user a chance to read
-
-		# Enables the stage
-	command = str(address)+toggle_disable_state+str(1)+terminator
-	ser.write(command.encode(encoding))	
-
-		# Moves the stages
-	stage_response, current_position = move_stage(ser,address, relative_increment, encoding, terminator)
-
-	if stage_response != 0:
-		return None, None, None
-
-	time.sleep(3)
-	stage_response, current_position = move_stage(ser,address, -relative_increment, encoding, terminator)
-
-	if stage_response != 0:
-		return None, None, None
-
-		# Checks results with user
-	correct = input('Were these limits correct?\nPress y for yes or anything else for no.')
-		# If results are incorrect, relaunches function
-	if correct != 'y':
-		first_limit, second_limit, current_position = set_user_stage_limits(ser, address, encoding, terminator)
-
-	# Returns limits in the order of smallest, largest
-	if second_limit > first_limit:
-
-		# Ensures stage is at the smallest limit
-
-		stage_response, current_position = move_stage(ser,address, relative_increment, encoding, terminator)
-		return first_limit, second_limit, current_position
-	else:
-		return second_limit, first_limit, current_position  	
-	
 # Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=True, duration=100):
 
@@ -401,70 +254,6 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 		fp.pulse(delay, duration, laser_trigger_pin, fluorescence_camera_pins[0])
 
-
-
-# Moves stage by an increment to move the zebrafish through the plane
-def move_stage(ser, address, increment, encoding, terminate):
-
-
-	# Function inputs
-	#		ser = the serial object return by the init_controls function
-	#		address = the address of the stage to be moved
-	#		increment = the increment to move the stage by (float)
-	#		encoding = the type of encoding to be used to send/recieve commands (usually 'utf-8') (str)
-	#		terminate = the termination character set (str)
-
-	# To-dos:
-	#		- Function should check errors errors sent from stage
-	#		- Function should check what mode controller is in and change to ready mode (if not in ready mode)
-	#		- Function should return current position and error in current position
-
-	# Gets the current stage position
-	command = str(address) + 'TP?' + str(terminate)
-	ser.write(command.encode(encoding))
-	response = (ser.readline()).decode(encoding)
-	
-	# Tests if response present and if so extracts position information and tests move validity
-	if not response:
-
-		print('Error. No response obtained from stage '+str(address)+'.\nCheck stage is switched on and responsive.')
-
-		return 1, None 
-
-	else:
-		current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
-
-		# Gets negative software limit
-		command = str(address)+'SL?'+str(terminate)
-		ser.write(command.encode(encoding))
-		response = (ser.readline()).decode(encoding)
-		negative_software_limit = float(re.sub(str(address)+'SL','',response))
-
-		#Gets positive software limit
-		command = str(address)+'SR?'+str(terminate)
-		ser.write(command.encode(encoding))
-		response = (ser.readline()).decode(encoding)
-		positive_software_limit = float(re.sub(str(address)+'SR','',response))
-
-		# Checks if movement request is within software limit
-		if (current_position + float(increment)) > negative_software_limit and (current_position + float(increment)) < positive_software_limit :
-
-			# Moves the stage
-			command = str(address)+'PR'+str(increment)+str(terminate)
-			ser.write(command.encode(encoding))
-
-			# Gets the new position
-			command = str(address) + 'TP?' + str(terminate)
-			ser.write(command.encode(encoding))
-			response = (ser.readline()).decode(encoding)
-			current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
-
-			return 0, current_position
-
-		else:
-
-			print('Error. Cannot move stage by increment '+str(increment)+' at position '+str(current_position)+' as would be outside software limits of '+str(negative_software_limit) + ' - ' + str(positive_software_limit) )
-			return 2, current_position
 
 
 
@@ -500,7 +289,7 @@ def select_period(brightfield_period_frames, settings):
 
 	# Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
 	if frame < 0:
-		
+
 		return settings, 1
 
 	# Converts frame number to period
@@ -525,7 +314,7 @@ if __name__ == '__main__':
 	encoding = 'utf-8'
 	terminator = chr(13)+chr(10)
 	increment = 0.1
-	plane_address = 1 
+	plane_address = 1
 
 	brightfield_resolution = 256
 	brightfield_framerate = 20
@@ -541,14 +330,14 @@ if __name__ == '__main__':
 		sys.exit()
 
 	# Sets up stage to recieve input
-	neg_limit, pos_limit, current_position = set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
+	neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
 
 	# Sets up brightfield camera and YUVLumaAnalysis object
 	camera = picamera.PiCamera()
 	camera.resolution = (brightfield_resolution,brightfield_resolution)
 	camera.framerate = brightfield_framerate
 	analyse_camera = YUVLumaAnalysis(camera, brightfield_framerate, laser_trigger_pin, fluorescence_camera_pins, usb_serial, plane_address, encoding, terminator, increment, neg_limit, pos_limit, current_position)
-	
+
 	# Starts analysing brightfield data
 	camera.start_recording(analyse_camera, format = 'yuv')
 	camera.wait_recording(analyse_time)
