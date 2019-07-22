@@ -15,6 +15,7 @@ def set_stage_to_recieve_input(ser,address,encoding,terminator):
 	# To-do:
 	#	- Perform error checks rather than printing responses
 	#	- Set up stage parameters (increment, acceleration, velocity etc)
+	#	- Read current state rather than waiting for a long time
 
 	# Information:
 	#	The easiest way to do this is to reset each controller on start up so the initial state is known.
@@ -25,6 +26,8 @@ def set_stage_to_recieve_input(ser,address,encoding,terminator):
 	ready = 'OR'
 	config = 'PW'
 	request_info = 'VE'
+	set_neg_software_limit = 'SL'
+	new_neg_software_limit = '0.01'
 
 	# Checks address is correct
 	command = str(address)+str(request_info)+str(terminator)
@@ -34,7 +37,7 @@ def set_stage_to_recieve_input(ser,address,encoding,terminator):
 		print('No information recieved when requesting version information.\nCommand sent: '+command)
 		return 1
 
-	# Resets the controllers
+	# Resets the controller
 	command = str(address)+str(reset)+str(terminator)
 	ser.write(command.encode(encoding))
 	response = ser.readline()
@@ -42,19 +45,22 @@ def set_stage_to_recieve_input(ser,address,encoding,terminator):
 		print(response.decode(encoding))
 
 
-	# Enters config stage (currently does nothing but here for easy of adding configuration"
-	command = str(address)+str(config)+str(0)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
+	# Resetting the controller takes time
+	time.sleep(10)
 
-	# Leaves config state
-	command = str(address)+str(config)+str(1)+str(terminator)
-	ser.write(command.encode(encoding))
-	response = ser.readline()
-	if response:
-		print(response.decode(encoding))
+#	# Enters config stage (currently does nothing but here for easy of adding configuration"
+#	command = str(address)+str(config)+str(0)+str(terminator)
+#	ser.write(command.encode(encoding))
+#	response = ser.readline()
+#	if response:
+#		print(response.decode(encoding))
+#
+#	# Leaves config state
+#	command = str(address)+str(config)+str(1)+str(terminator)
+#	ser.write(command.encode(encoding))
+#	response = ser.readline()
+#	if response:
+#		print(response.decode(encoding))
 
 	# Readies controller
 	command = str(address)+str(ready)+str(terminator)
@@ -62,6 +68,13 @@ def set_stage_to_recieve_input(ser,address,encoding,terminator):
 	response = ser.readline()
 	if response:
 		print(response.decode(encoding))
+
+	# Decreases negative software limit to prevent being stuck in disabled state
+	# Currently, whenever restarted the controller 'thinks' its at position 0 (regardless of actual position)
+	# Thus, if immediately entered into disabled state I can not be re-entered into ready state as this is at the edge of the software limit
+	# A (sort of) solution is to set the negative software limit from 0 to -0.1 or some other small number below 0
+	command = str(address)+set_neg_software_limit+new_neg_software_limit+str(terminator)
+	ser.write(command.encode(encoding))
 
 	return 0
 
@@ -79,7 +92,8 @@ def move_stage(ser, address, increment, encoding, terminate):
 	# To-dos:
 	#		- Function should check errors errors sent from stage
 	#		- Function should check what mode controller is in and change to ready mode (if not in ready mode)
-	#		- Function should return current position and error in current position
+	#		- Function should return error in current position
+	#		- Should read current state rather than waiting a long time
 
 	# Gets the current stage position
 	command = str(address) + 'TP?' + str(terminate)
@@ -91,22 +105,25 @@ def move_stage(ser, address, increment, encoding, terminate):
 
 		print('Error. No response obtained from stage '+str(address)+'.\nCheck stage is switched on and responsive.')
 
-		return 1, None
+		return 1
 
 	else:
 		current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
+		print('Current position: '+str(current_position))
 
 		# Gets negative software limit
 		command = str(address)+'SL?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
 		negative_software_limit = float(re.sub(str(address)+'SL','',response))
+		print(negative_software_limit)
 
 		#Gets positive software limit
 		command = str(address)+'SR?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
 		positive_software_limit = float(re.sub(str(address)+'SR','',response))
+		print(positive_software_limit)
 
 		# Checks if movement request is within software limit
 		if (current_position + float(increment)) > negative_software_limit and (current_position + float(increment)) < positive_software_limit :
@@ -115,18 +132,19 @@ def move_stage(ser, address, increment, encoding, terminate):
 			command = str(address)+'PR'+str(increment)+str(terminate)
 			ser.write(command.encode(encoding))
 
-			# Gets the new position
-			command = str(address) + 'TP?' + str(terminate)
-			ser.write(command.encode(encoding))
-			response = (ser.readline()).decode(encoding)
-			current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
+#			# Gets the new position
+#			command = str(address) + 'TP?' + str(terminate)
+#			ser.write(command.encode(encoding))
+#			response = (ser.readline()).decode(encoding)
+#			current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
+#			print('Current position after move: '+str(current_position))
 
-			return 0, current_position
+			return 0
 
 		else:
 
 			print('Error. Cannot move stage by increment '+str(increment)+' at position '+str(current_position)+' as would be outside software limits of '+str(negative_software_limit) + ' - ' + str(positive_software_limit) )
-			return 2, current_position
+			return 2
 
 
 
@@ -140,8 +158,6 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	#	terminator = the required string to terminate a command
 	#	encoding = the encoding needed for the usb stages (str) (usually 'utf-8')
 
-	# To-do:
-	#	- Read disable state responses?
 
 	# Commands
 	move_absolute = 'PA'
@@ -156,12 +172,9 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	# Disables the stages and gets user to move to edge of the zebrafish heart
 	command = str(address)+toggle_disable_state+str(0)+terminator
 	ser.write(command.encode(encoding))
-	# Read response?
 
 	# Waits the user to move the stage
-	moving = ''
-	while not moving:
-		moving = input('Please move the stage to the edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
+	input('Please move the stage to the edge of the zebrafish heart.\nPress any key when the stage is in the correct positon.')
 
 	# Gets the position of the stage
 	command = str(address)+get_current_position+terminator
@@ -183,6 +196,7 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	# Checks acquired position with user.
 	print('Limits acquired. The stage will now move to from the one edge of the heart, to the other and then back again.\nPlease check to see if the limits are correct.')
 	relative_increment = first_limit - second_limit
+	print(relative_increment)
 	time.sleep(3) # Gives the user a chance to read
 
 		# Enables the stage
@@ -190,13 +204,12 @@ def set_user_stage_limits(ser, address, encoding, terminator):
 	ser.write(command.encode(encoding))
 
 		# Moves the stages
-	stage_response, current_position = move_stage(ser,address, relative_increment, encoding, terminator)
+	stage_response, current_position = move_stage(ser, address, relative_increment, encoding, terminator)
 
 	if stage_response != 0:
 		return None, None, None
 
-	time.sleep(3)
-	stage_response, current_position = move_stage(ser,address, -relative_increment, encoding, terminator)
+	stage_response, current_position = move_stage(ser, address, -relative_increment, encoding, terminator)
 
 	if stage_response != 0:
 		return None, None, None

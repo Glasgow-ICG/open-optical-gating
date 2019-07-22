@@ -192,6 +192,7 @@ def predictTrigger(frameSummaryHistory,
 
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
+        print(int(frameSummaryHistory[-1,2]))
         framesForFit = min(settings['frameToUseArray'][int(frameSummaryHistory[-1, 2])],
                            frameSummaryHistory.shape[0])
         if log:
@@ -220,6 +221,7 @@ def predictTrigger(frameSummaryHistory,
 
     timeToWaitInSecs = phaseToWait / radsPerSec
     timeToWaitInSecs = max(timeToWaitInSecs, 0.0)
+    #print( phaseToWait, radsPerSec)
 
     if log:
         print('Current time: {0};\tTime to wait: {1};'.format(frameSummaryHistory[-1,0], timeToWaitInSecs))
@@ -257,7 +259,6 @@ def linearFit(X, Y):
     Ym = Ym/ln
     X2m = X2m/ln
     XYm = XYm/ln
-
     beta = (XYm-(Xm*Ym)) / (X2m-(Xm**2))
     alpha = Ym-(beta*Xm)
 
