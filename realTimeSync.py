@@ -150,6 +150,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
         plt.show()
 
     # Calculate SADs
+    print(frame.dtype, referenceFrames.dtype)
     SADs = jps.sad_with_references(frame, referenceFrames)
 
     if log:
@@ -192,7 +193,6 @@ def predictTrigger(frameSummaryHistory,
 
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
-        print(int(frameSummaryHistory[-1,2]))
         framesForFit = min(settings['frameToUseArray'][int(frameSummaryHistory[-1, 2])],
                            frameSummaryHistory.shape[0])
         if log:
