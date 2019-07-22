@@ -70,9 +70,6 @@ static PyObject *fastpins_pulse(PyObject *self, PyObject *args){
 	}
 
 
-	// Defines indexing variable
-	int i;
-
 	// Delays the trigger
 	delayMicroseconds(delay_time);
 
@@ -98,7 +95,7 @@ static PyObject *fastpins_edge(PyObject *self, PyObject *args){
 		delay_time = the time delay (in microseconds) before triggering the pins
 		laser_pin = the pin number of the laser trigger GPIO pin
 		camera_pin = the pin number of the fluorescence camera GPIO pin
-		synca_pin = the pin connected to the SYNC-A output (pin should be set up to read)
+		syncb_pin = the pin connected to the SYNC-B output (pin should be set up to read)
 	*/
 
 	// Defines argument variables
@@ -110,10 +107,6 @@ static PyObject *fastpins_edge(PyObject *self, PyObject *args){
 	{
 		return NULL;
 	}
-
-
-	// Defines indexing variable
-	int i;
 
 	// Delays the trigger
 	delayMicroseconds(delay_time);
@@ -161,7 +154,7 @@ static PyMethodDef fastpinsMethods[] = {
 	{"init",fastpins_init, METH_NOARGS},
 	{"setpin",fastpins_setpin,METH_VARARGS},
 	{"pulse",fastpins_pulse,METH_VARARGS},
-	{"edge",faspins_edge,METH_VARARGS},
+	{"edge",fastpins_edge,METH_VARARGS},
 	{NULL,NULL} /*Sentinel*/
 
 };
