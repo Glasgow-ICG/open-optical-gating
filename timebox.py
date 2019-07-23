@@ -131,7 +131,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					if self.get_period_status == 0:
 
 						self.frame_num = 0
-						self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 						print(self.settings)
 						self.initial_process_time = time.time()
 
@@ -230,38 +229,54 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		timestamp = []
 		phase = []
 		process_time = []
-		self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
-		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
+		trigger_times = []
 		self.live = False
 
+		# Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
+		self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
+		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
+
+		# Data set could be quite large so only do the first 300 frames
 		for i in tqdm(range(300)):
 
+			# Reads a frame from the emulated data set
 			ret, frame = emulated_data_set.read()
 			frame = np.array(frame)
-
+			
+			# Only get responses if a period has been selected and there has been at least 1 period of frames (ie trigger conditions)
 			if self.get_period_status == 0 and self.frame_num > self.settings['referencePeriod']:
+
+				# Gets data from analyse function (also times function call)
 				time_init = time.time()
 				trigger_response, pp, tt = self.analyze(frame)
 				time_fin = time.time()	
 
+				# Adds data to lists
 				process_time.append(time_fin - time_init)
 				timestamp.append(tt)
 				phase.append(pp)
+				trigger_times.append(float(trigger_response)/1000)
+
+			# Gets period if trigger conditions are not met
 			else:
 				self.analyze(frame)
 
 		plt.subplot(2,1,1)
-		plt.title('Phase vs time (ms)')
-		plt.plot(phase,timestamp)
+		plt.title('Phase (rad) vs time (ms)')
+		plt.plot(timestamp, phase)
 
-		plt.subplot(2,1,2)
-		plt.title('Histogram of frame processing time.')
-		plt.hist(process_time)
+		plt.subplot(2,2,3)
+		plt.title('Histogram of frame processing time (ms).')
+		plt.hist(process_time*1000)
 
+#		plt.subplot(2,2,4)
+#		plt.title('Histogram of trigger times (ms).')
+#		plt.hist(trigger_times)
+		print(trigger_times)
+
+		plt.tight_layout()
 		plt.show()
 
-		print(phase)
-		print(timestamp)
 # Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
 def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
 
@@ -409,7 +424,7 @@ if __name__ == '__main__':
 	usb_information = ('/dev/ttyUSB0',0.1,57600,8,'N',1,True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
 
 	brightfield_resolution = 256 
-	brightfield_framerate = 40 
+	brightfield_framerate = 50 
 
 	analyse_time = 10000 
 

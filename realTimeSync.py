@@ -150,7 +150,6 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
         plt.show()
 
     # Calculate SADs
-    print(frame.dtype, referenceFrames.dtype)
     SADs = jps.sad_with_references(frame, referenceFrames)
 
     if log:
@@ -211,6 +210,7 @@ def predictTrigger(frameSummaryHistory,
     elif log and radsPerSec == 0:
         print('Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero).')
 
+    print(alpha,radsPerSec)
     thisFramePhase = alpha + frameSummaryHistory[-1, 0]*radsPerSec
     multiPhaseCounter = thisFramePhase//(2*math.pi)
     phaseToWait = settings['targetSyncPhase'] + (multiPhaseCounter*2*math.pi) - thisFramePhase
@@ -221,7 +221,6 @@ def predictTrigger(frameSummaryHistory,
 
     timeToWaitInSecs = phaseToWait / radsPerSec
     timeToWaitInSecs = max(timeToWaitInSecs, 0.0)
-    #print( phaseToWait, radsPerSec)
 
     if log:
         print('Current time: {0};\tTime to wait: {1};'.format(frameSummaryHistory[-1,0], timeToWaitInSecs))
