@@ -189,7 +189,6 @@ def predictTrigger(frameSummaryHistory,
         if log:
             print('Fit failed due to too few frames...')
         return -1
-
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(settings['frameToUseArray'][int(frameSummaryHistory[-1, 2])],
@@ -210,7 +209,6 @@ def predictTrigger(frameSummaryHistory,
     elif log and radsPerSec == 0:
         print('Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero).')
 
-    print(alpha,radsPerSec)
     thisFramePhase = alpha + frameSummaryHistory[-1, 0]*radsPerSec
     multiPhaseCounter = thisFramePhase//(2*math.pi)
     phaseToWait = settings['targetSyncPhase'] + (multiPhaseCounter*2*math.pi) - thisFramePhase
@@ -253,8 +251,6 @@ def linearFit(X, Y):
         Xm += X[i]
         Ym += Y[i]
         X2m += X[i]**2
-        XYm += X[i]*Y[i]
-    Xm = Xm/ln
     Ym = Ym/ln
     X2m = X2m/ln
     XYm = XYm/ln

@@ -10,6 +10,8 @@ import serial
 import cv2
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import tifffile as tiff
+import shutil
 
 # Local imports
 import j_py_sad_correlation as jps
@@ -25,7 +27,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=80, ref_frames = None, frame_num = 0,  size=None):
+	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=80, ref_frames = None, frame_num = 0,  live=True):
 
 
 		# Function inputs:
@@ -79,7 +81,10 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.dtype = 'uint8'
 
 		# Variable for emulator
-		self.live = True
+		self.live = live 
+
+		# Array for fps test
+		self.time_ary = []
 
 		# Initialises reference frames if not specified
 		if ref_frames is None:
@@ -92,13 +97,18 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			self.get_period_status = 0
 			self.settings = hlp.initialiseSettings(framerate=self.framerate, referencePeriod=ref_frames.shape[0])
 			self.settings = rts.deduceBarrierFrameArray(self.settings)
+			self.initial_process_time = time.time()
 			print(self.settings)
 		
 
 
 	def analyze(self, frame):
 
-		frame = frame[:,:,0]
+		# For logging processing time
+		time_init = time.time()
+
+		if len(frame.shape) == 3:
+			frame = frame[:,:,0]
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
 
@@ -158,23 +168,8 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 					# Gets the current timestamp
 					tt = (time.time() - self.initial_process_time)*1000 # Converts time into milliseconds
+					self.frameSummaryHistory[self.frame_num,0] = tt
 
-					# Arrhythmia
-					if self.frame_num != 0:
-						t0 = self.frameSummaryHistory[0,0]
-						t1 = self.frameSummaryHistory[self.frame_num -1, 0]
-						p1 = self.pp_old
-						expected = p1 + ((t1-t0)/(self.settings['referencePeriod']/self.settings['framerate']) - (t1-t0)//(self.settings['referencePeriod']/self.settings['framerate']))-((tt-t0)/(self.settings['referencePeriod']/self.settings['framerate']) - (tt-t0)//(self.settings['referencePeriod']/self.settings['framerate']))
-						residual = pp - expected
-
-						# Fix for wrapping
-						if residual > np.pi:
-							residual = residual - 2*np.pi
-						elif residual < -np.pi:
-							residual = residual + 2*np.pi
-						residual = abs(residual)
-					else:
-						residual = 0
 
 					# Cumulative Phase
 					if self.frame_num != 0:
@@ -195,7 +190,8 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					if self.frame_num > self.settings['referencePeriod']:
 
 						# Gets the trigger response
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
+						time_trigger_init = time.time()
 						# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 						# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 						# targetSyncPhase should be in [0,2pi]
@@ -215,34 +211,44 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 						# Returns the trigger response, phase and timestamp for emulated data
 						else:
-							return trigger_response,pp,tt
+							trigger_time = (time_trigger_init - self.initial_process_time + trigger_response)*1000  #in milliseconds
+							return trigger_time, self.frameSummaryHistory[self.frame_num,1],self.frameSummaryHistory[self.frame_num,0]
 
 					self.pp_old = float(pp)
 					self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+		# Logs processing time
+		time_fin = time.time()
+		(self.time_ary).append(time_fin - time_init)
 
 
 	# Function to emulate live data
-	def emulate(self, video_file):
+	def emulate(self, video_file, number_of_frames=1000):
 
 		# Defines initial variables and objects
-		emulated_data_set = cv2.VideoCapture(video_file)
+		#emulated_data_set = cv2.VideoCapture(video_file)
+		emulated_data_set = tiff.imread(video_file)
 		timestamp = []
 		phase = []
 		process_time = []
 		trigger_times = []
 		self.live = False
 
-		# Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
-		self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
+		#Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
+		#self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
+#		self.width = 500
+		#self.height = 500
+		_, self.height,self.width = emulated_data_set.shape
 		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 
 		# Data set could be quite large so only do the first 300 frames
-		for i in tqdm(range(300)):
+		for i in tqdm(range(number_of_frames)):
 
 			# Reads a frame from the emulated data set
-			ret, frame = emulated_data_set.read()
+			#ret, frame = emulated_data_set.read()
+			frame = emulated_data_set[i,:,:]
 			frame = np.array(frame)
-			
+			#frame = frame[100:600,500:1000]
+
 			# Only get responses if a period has been selected and there has been at least 1 period of frames (ie trigger conditions)
 			if self.get_period_status == 0 and self.frame_num > self.settings['referencePeriod']:
 
@@ -265,14 +271,13 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		plt.title('Phase (rad) vs time (ms)')
 		plt.plot(timestamp, phase)
 
-		plt.subplot(2,2,3)
+		plt.subplot(2,1,2)
 		plt.title('Histogram of frame processing time (ms).')
 		plt.hist(process_time*1000)
 
-#		plt.subplot(2,2,4)
-#		plt.title('Histogram of trigger times (ms).')
-#		plt.hist(trigger_times)
-		print(trigger_times)
+	#	plt.subplot(2,1,1)
+	#	ones = np.ones(len(trigger_times))
+	#	plt.plot(trigger_times,ones)
 
 		plt.tight_layout()
 		plt.show()
@@ -361,7 +366,10 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=3, maxRecievedFramesForFit=80):
+
+	# To-do:
+	#	- Clears the period data before saving new images
 
 	# Function inputs
 	#		brightfield_sequence = (numpy array) a 3D array of the brightfiled picam data
@@ -375,9 +383,10 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, 
 	brightfield_period, settings = gp.doEstablishPeriodProcessingForFrame(brightfield_sequence, settings)
 	settings = rts.deduceBarrierFrameArray(settings)
 
-	# Checks if period_data dir exists and if not creates dir
-	if os.path.isdir('period_data') != True:
-		os.mkdir('period_data')
+	# Deletes the contents of the dir before creating a new one 
+	if os.path.isdir('period_data') == True:
+		shutil.rmtree('period_data')
+	os.mkdir('period_data')
 
 	# Saves the period
 	if isinstance(brightfield_period, int) == False:
@@ -414,61 +423,101 @@ def select_period(brightfield_period_frames, settings, framerate=80):
 
 	return settings, 0
 
-# Main script to capture a zebrafish heart
+# Defines the three main modes (emulate capture, check fps and live data capture)
+def emulate_data_capture():
 
-if __name__ == '__main__':
+	# Emulated data capture for a set of sample data	
+	emulate_data_set = 'chas_sample_data.tif'
+	analyse_camera = YUVLumaAnalysis()
+	analyse_camera.emulate(emulate_data_set)
+	
+# Checks that the analyze function can run at the desired framerate
+def check_fps( brightfield_framerate=80,brightfield_resolution=128):
+
+
+	# Defines initial variables
+	analyse_time = 10 
+
+	# Sets up basic picam
+	camera = picamera.PiCamera()
+	camera.framerate = brightfield_framerate
+	camera.resolution = (brightfield_resolution,brightfield_resolution)
+
+	# Generate fake reference frame set
+	dummy_reference_frames = np.random.randint(0,high=128, size=(10,brightfield_resolution, brightfield_resolution),dtype=np.uint8)
+
+	# Sets up YUVLumaAnalysis object
+	analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, ref_frames=dummy_reference_frames, live=False)
+
+	# Starts analysing brightfield data
+	camera.start_recording(analyse_camera, format = 'yuv')
+	camera.wait_recording(analyse_time)
+	camera.stop_recording()
+
+	# Gets longest time of analyze function 
+	longest_analyse_time = max(analyse_camera.time_ary)
+	print(longest_analyse_time)
+
+	if 1/longest_analyse_time > brightfield_framerate:
+		
+		print('Sucess at fps: '+str(brightfield_framerate))
+		camera.close()
+		return brightfield_framerate,brightfield_resolution 
+
+	else:
+		print('Unsucessful at fps: '+str(brightfield_framerate))	
+		brightfield_framerate += -10
+		camera.close()
+		check_fps(brightfield_framerate=brightfield_framerate)	
+		
+# Performs a live capture of the data
+def live_data_capture():
+
+	# To-do:
+	#	- Option to enter stage limits manually
+	
 
 	# Defines initial variables
 	laser_trigger_pin = 22
 	fluorescence_camera_pins = 8,10,12 # Trigger, SYNC-A, SYNC-B
 	usb_information = ('/dev/ttyUSB0',0.1,57600,8,'N',1,True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
 
-	brightfield_resolution = 256 
-	brightfield_framerate = 50 
+	brightfield_resolution = 128 
+	brightfield_framerate = 80 
 
-	analyse_time = 10000 
+	analyse_time = 1000 
 
-	# Enters emulate mode for testing
-	emulate_mode = True
-	emulate_data_set = 'sample_data.h264'
+	# Sets up basic picam
+	camera = picamera.PiCamera()
+	camera.framerate = brightfield_framerate
+	camera.resolution = (brightfield_resolution,brightfield_resolution)
 
-	if not emulate_mode:
+	# Starts preview
+	camera.start_preview(fullscreen=False, window = (900,20,640,480))
 
-		# Sets up basic picam
-		camera = picamera.PiCamera()
-		camera.framerate = brightfield_framerate
-		camera.resolution = (brightfield_resolution,brightfield_resolution)
+	# Sets up pins and usb
+	usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
 
-		# Starts preview
-		camera.start_preview(fullscreen=False, window = (900,20,640,480))
+	# Checks if usb_serial has recieved an error code
+	if isinstance(usb_serial, int):
+		print('Error code '+str(usb_serial))
+		sys.exit()
 
-		# Sets up pins and usb
-		usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
+	# Sets up stage to recieve input
+	neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
 
-		# Checks if usb_serial has recieved an error code
-		if isinstance(usb_serial, int):
-			print('Error code '+str(usb_serial))
-			sys.exit()
+	input('Press any key once the heart is in position.')
 
-		# Sets up stage to recieve input
-		#neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
+	# Sets up YUVLumaAnalysis object
+	analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, usb_serial=usb_serial )
 
-		input('Press any key once the heart is in position.')
-		# Generate fake reference frame set
-		# dummy_reference_frames = np.random.randint(0,high=128, size=(10,brightfield_resolution, brightfield_resolution),dtype=np.uint8)
+	# Starts analysing brightfield data
+	camera.start_recording(analyse_camera, format = 'yuv')
+	camera.wait_recording(analyse_time)
+	camera.stop_recording()
 
-		# Sets up YUVLumaAnalysis object
-		analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, usb_serial=usb_serial)
+	# Ends preview
+	camera.stop_preview()
 
-		# Starts analysing brightfield data
-		camera.start_recording(analyse_camera, format = 'yuv')
-		camera.wait_recording(analyse_time)
-		camera.stop_recording()
 
-		# Ends preview
-		camera.stop_preview()
-
-	else:
-		
-		analyse_camera = YUVLumaAnalysis()
-		analyse_camera.emulate(emulate_data_set)
+emulate_data_capture()
