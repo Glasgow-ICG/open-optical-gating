@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="block1">
+<h1>Capture live data<h1>
+<h2>Initial information (currently only changable within the code.)</h2>
+Picam resolution: {{ picam_res }}<br>
+Picam frame rate: {{ picam_framerate }}<br>
+Percentage complete: 0% (This feature is not yet functional).<br>
+<img src="{{ url_for('video_feed') }}"><br><br>
+<input type="submit" name="submit_button" value="Accept">
+<input type="submit" name="submit_button" value="Retry">
+<div>
+{% endblock %}

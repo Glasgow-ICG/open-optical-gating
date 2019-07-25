@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1> Testing </h1>
+<input type="submit" name="submit_button" value="Pulse Laser"><br>
+<input type="submit" name="submit_button" value="Fluorescence Image Capture"><br>
+<input type="submit" name="submit_button" value="Check FPS">  Maximum fps of  {{ fps_max }} at a resolution of {{ pi_res }},{{ pi_res }}<br>
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type=text/javascript>
+        $(function() {
+          $('a#test').bind('click', function() {
+            $.getJSON('/emulate_data_capture',
+                function(data) {
+              //do nothing
+            });
+            return false;
+          });
+        });
+</script>
+
+<div class='container'>
+        <form>
+            <a href=# id=test><button class='btn btn-default'>Emulate Data Capture</button></a>
+        </form>
+
+</div>
+{% endblock %}
