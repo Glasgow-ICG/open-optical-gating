@@ -151,69 +151,81 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			# Once period has been selected, analyses brightfield data for phase triggering
 			else:
 
-				# Clears framerateSummaryHistory if it exceeds the reference frame length
+				# Clears last entry of framerateSummaryHistory if it exceeds the reference frame length
 				if self.frame_num >= self.frame_buffer_length:
-					self.frameSummaryHistory = np.empty((self.frame_buffer_length,3))
-					self.frame_num = 0
-
-				else:
-					# Gets the phase and sad of the current frame 
-					pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
-					pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
-
-					# Gets the current timestamp
-					tt = (time.time() - self.initial_process_time)*1000 # Converts time into milliseconds
-					self.frameSummaryHistory[self.frame_num,0] = tt
+					self.frameSummaryHistory = np.roll(self.frameSummaryHistory,-1,axis=0)
 
 
-					# Cumulative Phase
-					if self.frame_num != 0:
-						wrapped = False
-						deltaPhase = pp-self.pp_old
-						while deltaPhase<-np.pi:
-							wrapped = True
-							deltaPhase+= 2*np.pi
-						self.frameSummaryHistory[self.frame_num, 1] = self.frameSummaryHistory[self.frame_num -1,1] + deltaPhase
+			
+
+				# Gets the phase and sad of the current frame 
+				pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
+				pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
+
+				# Gets the current timestamp
+				tt = (time.time() - self.initial_process_time)*1000 # Converts time into milliseconds
+
+				# Cumulative Phase
+				if self.frame_num != 0:
+					wrapped = False
+					deltaPhase = pp-self.pp_old
+					while deltaPhase<-np.pi:
+						wrapped = True
+						deltaPhase+= 2*np.pi
+					if self.frame_num < self.frame_buffer_length:
+						phase = self.frameSummaryHistory[self.frame_num -1,1] + deltaPhase
 					else:
-						self.frameSummaryHistory[self.frame_num, 1] = pp 
-						
+						phase = self.frameSummaryHistory[-2,1] + deltaPhase
+				else:
+					phase = pp 
+					
 
-					# Gets the argmin of SAD and adds to frameSummaryHistory array
-					self.frameSummaryHistory[self.frame_num,2] = np.argmin(self.sad)
+				# Gets the argmin of SAD and adds to frameSummaryHistory array
+				if self.frame_num < self.frame_buffer_length:
+					self.frameSummaryHistory[self.frame_num,:] = tt, phase, np.argmin(self.sad)
+				else:
+					self.frameSummaryHistory[-1,:] = tt, phase, np.argmin(self.sad)
 
-					# Doesn't predict if haven't done on whole period
-					if self.frame_num > self.settings['referencePeriod']:
+				# Doesn't predict if haven't done on whole period
+				if self.frame_num > self.settings['referencePeriod']:
 
-						# Gets the trigger response
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
-						# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-						# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
-						# targetSyncPhase should be in [0,2pi]
+					# Gets the trigger response
+					if self.frame_num < self.frame_buffer_length:
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=True, output="seconds")
+					else:
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=True, output="seconds")
+					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
+					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+					# targetSyncPhase should be in [0,2pi]
 
-						# Captures the image  and then moves the stage if triggered
-						if trigger_response > 0 and self.live:
+					# Captures the image  and then moves the stage if triggered
+					if trigger_response > 0 and self.live:
 
-							trigger_response *= 1e3 # Converts to microseconds
-							print('Triggering in ' + str(trigger_response) +'us')
-							trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=20000)
+						trigger_response *= 1e3 # Converts to microseconds
+						print('Triggering in ' + str(trigger_response) +'us')
+						trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=20000)
 
-							stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+						stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
 
-							# Do something with the stage result:
-							#	0 = Continue as normal
-							#	1 or 2 = Pause capture
+						# Do something with the stage result:
+						#	0 = Continue as normal
+						#	1 or 2 = Pause capture
 
-						# Returns the trigger response, phase and timestamp for emulated data
-						elif trigger_response > 0:
-							trigger_time = tt + trigger_response  #in milliseconds
-							print(tt,trigger_response)
-							return trigger_time, pp, self.frameSummaryHistory[self.frame_num,0]
+					# Returns the trigger response, phase and timestamp for emulated data
+					elif trigger_response > 0:
+						self.pp_old = float(pp)
+						print(trigger_response,tt,phase,pp)
+						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+						return trigger_response, pp, tt 
 
-						else:
-							return 0, pp, self.frameSummaryHistory[self.frame_num,0]
+					else:
+						print('Could not trigger.')
+						self.pp_old = float(pp)
+						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+						return 0,0,0 
 
-					self.pp_old = float(pp)
-					self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
+				self.pp_old = float(pp)
+				self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 		# Logs processing time
 		time_fin = time.time()
 		(self.time_ary).append(time_fin - time_init)
@@ -223,7 +235,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	def emulate(self, video_file, number_of_frames=1000):
 
 		# Defines initial variables and objects
-		#emulated_data_set = cv2.VideoCapture(video_file)
 		emulated_data_set = tiff.imread(video_file)
 		timestamp = []
 		phase = []
@@ -232,23 +243,18 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.live = False
 
 		#Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
-		#self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
-#		self.width = 500
-		#self.height = 500
 		_, self.height,self.width = emulated_data_set.shape
 		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 
-		# Data set could be quite large so only do the first 300 frames
+		# Loops through frames
 		for i in tqdm(range(number_of_frames)):
 
-			#Trys to emulate a realistic fps
+			#Trys to emulate actual  fps
 			fps_time_init = time.time()
 
 			# Reads a frame from the emulated data set
-			#ret, frame = emulated_data_set.read()
 			frame = emulated_data_set[i,:,:]
 			frame = np.array(frame)
-			#frame = frame[100:600,500:1000]
 
 			# Only get responses if a period has been selected and there has been at least 1 period of frames (ie trigger conditions)
 			if self.get_period_status == 0 and self.frame_num > self.settings['referencePeriod']:
@@ -259,10 +265,11 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				time_fin = time.time()	
 
 				# Adds data to lists
-				process_time.append(time_fin - time_init)
-				timestamp.append(tt)
-				phase.append(pp)
-				trigger_times.append(trigger_response)
+				if tt != 0:
+					process_time.append(time_fin - time_init)
+					timestamp.append(tt)
+					phase.append(pp)
+					trigger_times.append(trigger_response)
 
 			# Gets period if trigger conditions are not met
 			else:
@@ -273,22 +280,33 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			if wait_time > 0:
 				time.sleep(wait_time)
 
+		# Converts lists to numpy arrays
+		process_time = np.array(process_time)
+		timestamp = np.array(timestamp)
+		phase = np.array(phase)
+		trigger_times = np.array(trigger_times)
+
+		# Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
 		plt.subplot(2,1,1)
 		plt.title('Phase (rad) vs time (ms)')
 		plt.plot(timestamp, phase)
+		plt.scatter(trigger_times+timestamp,np.full(len(trigger_times),self.settings['targetSyncPhase']), color='r')
 
-#		plt.subplot(2,1,2)
-#		plt.title('Histogram of frame processing time (ms).')
-#		plt.hist(process_time*1000)
-
-		plt.subplot(2,1,2)
 		triggeredPhase = []
-		trigger_times = trigger_times[0:(np.abs(trigger_times - timestamp[-1])).argmin()]
 		for i in range(len(trigger_times)):
 
-			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i])).argmin()])
+			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i]-timestamp[i])).argmin()])
 
-		plt.plot(trigger_times, color='g')
+		# Should be a straight line as always triggering at the same phase
+		plt.subplot(2,2,3)
+		plt.title('Triggered phase vs time')
+		plt.scatter(timestamp,triggeredPhase, color='g')
+
+
+		# Should be a sawtooth
+		plt.subplot(2,2,4)
+		plt.title('Trigger times')
+		plt.plot(trigger_times)
 
 		plt.tight_layout()
 		plt.show()
@@ -377,7 +395,7 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=3, maxRecievedFramesForFit=80):
 
 	# To-do:
 	#	- Clears the period data before saving new images

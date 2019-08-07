@@ -201,7 +201,10 @@ def predictTrigger(frameSummaryHistory,
 
     pastPhases0 = frameSummaryHistory[-int(framesForFit):, :]
 
-    alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
+    # Problem with below linear fit algorithm resulting in incorrect current phase and incorrect trigger times
+    #alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
+    radsPerSec, alpha = np.polyfit(pastPhases0[:,0],pastPhases0[:,1],1)
+
     if log:
         print('Linear fit with intersect {0} and gradient {1}'.format(alpha, radsPerSec))
     if log and radsPerSec < 0:
