@@ -227,6 +227,12 @@ def predictTrigger(frameSummaryHistory,
         print('Current time: {0};\tTime to wait: {1};'.format(frameSummaryHistory[-1,0], timeToWaitInSecs))
         print('Current phase: {0};\tPhase to wait: {1};\nTarget phase:{2};\tPredicted phase:{3};'.format(thisFramePhase, phaseToWait, settings['targetSyncPhase'] + (multiPhaseCounter*2*math.pi), thisFramePhase+phaseToWait))
 
+    #Fixes sync error due to targetSyncPhase being 2pi greater than target phase
+    if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*math.pi> 0.1:
+        if log:
+            print('Phase discrepency, trigger aborted.')
+        timeToWaitInSecs = 0
+
     frameInterval = 1.0/settings['framerate']
     if allowedToExtendNumberOfFittedPoints and timeToWaitInSecs > (settings['extrapolationFactor'] * settings['minFramesForFit'] * frameInterval):
         settings['minFramesForFit'] *= 2

@@ -191,9 +191,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 					# Gets the trigger response
 					if self.frame_num < self.frame_buffer_length:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=True, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
 					else:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=True, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
 					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 					# targetSyncPhase should be in [0,2pi]
@@ -214,15 +214,13 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					# Returns the trigger response, phase and timestamp for emulated data
 					elif trigger_response > 0:
 						self.pp_old = float(pp)
-						print(trigger_response,tt,phase,pp)
 						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 						return trigger_response, pp, tt 
 
 					else:
-						print('Could not trigger.')
 						self.pp_old = float(pp)
 						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
-						return 0,0,0 
+						return 0,pp,tt 
 
 				self.pp_old = float(pp)
 				self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
@@ -241,6 +239,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		process_time = []
 		trigger_times = []
 		self.live = False
+		self.targetSyncPhaseOld = -1 
 
 		#Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
 		_, self.height,self.width = emulated_data_set.shape
@@ -269,7 +268,17 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					process_time.append(time_fin - time_init)
 					timestamp.append(tt)
 					phase.append(pp)
-					trigger_times.append(trigger_response)
+
+					# Gets the current phase trying to sync with
+					if self.frame_num < self.frame_buffer_length:
+						current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[self.frame_num-1,1]//(2*np.pi))*2*np.pi
+					else:
+						current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[-1,1]//(2*np.pi))*2*np.pi
+
+				# If sucessful trigger response and sync phase has increased
+				if trigger_response != 0 and current_sync_phase > self.targetSyncPhaseOld:
+					trigger_times.append(trigger_response+tt)
+					self.targetSyncPhaseOld = current_sync_phase 
 
 			# Gets period if trigger conditions are not met
 			else:
@@ -290,23 +299,19 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		plt.subplot(2,1,1)
 		plt.title('Phase (rad) vs time (ms)')
 		plt.plot(timestamp, phase)
-		plt.scatter(trigger_times+timestamp,np.full(len(trigger_times),self.settings['targetSyncPhase']), color='r')
+		plt.scatter(trigger_times,np.full(len(trigger_times),self.settings['targetSyncPhase']), color='r')
 
 		triggeredPhase = []
 		for i in range(len(trigger_times)):
 
-			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i]-timestamp[i])).argmin()])
+			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i])).argmin()])
 
 		# Should be a straight line as always triggering at the same phase
-		plt.subplot(2,2,3)
+		plt.subplot(2,1,2)
 		plt.title('Triggered phase vs time')
-		plt.scatter(timestamp,triggeredPhase, color='g')
-
-
-		# Should be a sawtooth
-		plt.subplot(2,2,4)
-		plt.title('Trigger times')
-		plt.plot(trigger_times)
+		plt.plot(triggeredPhase, color='g')
+		x1,x2,_,_ = plt.axis()
+		plt.axis((x1,x2,0,2*np.pi))
 
 		plt.tight_layout()
 		plt.show()
@@ -395,7 +400,7 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=3, maxRecievedFramesForFit=80):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=0):
 
 	# To-do:
 	#	- Clears the period data before saving new images
@@ -406,7 +411,7 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=3, 
 
 	# If the settings are empty creates settings
 	if not settings:
-		settings = hlp.initialiseSettings(framerate=framerate, referencePeriod=brightfield_sequence.shape[0], minFramesForFit=minFramesForFit)
+		settings = hlp.initialiseSettings(framerate=framerate, referencePeriod=brightfield_sequence.shape[0], minFramesForFit=minFramesForFit,predictionLatency=predictionLatency)
 
 	# Calculates period from getPeriod.py
 	brightfield_period, settings = gp.doEstablishPeriodProcessingForFrame(brightfield_sequence, settings)
