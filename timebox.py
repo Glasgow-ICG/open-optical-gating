@@ -307,17 +307,23 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		plt.legend()
 		plt.xlabel('Time (ms)')
 		plt.ylabel('Phase (rad)')
+		plt.show()
+
 		triggeredPhase = []
 		for i in range(len(trigger_times)):
 
 			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i])).argmin()])
 
-		# Should be a straight line as always triggering at the same phase
 #		plt.subplot(2,1,2)
-#		plt.title('Triggered phase vs time')
-#		plt.plot(triggeredPhase, color='g')
-#		x1,x2,_,_ = plt.axis()
-#		plt.axis((x1,x2,0,2*np.pi))
+		plt.title('Frequency density of triggered phase')
+		bins = np.arange(0,2*np.pi, 0.1)
+		plt.hist(triggeredPhase, bins=bins, color='g',label='Triggered phase')
+		x1,x2,y1,y2 = plt.axis()
+		plt.plot(np.full(2,self.settings['targetSyncPhase']),(y1,y2),'r-',label='Target phase')
+		plt.xlabel('Triggered phase (rad)')
+		plt.ylabel('Frequency')
+		plt.legend()
+		plt.axis((x1,x2,y1,y2))
 
 		plt.tight_layout()
 		plt.show()
