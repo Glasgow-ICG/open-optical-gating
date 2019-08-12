@@ -296,22 +296,28 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		trigger_times = np.array(trigger_times)
 
 		# Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
-		plt.subplot(2,1,1)
-		plt.title('Phase (rad) vs time (ms)')
-		plt.plot(timestamp, phase)
-		plt.scatter(trigger_times,np.full(len(trigger_times),self.settings['targetSyncPhase']), color='r')
-
+		#plt.subplot(2,1,1)
+		plt.title('Zebrafish heart phase with simulated trigger fire')
+		plt.plot(timestamp, phase, label='Heart phase')
+		plt.scatter(trigger_times[0:-1],np.full(len(trigger_times)-1,self.settings['targetSyncPhase']), color='r',label='Simulated trigger fire')
+		# Add labels etc
+		x1,x2,y1,y2 = plt.axis()
+		print(x1,x2,y1,y2)
+		plt.axis((x1,x2,0,y2*1.1))
+		plt.legend()
+		plt.xlabel('Time (ms)')
+		plt.ylabel('Phase (rad)')
 		triggeredPhase = []
 		for i in range(len(trigger_times)):
 
 			triggeredPhase.append(phase[(np.abs(timestamp-trigger_times[i])).argmin()])
 
 		# Should be a straight line as always triggering at the same phase
-		plt.subplot(2,1,2)
-		plt.title('Triggered phase vs time')
-		plt.plot(triggeredPhase, color='g')
-		x1,x2,_,_ = plt.axis()
-		plt.axis((x1,x2,0,2*np.pi))
+#		plt.subplot(2,1,2)
+#		plt.title('Triggered phase vs time')
+#		plt.plot(triggeredPhase, color='g')
+#		x1,x2,_,_ = plt.axis()
+#		plt.axis((x1,x2,0,2*np.pi))
 
 		plt.tight_layout()
 		plt.show()
