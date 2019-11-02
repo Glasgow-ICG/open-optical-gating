@@ -77,6 +77,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		# Variable for emulator
 		self.live = live 
+		self.targetSyncPhaseOld = -1
 
 		# Array for fps test
 		self.time_ary = []
@@ -201,12 +202,19 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					# Captures the image  and then moves the stage if triggered
 					if trigger_response > 0 and self.live:
 
-						trigger_response *= 1e3 # Converts to microseconds
-						print('Triggering in ' + str(trigger_response) +'us')
-						trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=20000)
+						# Gets the current phase trying to sync with
+						if self.frame_num < self.frame_buffer_length:
+							current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[self.frame_num-1,1]//(2*np.pi))*2*np.pi
+						else:
+							current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[-1,1]//(2*np.pi))*2*np.pi
+						if current_sync_phase > self.targetSyncPhaseOld:
+	
+							trigger_response *= 1e3 # Converts to microseconds
+							print('Triggering in ' + str(trigger_response) +'us')
+							trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=20000)
 
-						stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
-
+							stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+							self.targetSyncPhaseOld = current_sync_phase
 						# Do something with the stage result:
 						#	0 = Continue as normal
 						#	1 or 2 = Pause capture
@@ -307,7 +315,11 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		plt.legend()
 		plt.xlabel('Time (ms)')
 		plt.ylabel('Phase (rad)')
+
+		#Saves the figure
+		plt.savefig('simulated_trigger.png',dpi=1000)
 		plt.show()
+
 
 		triggeredPhase = []
 		for i in range(len(trigger_times)):
@@ -327,6 +339,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		plt.tight_layout()
 		plt.show()
+
 
 # Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
 def init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information):
