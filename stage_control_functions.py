@@ -109,21 +109,21 @@ def move_stage(ser, address, increment, encoding, terminate):
 
 	else:
 		current_position = float(re.sub(str(address)+'TP','',response)) #Extracts position from response
-		print('Current position: '+str(current_position))
+#		print('Current position: '+str(current_position))
 
 		# Gets negative software limit
 		command = str(address)+'SL?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
 		negative_software_limit = float(re.sub(str(address)+'SL','',response))
-		print(negative_software_limit)
+#		print(negative_software_limit)
 
 		#Gets positive software limit
 		command = str(address)+'SR?'+str(terminate)
 		ser.write(command.encode(encoding))
 		response = (ser.readline()).decode(encoding)
 		positive_software_limit = float(re.sub(str(address)+'SR','',response))
-		print(positive_software_limit)
+#		print(positive_software_limit)
 
 		# Checks if movement request is within software limit
 		if (current_position + float(increment)) > negative_software_limit and (current_position + float(increment)) < positive_software_limit :
@@ -144,6 +144,8 @@ def move_stage(ser, address, increment, encoding, terminate):
 		else:
 
 			print('Error. Cannot move stage by increment '+str(increment)+' at position '+str(current_position)+' as would be outside software limits of '+str(negative_software_limit) + ' - ' + str(positive_software_limit) )
+			command = str(address)+'PA'+str(0)+str(terminate)
+			ser.write(command.encode(encoding))
 			return 2
 
 
