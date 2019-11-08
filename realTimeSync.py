@@ -105,9 +105,13 @@ def threePointTriangularMinimum(y1, y2, y3):
 def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False):
     # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
 
+#   print(type(frame0),type(referenceFrames0))
+#    print(frame0.shape,referenceFrames0.shape)
+#    print(frame0.dtype,referenceFrames0.dtype)
     if settings==None:
+        print('No')
         settings = hlp.initialiseSettings()
-
+    
     dx = settings['drift'][0]
     dy = settings['drift'][1]
 
@@ -143,7 +147,6 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
 
     frame = frame0[rectF[0]:rectF[1], rectF[2]:rectF[3]]
     referenceFrames = referenceFrames0[:, rect[0]:rect[1], rect[2]:rect[3]]
-
     if plot:
         a12 = f1.add_subplot(122)
         a12.imshow(frame)
@@ -152,7 +155,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
     # Calculate SADs
     SADs = jps.sad_with_references(frame, referenceFrames)
 
-    if log:
+    if True or log:
         pprint(SADs)
     if plot:
         f2 = plt.figure()
@@ -170,7 +173,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
                                      referenceFrames0[np.argmin(SADs)],
                                      settings)
     if log:
-        print('Drift correction updated to ({0},{1})'.format(dx, dy))
+        print('Drift correction updated to ({0},{1})'.format(settings['drift'][0], settings['drift'][1]))
 
     # Note: still includes padding frames (on purpose)
     return (phase, SADs, settings)
@@ -202,8 +205,8 @@ def predictTrigger(frameSummaryHistory,
     pastPhases0 = frameSummaryHistory[-int(framesForFit):, :]
 
     # Problem with below linear fit algorithm resulting in incorrect current phase and incorrect trigger times
-    #alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
-    radsPerSec, alpha = np.polyfit(pastPhases0[:,0],pastPhases0[:,1],1)
+    alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
+    #radsPerSec, alpha = np.polyfit(pastPhases0[:,0],pastPhases0[:,1],1)
 
     if log:
         print('Linear fit with intersect {0} and gradient {1}'.format(alpha, radsPerSec))

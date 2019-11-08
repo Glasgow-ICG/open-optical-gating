@@ -77,12 +77,7 @@ if __name__ == '__main__':
 
 	if init_controls(laser_trigger_pin,fluorescence_camera_pins) == 0:
 
-#		# Tests laser only
-#		for i in range(20):
-#	
-#			trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
-#
 		# Tests laser and camera
-		for i in range(100):
+		for i in range(10):
 
 			trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
