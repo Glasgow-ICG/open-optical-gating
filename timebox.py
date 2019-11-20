@@ -69,6 +69,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.negative_limit = negative_limit
 		self.positive_limit = positive_limit
 		self.current_position = current_position
+		self.camera = camera
 
 		# Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
 		self.frame_buffer_length = frame_buffer_length
@@ -94,16 +95,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			self.settings = hlp.initialiseSettings(framerate=self.framerate, referencePeriod=ref_frames.shape[0])
 			self.settings = rts.deduceBarrierFrameArray(self.settings)
 			self.initial_process_time = time.time()
-			print(self.settings)
 		
 
 
 	def analyze(self, frame):
-
 		# For logging processing time
 		time_init = time.time()
-		#print(self.frame_num)
-
 		if len(frame.shape) == 3:
 			frame = frame[:,:,0]
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
@@ -111,7 +108,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		# Ensures stage is always within user defined limits
 		if self.current_position <= self.positive_limit and self.current_position >= self.negative_limit:
-
 			# Captures a set of reference frames for obtaining a reference period
 			if self.get_period_status == 2:
 
@@ -126,25 +122,19 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 				# Once a suitible reference size has been obtained, gets a period and the user selects the phase
 				else:
-
-		
 					# Obtains a reference period
 					self.ref_frames, self.settings = get_period(self.ref_frames,{}, framerate=self.framerate)
 					#(self.settings).update({'framerate':self.framerate})
 					# User selects the period
 					self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
-					print(self.get_period_status)
 
 					# If user is happy with period
 					if self.get_period_status == 0:
-
 						self.frame_num = 0
-						print('happy',self.settings)
 						self.initial_process_time = time.time()
 
 			# Clears ref_frames and resets frame number to reselect period
 			elif self.get_period_status == 1:
-
 				# Resets frame number
 				self.frame_num = 0
 				self.ref_frames = np.zeros((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
@@ -154,7 +144,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			# Once period has been selected, analyses brightfield data for phase triggering
 			else:
 				# Gets the phase and sad of the current frame 
-				#print(self.settings)
 				cv2.imwrite('help/'+str(self.frame_num)+'.tiff',frame)
 				pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
 				pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
@@ -167,120 +156,94 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					wrapped = False
 					deltaPhase = pp-self.pp_old
 					while deltaPhase<-np.pi:
-						print('this')
 						wrapped = True
 						deltaPhase+= 2*np.pi
 					if self.frame_num < self.frame_buffer_length:
 						phase = self.frameSummaryHistory[self.frame_num -1,1] + deltaPhase
 					else:
 						phase = self.frameSummaryHistory[-1,1] + deltaPhase
-					#print('inside1: ',phase,tt)
 				else:
 					phase = pp
-					#print('inside2: ',phase,tt)
-				
-				print(phase,tt,'\n\n')
 					
 				# Clears last entry of framerateSummaryHistory if it exceeds the reference frame length
 				if self.frame_num >= self.frame_buffer_length:
 					self.frameSummaryHistory = np.roll(self.frameSummaryHistory,-1,axis=0)
-				#print(self.frameSummaryHistory.shape)
 
 				# Gets the argmin of SAD and adds to frameSummaryHistory array
 				if self.frame_num < self.frame_buffer_length:
 					self.frameSummaryHistory[self.frame_num,:] = tt, phase, np.argmin(self.sad)
 				else:
 					self.frameSummaryHistory[-1,:] = tt, phase, np.argmin(self.sad)
-			#	print(self.frameSummaryHistory[-1,:])
 
 				# Doesn't predict if haven't done on whole period
-				if self.frame_num > self.settings['referencePeriod']:
+				self.pp_old = float(pp)
+				self.frame_num +=1
+				if self.frame_num-1 > self.settings['referencePeriod']:
 
 					# Gets the trigger response
 					if self.frame_num < self.frame_buffer_length:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[0:(self.frame_num+1),:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[:self.frame_num,:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
 					else:
 						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
 					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 					# targetSyncPhase should be in [0,2pi]
 					
-					#print(tt,pp)
-#					print(trigger_response, self.targetSyncPhaseOld)
 					# Captures the image  and then moves the stage if triggered
-					if trigger_response > 0 and self.live:
+					if trigger_response > 0:
+						#print('Possible trigger: ',trigger_response,end='\t')
+						trigger_response, send, self.settings = rts.gotNewSyncEstimateTimeDelay(tt,trigger_response,self.settings,log=False)
+						if send>0:
+							#print('sending: ',send,end='\t')
+							print('Triggering in ' + str(trigger_response) +'ms')
+							if self.live:
+								trigger_fluorescence_image_capture(tt+trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=2000)
+								stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+							else:
+								#print('Not Live: ',send,trigger_response,pp,tt)
+								# Returns the trigger response, phase and timestamp for emulated data
+								return trigger_response, pp, tt
+						
+							#self.targetSyncPhaseOld = current_sync_phase
+						elif not self.live:
+							#print('Not sent: ',send,trigger_response,pp,tt)
+							return None, pp, tt
 
-						# Gets the current phase trying to sync with
-						if self.frame_num < self.frame_buffer_length:
-							current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[self.frame_num-1,1]//(2*np.pi))*2*np.pi
-						else:
-							current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[-1,1]//(2*np.pi))*2*np.pi
-						if current_sync_phase > self.targetSyncPhaseOld:
-	
-							trigger_response *= 1e-3 # Converts to microseconds
-							print('Triggering in ' + str(trigger_response) +'us')
-							trigger_fluorescence_image_capture(trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=20000)
-
-						#	stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
-							self.targetSyncPhaseOld = current_sync_phase
 						# Do something with the stage result:
 						#	0 = Continue as normal
 						#	1 or 2 = Pause capture
 
-					# Returns the trigger response, phase and timestamp for emulated data
-					elif trigger_response > 0:
-						self.pp_old = float(pp)
-						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
-						return trigger_response, pp, tt 
-
 					else:
-						self.pp_old = float(pp)
-						self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
-						return 0,pp,tt 
+						return None, pp, tt 
 
-				self.pp_old = float(pp)
-				self.frame_num += 1    #keeps track of which frame we are on since analyze is called for each frame
 		# Logs processing time
 		time_fin = time.time()
 		(self.time_ary).append(time_fin - time_init)
-
 
 	# Function to emulate live data
 	def emulate(self, video_file, number_of_frames=1000):
 
 #		# Defines initial variables and objects
-#		emulated_data_set = tiff.imread(video_file)
-#		timestamp = []
-#		phase = []
-#		process_time = []
-#		trigger_times = []
-#		self.live = False
-#		self.targetSyncPhaseOld = -1 
-#
-#		#Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
-#		_, self.height,self.width = emulated_data_set.shape
-#		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
+		emulated_data_set = tiff.imread(video_file)
+		timestamp = []
+		phase = []
+		process_time = []
+		trigger_times = []
+		self.live = False
+		self.targetSyncPhaseOld = -1 
+
+		#Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
+		_, self.height,self.width = emulated_data_set.shape
+		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 # Defines initial variables and objects
 
-		emulated_data_set = cv2.VideoCapture(video_file)
+		#emulated_data_set = cv2.VideoCapture(video_file)
+       	
+	# Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
 
-		timestamp = []
-
-		phase = []
-
-		process_time = []
-
-		trigger_times = []
-
-		self.live = False
-
-
-
-		# Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
-
-		self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
-
-		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
+#		self.width, self.height = (int(emulated_data_set.get(3)), int(emulated_data_set.get(4)))
+#
+#		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 
 		for i in tqdm(range(number_of_frames)):
 
@@ -288,12 +251,11 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			fps_time_init = time.time()
 
 			# Reads a frame from the emulated data set
-			frame = emulated_data_set.read()[1]#[i,:,:]
+			frame = emulated_data_set[i,:,:]#.read()[1] #[i,:,:] 
 			frame = np.array(frame)
 
 			# Only get responses if a period has been selected and there has been at least 1 period of frames (ie trigger conditions)
 			if self.get_period_status == 0 and self.frame_num > self.settings['referencePeriod']:
-
 				# Gets data from analyse function (also times function call)
 				time_init = time.time()
 				trigger_response, pp, tt = self.analyze(frame)
@@ -305,17 +267,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					process_time.append(time_fin - time_init)
 					timestamp.append(tt)
 					phase.append(pp)
-
-					# Gets the current phase trying to sync with
-					if self.frame_num < self.frame_buffer_length:
-						current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[self.frame_num-1,1]//(2*np.pi))*2*np.pi
-					else:
-						current_sync_phase = self.settings['targetSyncPhase'] + (self.frameSummaryHistory[-1,1]//(2*np.pi))*2*np.pi
-
-				# If sucessful trigger response and sync phase has increased
-				if trigger_response != 0 and current_sync_phase > self.targetSyncPhaseOld:
-					trigger_times.append(trigger_response+tt)
-					self.targetSyncPhaseOld = current_sync_phase 
+					# If sucessful trigger response and sync phase has increased
+					if trigger_response is not None and trigger_response:# != 0 and current_sync_phase > self.targetSyncPhaseOld:
+						trigger_times.append(trigger_response+tt)
+						#self.targetSyncPhaseOld = current_sync_phase 
+				else:
+					print('Warning: this is wrong!')
 
 			# Gets period if trigger conditions are not met
 			else:
@@ -332,6 +289,11 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		phase = np.array(phase)
 		trigger_times = np.array(trigger_times)
 
+		print(process_time.min(),process_time.max())
+		print(timestamp.min(),timestamp.max())
+		print(phase.min(),phase.max())
+		print(trigger_times)
+
 		# Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
 		#plt.subplot(2,1,1)
 		plt.title('Zebrafish heart phase with simulated trigger fire')
@@ -339,7 +301,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		plt.scatter(trigger_times[0:-1],np.full(len(trigger_times)-1,self.settings['targetSyncPhase']), color='r',label='Simulated trigger fire')
 		# Add labels etc
 		x1,x2,y1,y2 = plt.axis()
-		print(x1,x2,y1,y2)
 		plt.axis((x1,x2,0,y2*1.1))
 		plt.legend()
 		plt.xlabel('Time (ms)')
@@ -454,7 +415,7 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=0):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=15):
 
 	# To-do:
 	#	- Clears the period data before saving new images
@@ -465,7 +426,6 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, 
 
 	# If the settings are empty creates settings
 	if not settings:
-		print('setting first settings')
 		settings = hlp.initialiseSettings(framerate=framerate, referencePeriod=brightfield_sequence.shape[0], minFramesForFit=minFramesForFit,predictionLatency=predictionLatency)
 
 	# Calculates period from getPeriod.py
@@ -501,7 +461,7 @@ def select_period(brightfield_period_frames, settings, framerate=80):
 	period_length_in_frames = brightfield_period_frames.shape[0]
 
 	# For now it is a simple command line interface (which is not helpful at all)
-	frame = 9#int(input('Please select a frame between 0 and '+str(period_length_in_frames - 1)+'\nOr enter -1 to select a new period.\n'))
+	frame = int(input('Please select a frame between 0 and '+str(period_length_in_frames - 1)+'\nOr enter -1 to select a new period.\n'))
 
 	# Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
 	if frame < 0:
@@ -516,8 +476,8 @@ def select_period(brightfield_period_frames, settings, framerate=80):
 def emulate_data_capture():
 
 	# Emulated data capture for a set of sample data	
-#	emulate_data_set = 'chas_sample_data.tif'
-	emulate_data_set = 'sample_data.h264'
+	emulate_data_set = 'chas_sample_data.tif'
+	#emulate_data_set = 'sample_data.h264'
 	analyse_camera = YUVLumaAnalysis(frame_buffer_length=100)
 	analyse_camera.emulate(emulate_data_set)
 	
@@ -572,7 +532,7 @@ def live_data_capture():
 	fluorescence_camera_pins = 8,10,12 # Trigger, SYNC-A, SYNC-B
 	usb_information = ('/dev/ttyUSB0',0.1,57600,8,'N',1,True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
 
-	brightfield_resolution = 64  # 128 
+	brightfield_resolution = 128 
 	brightfield_framerate = 80 
 
 	analyse_time = 1000  # s 
@@ -583,9 +543,11 @@ def live_data_capture():
 	camera.resolution = (brightfield_resolution,brightfield_resolution)
 	camera.awb_mode = 'off'
 	camera.exposure_mode = 'off'
+	camera.shutter_speed = 2500  # us
+	camera.image_denoise = False
 
 	# Starts preview
-	camera.start_preview(fullscreen=False, window = (900,20,640,480))
+	camera.start_preview(fullscreen=False, window = (500,20,640,480))
 
 	# Sets up pins and usb
 	usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
@@ -630,3 +592,4 @@ def live_data_capture():
 #		stage_result = scf.move_stage(usb_serial, plane_address,increment, encoding, terminator)
 #	scf.move_stage(usb_serial, plane_address, pos_limit*(-1), encoding, terminator)
 live_data_capture()
+#emulate_data_capture()
