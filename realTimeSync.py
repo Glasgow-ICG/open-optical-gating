@@ -153,9 +153,15 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
         plt.show()
 
     # Calculate SADs
-    SADs = jps.sad_with_references(frame, referenceFrames)
+    #print(type(frame),type(referenceFrames),end='\t')
+    #print(frame.shape,frame.dtype,end='\t')
+    #print(referenceFrames.shape,referenceFrames.dtype,end='\t')
+    #print(frame.min(),frame.max(),referenceFrames.min(),referenceFrames.max())
+    SADs = jps.sad_with_references(frame.astype('uint8'), referenceFrames.astype('uint8'))
+    #diffs = np.sum(np.sum(np.abs(frame.astype('float')-referenceFrames.astype('float')), axis=2), axis=1)
+    #print(np.argmin(SADs),np.argmin(diffs))
 
-    if True or log:
+    if log:
         pprint(SADs)
     if plot:
         f2 = plt.figure()
@@ -167,7 +173,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
     phase = subFrameFit(SADs, settings)
     if log:
         print('Found frame phase to be {0}'.format(phase))
-
+    #print(phase)
     # Update drift
     settings = updateDriftCorrection(frame0,
                                      referenceFrames0[np.argmin(SADs)],
@@ -205,8 +211,8 @@ def predictTrigger(frameSummaryHistory,
     pastPhases0 = frameSummaryHistory[-int(framesForFit):, :]
 
     # Problem with below linear fit algorithm resulting in incorrect current phase and incorrect trigger times
-    alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
-    #radsPerSec, alpha = np.polyfit(pastPhases0[:,0],pastPhases0[:,1],1)
+    #alpha, radsPerSec = linearFit(pastPhases0[:, 0], pastPhases0[:, 1])
+    radsPerSec, alpha = np.polyfit(pastPhases0[:,0],pastPhases0[:,1],1)
 
     if log:
         print('Linear fit with intersect {0} and gradient {1}'.format(alpha, radsPerSec))
@@ -234,7 +240,7 @@ def predictTrigger(frameSummaryHistory,
     if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*math.pi> 0.1:
         if log:
             print('Phase discrepency, trigger aborted.')
-        timeToWaitInSecs = 0
+        timeToWaitInSecs = 0.0
 
     frameInterval = 1.0/settings['framerate']
     if allowedToExtendNumberOfFittedPoints and timeToWaitInSecs > (settings['extrapolationFactor'] * settings['minFramesForFit'] * frameInterval):
@@ -294,16 +300,24 @@ def deduceBarrierFrameArray(settings):
 
 def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=False):
     sendIt = 0
-    framerateFactor = 1.6
+    framerateFactor = 1.6  # in frames
+
+    #print(timeToWaitInSeconds,settings['predictionLatency'])
 
     if timeToWaitInSeconds < settings['predictionLatency']:
-        # too close but if not sent this period then give it a shot
+        if log:
+            print('Too close but if not sent this period then give it a shot...',end='\t')
         if settings['lastSent'] < timestamp-(settings['referencePeriod']/settings['framerate']):
+            if log:
+                print('sent!')
             sendIt = 1
         else:  # if already sent this period, start prediction for next cycle
+            if log:
+                print('not sent!\nStarting prediction for next cycle.')
             timeToWaitInSeconds += (settings['referencePeriod']/settings['framerate'])
     elif (timeToWaitInSeconds-(framerateFactor/settings['framerate'])) < settings['predictionLatency']:
-        # won't be able to do another calculation so trigger
+        if log:
+            print('We won\'t be able to do another calculation... so trigger!')
         sendIt = 2
     else:
         pass
@@ -317,6 +331,8 @@ def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=Fa
                                                             timestamp+timeToWaitInSeconds))
         sendIt = 0
     elif sendIt > 0:
+        if log:
+            print('Trigger to be sent, updating `settings[\'lastSent\']`.')
         settings['lastSent'] = timestamp
 
     return timeToWaitInSeconds, sendIt, settings

@@ -43,7 +43,7 @@ def convertObjOld(sequenceObj,timestamp='time_processing_started'):
 def initialiseSettings(drift=[0,0],framerate=80,referencePeriod=0.0,
                        barrierFrame=0.0,extrapolationFactor=1.5,
                        maxReceivedFramesToStore=260,maxFramesForFit=32,minFramesForFit=3,
-                       predictionLatency=0.015,referenceFrame=0.0,numExtraRefFrames=2):
+                       predictionLatency=15,referenceFrame=0.0,numExtraRefFrames=2):
     settings = {}
     settings.update({'drift':drift})#starting drift corrections
     settings.update({'framerate':framerate})#starting est frame rate
@@ -56,7 +56,7 @@ def initialiseSettings(drift=[0,0],framerate=80,referencePeriod=0.0,
     settings.update({'maxReceivedFramesToStore':maxReceivedFramesToStore})#maximum number of frames to stores, used to prevent memory filling
     settings.update({'maxFramesForFit':maxFramesForFit})#frames to fit for prediction (max)
     settings.update({'minFramesForFit':minFramesForFit})#frames to fit for prediction (min)
-    settings.update({'predictionLatency':predictionLatency})#prediction latency in seconds0
+    settings.update({'predictionLatency':predictionLatency})#prediction latency in milliseconds
     if referenceFrame > 0.0:
         settings.update({'referenceFrame':referenceFrame%referencePeriod})#target phase in frames
     else:
