@@ -15,6 +15,7 @@ sys.path.insert(0, '../py_sad_correlation/')
 import j_py_sad_correlation as jps
 
 
+
 def updateDriftCorrection(frame0, bestMatch0, settings):
     # Assumes frame and bestMatch are numpy arrays of the same size
 
@@ -103,6 +104,10 @@ def threePointTriangularMinimum(y1, y2, y3):
 
 
 def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False):
+
+    
+    # Redirects all stdout to a log file
+    sys.stdout=open('output.log','w+')
     # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
 
 #   print(type(frame0),type(referenceFrames0))
@@ -193,6 +198,9 @@ def predictTrigger(frameSummaryHistory,
     # frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
     # phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
     # targetSyncPhase should be in [0,2pi]
+
+    # Redirects all stdout to a log file
+    sys.stdout=open('output.log','w+')
 
     if frameSummaryHistory.shape[0] < settings['minFramesForFit']+1:
         if log:
@@ -303,6 +311,8 @@ def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=Fa
     framerateFactor = 1.6  # in frames
 
     #print(timeToWaitInSeconds,settings['predictionLatency'])
+    # Redirects all stdout to a log file
+    sys.stdout=open('output.log','w+')
 
     if timeToWaitInSeconds < settings['predictionLatency']:
         if log:

@@ -72,12 +72,14 @@ if __name__ == '__main__':
 	laser_trigger_pin = 22
 	fluorescence_camera_pins = (8,10,12)
 	delay = 400000
-	duration = 20000
+	duration = 200000
 
 
 	if init_controls(laser_trigger_pin,fluorescence_camera_pins) == 0:
 
 		# Tests laser and camera
-		for i in range(10):
+		for i in range(10000):
 
 			trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
+	else:
+		print('Could not initialise laser and fluorescence camera')

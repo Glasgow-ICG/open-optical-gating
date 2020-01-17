@@ -23,6 +23,7 @@
 "frame_buffer_length":100,
 "frame_num":0,
 "live":0,
-"output_mode":"5V_BNC_Only"
+"output_mode":"5V_BNC_Only",
+"log":0
 }
 
