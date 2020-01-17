@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import tifffile as tiff
 import shutil
+import json
 
 # Local imports
 import j_py_sad_correlation as jps
@@ -20,7 +21,6 @@ import getPeriod as gp
 import realTimeSync as rts
 import helper as hlp
 import stage_control_functions as scf
-import json
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -85,6 +85,10 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		# Array for fps test
 		self.time_ary = []
+
+
+		# Creates settings file
+		self.settings_file = open('settings.txt','a+')
 
 		# Sets ouput mode, reverts to Glasgow SPIM mode by default (mode specified in JSON file)
 		if output_mode == '5V_BNC_Only':
@@ -157,6 +161,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
 				pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
 
+				# Saves settings to a file
+				json.dump(self.settings, self.settings_file)
+
 				# Gets the current timestamp
 				tt = (time.time() - self.initial_process_time)*1000 # Converts time into milliseconds
 
@@ -191,9 +198,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 					# Gets the trigger response
 					if self.frame_num < self.frame_buffer_length:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[:self.frame_num,:], self.settings, fitBackToBarrier=True, log=False, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[:self.frame_num,:], self.settings, fitBackToBarrier=True, log=True, output="seconds")
 					else:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=False, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=True, output="seconds")
 					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 					# targetSyncPhase should be in [0,2pi]
@@ -302,10 +309,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		phase = np.array(phase)
 		trigger_times = np.array(trigger_times)
 
-		print(process_time.min(),process_time.max())
-		print(timestamp.min(),timestamp.max())
-		print(phase.min(),phase.max())
-		print(trigger_times)
+		print('Processing time (min and max): ',process_time.min(),process_time.max())
+		print('Timestamp (min and max): ',timestamp.min(),timestamp.max())
+		print('Phase (min and max): ',phase.min(),phase.max())
 
 		# Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
 		#plt.subplot(2,1,1)
