@@ -28,7 +28,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=100, ref_frames = None, frame_num = 0,  live=True, output_mode='glaSPIM'):
+	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=100, ref_frames = None, frame_num = 0,  live=True, output_mode='glaSPIM',log=False):
 
 
 		# Function inputs:
@@ -87,14 +87,14 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.time_ary = []
 
 
-		# Creates settings file
-		self.settings_file = open('settings.txt','a+')
-
 		# Sets ouput mode, reverts to Glasgow SPIM mode by default (mode specified in JSON file)
 		if output_mode == '5V_BNC_Only':
 			self.outputMode = 1
 		else:
 			self.outputMode = 0	
+
+		# Sets the log status
+		self.log = log
 
 		# Initialises reference frames if not specified
 		if ref_frames is None:
@@ -161,9 +161,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
 				pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
 
-				# Saves settings to a file
-				json.dump(self.settings, self.settings_file)
-
 				# Gets the current timestamp
 				tt = (time.time() - self.initial_process_time)*1000 # Converts time into milliseconds
 
@@ -198,9 +195,9 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 					# Gets the trigger response
 					if self.frame_num < self.frame_buffer_length:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[:self.frame_num,:], self.settings, fitBackToBarrier=True, log=True, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory[:self.frame_num,:], self.settings, fitBackToBarrier=True, log=self.log, output="seconds")
 					else:
-						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=True, output="seconds")
+						trigger_response =  rts.predictTrigger(self.frameSummaryHistory, self.settings, fitBackToBarrier=True, log=self.log, output="seconds")
 					# frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
 					# phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
 					# targetSyncPhase should be in [0,2pi]
@@ -208,7 +205,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					# Captures the image  and then moves the stage if triggered
 					if trigger_response > 0:
 						#print('Possible trigger: ',trigger_response,end='\t')
-						trigger_response, send, self.settings = rts.gotNewSyncEstimateTimeDelay(tt,trigger_response,self.settings,log=False)
+						trigger_response, send, self.settings = rts.gotNewSyncEstimateTimeDelay(tt,trigger_response,self.settings,log=self.log)
 						if send>0:
 							#print('sending: ',send,end='\t')
 							if self.live:
@@ -494,10 +491,13 @@ def select_period(brightfield_period_frames, settings, framerate=80):
 # Defines the three main modes (emulate capture, check fps and live data capture)
 def emulate_data_capture():
 
+	#Log status
+	log = dict_data['log']
+
 	# Emulated data capture for a set of sample data	
-	emulate_data_set = 'chas_sample_data.tif'
+	emulate_data_set = 'sample_data.tif'
 	#emulate_data_set = 'sample_data.h264'
-	analyse_camera = YUVLumaAnalysis(frame_buffer_length=100)
+	analyse_camera = YUVLumaAnalysis(frame_buffer_length=100,log=log)
 	analyse_camera.emulate(emulate_data_set)
 	
 # Checks that the analyze function can run at the desired framerate
@@ -544,6 +544,7 @@ def live_data_capture():
 
 
 	# Defines initial variables
+	log = dict_data['log']
 	laser_trigger_pin = dict_data['laser_trigger_pin']
 	fluorescence_camera_pins = dict_data['fluorescence_camera_pins'] # Trigger, SYNC-A, SYNC-B
 	usb_information = (dict_data['usb_name'],dict_data['usb_timeout'],dict_data['usb_baudrate'],dict_data['usb_dataBits'],dict_data['usb_parity'],dict_data['usb_XOnOff'],True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
@@ -591,7 +592,7 @@ def live_data_capture():
 		input('Press any key once the heart is in position.')
 
 	# Sets up YUVLumaAnalysis object
-	analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, usb_serial=usb_serial )
+	analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, usb_serial=usb_serial,log=log )
 
 	# Starts analysing brightfield data
 	camera.start_recording(analyse_camera, format = 'yuv')
