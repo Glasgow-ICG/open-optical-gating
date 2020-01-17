@@ -20,6 +20,7 @@ import getPeriod as gp
 import realTimeSync as rts
 import helper as hlp
 import stage_control_functions as scf
+import json
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -27,7 +28,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	#Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
 
 
-	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=100, ref_frames = None, frame_num = 0,  live=True):
+	def __init__(self, camera=None, usb_serial=None, brightfield_framerate=80, laser_trigger_pin=22 , fluorescence_camera_pins=(8,10,12), plane_address=1, encoding='utf-8', terminator=chr(13)+chr(10), increment=0.0005, negative_limit=0, positive_limit=0.075, current_position=0, frame_buffer_length=100, ref_frames = None, frame_num = 0,  live=True, output_mode='glaSPIM'):
 
 
 		# Function inputs:
@@ -61,6 +62,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		# Defines laser, fluorescence camera and usb serial information
 		self.laser_trigger_pin = laser_trigger_pin
 		self.fluorescence_camera_pins = fluorescence_camera_pins
+
 		self.usb_serial = usb_serial
 		self.plane_address = plane_address
 		self.encoding = encoding
@@ -69,6 +71,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.negative_limit = negative_limit
 		self.positive_limit = positive_limit
 		self.current_position = current_position
+
 		self.camera = camera
 
 		# Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
@@ -82,6 +85,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
 		# Array for fps test
 		self.time_ary = []
+
+		# Sets ouput mode, reverts to Glasgow SPIM mode by default (mode specified in JSON file)
+		if output_mode == '5V_BNC_Only':
+			self.outputMode = 1
+		else:
+			self.outputMode = 0	
 
 		# Initialises reference frames if not specified
 		if ref_frames is None:
@@ -195,10 +204,14 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 						trigger_response, send, self.settings = rts.gotNewSyncEstimateTimeDelay(tt,trigger_response,self.settings,log=False)
 						if send>0:
 							#print('sending: ',send,end='\t')
-							print('Triggering in ' + str(trigger_response) +'ms')
 							if self.live:
-								trigger_fluorescence_image_capture(tt+trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=2000)
-								stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
+
+								if self.outputMode == 1:
+									trigger_fluorescence_image_capture(tt+trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=2000)
+								else:
+									
+									trigger_fluorescence_image_capture(tt+trigger_response,self.laser_trigger_pin, self.fluorescence_camera_pins, edge_trigger=False, duration=2000)
+									stage_result = scf.move_stage(self.usb_serial, self.plane_address,self.increment, self.encoding, self.terminator)
 							else:
 								#print('Not Live: ',send,trigger_response,pp,tt)
 								# Returns the trigger response, phase and timestamp for emulated data
@@ -523,46 +536,53 @@ def check_fps( brightfield_framerate=80,brightfield_resolution=128):
 # Performs a live capture of the data
 def live_data_capture():
 
-	# To-do:
-	#	- Option to enter stage limits manually
-	
 
 	# Defines initial variables
-	laser_trigger_pin = 22
-	fluorescence_camera_pins = 8,10,12 # Trigger, SYNC-A, SYNC-B
-	usb_information = ('/dev/ttyUSB0',0.1,57600,8,'N',1,True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
+	laser_trigger_pin = dict_data['laser_trigger_pin']
+	fluorescence_camera_pins = dict_data['fluorescence_camera_pins'] # Trigger, SYNC-A, SYNC-B
+	usb_information = (dict_data['usb_name'],dict_data['usb_timeout'],dict_data['usb_baudrate'],dict_data['usb_dataBits'],dict_data['usb_parity'],dict_data['usb_XOnOff'],True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
 
-	brightfield_resolution = 128 
-	brightfield_framerate = 80 
-
-	analyse_time = 1000  # s 
+	#Defines variables for USB serial stage commands
+	plane_address = dict_data['plane_address']
+	encoding = dict_data['encoding']
+	terminator = chr(dict_data['terminators'][0])+chr(dict_data['terminators'][1])
+	increment = dict_data['increment']
 
 	# Sets up basic picam
+	brightfield_resolution = dict_data['brightfield_resolution'] 
+	brightfield_framerate = dict_data['brightfield_framerate']
+
+	analyse_time = dict_data['analyse_time']  # s 
+
 	camera = picamera.PiCamera()
 	camera.framerate = brightfield_framerate
 	camera.resolution = (brightfield_resolution,brightfield_resolution)
-	camera.awb_mode = 'off'
-	camera.exposure_mode = 'off'
-	camera.shutter_speed = 2500  # us
-	camera.image_denoise = False
+	camera.awb_mode = dict_data['awb_mode'] 
+	camera.exposure_mode = dict_data['exposure_mode']
+	camera.shutter_speed = dict_data['shutter_speed']  # us
+	camera.image_denoise = dict_data['image_denoise']
 
 	# Starts preview
 	camera.start_preview(fullscreen=False, window = (500,20,640,480))
 
-	# Sets up pins and usb
-	usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
+	if dict_data['output_mode'] == '5V_BNC_Only':
+		
+		# USB serial not used so set to None
+		usb_serial = None
 
-	# Checks if usb_serial has recieved an error code
-	if isinstance(usb_serial, int):
-		print('Error code '+str(usb_serial))
-		sys.exit()
+	else:
+		
+		# Sets up pins and usb
+		usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
 
-	# Sets up stage to recieve input
-#	neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
-#	input('Press any key once the heart is in position.')
-	neg_limit = 0
-	pos_limit = 4
-	current_position = 0
+		# Checks if usb_serial has recieved an error code
+		if isinstance(usb_serial, int):
+			print('Error code '+str(usb_serial))
+			sys.exit()
+
+		# Sets up stage to recieve input
+		neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
+		input('Press any key once the heart is in position.')
 
 	# Sets up YUVLumaAnalysis object
 	analyse_camera = YUVLumaAnalysis(camera=camera, brightfield_framerate=brightfield_framerate, usb_serial=usb_serial )
@@ -573,6 +593,7 @@ def live_data_capture():
 	camera.stop_recording()
 
 	# Ends preview
+	input('Press any key to end camera preview')
 	camera.stop_preview()
 
 	# Iterates through a sample stack (with no period)
@@ -591,5 +612,16 @@ def live_data_capture():
 #		trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
 #		stage_result = scf.move_stage(usb_serial, plane_address,increment, encoding, terminator)
 #	scf.move_stage(usb_serial, plane_address, pos_limit*(-1), encoding, terminator)
-live_data_capture()
-#emulate_data_capture()
+
+
+# Reads data from json file
+data_file = open("data.txt")
+dict_data = json.load(data_file)	
+
+
+# Performs a live or emulated data capture
+live_capture = dict_data['live']
+if live_capture == True:
+	live_data_capture()
+else:
+	emulate_data_capture()
