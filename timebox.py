@@ -157,7 +157,6 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			# Once period has been selected, analyses brightfield data for phase triggering
 			else:
 				# Gets the phase and sad of the current frame 
-				cv2.imwrite('help/'+str(self.frame_num)+'.tiff',frame)
 				pp, self.sad, self.settings = rts.compareFrame(frame, self.ref_frames, settings = self.settings)
 				pp = ((pp-self.settings['numExtraRefFrames'])/self.settings['referencePeriod'])*(2*np.pi)#convert phase to 2pi base
 
