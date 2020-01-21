@@ -430,10 +430,8 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=15):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=predictionLatency):
 
-	# To-do:
-	#	- Clears the period data before saving new images
 
 	# Function inputs
 	#		brightfield_sequence = (numpy array) a 3D array of the brightfiled picam data
@@ -621,9 +619,11 @@ def live_data_capture():
 
 
 # Reads data from json file
-data_file = open("data.txt")
+data_file = open("settings.json")
 dict_data = json.load(data_file)	
 
+# Sets the prediction latency
+predictionLatency = dict_data['predictionLatency']
 
 # Performs a live or emulated data capture
 live_capture = dict_data['live']
