@@ -1,12 +1,28 @@
-# Instructions for Raspberry Pi gated microscopy
+# A fully open-source system for prospective optical gating in 3D fluorescence light sheet cardiac imaging (IN DEVELOPMENT)
+
+## Alex Drysdale, Jonathan Taylor and Chas Nelson
+
+### School of Physics and Astronomy, University of Glasgow, UK
+
+Cardiac diseases account for more deaths worldwide than any other cause.
+The zebrafish is a commonly used and powerful model organism for investigating cardiac conditions with a strong connection to human disease.
+This is important for furthering biomedical sciences such as developing new disease models or drugs to combat those diseases. 
+
+Prospective optical gating technologies allow 3D, time-lapse microscopy of the living, beating zebrafish heart without the use of pharmaceuticals or electrical/optical pacing [1].
+Further, prospective optical gating reduces the data deluge and processing time compared to other gating-based techniques.
+However, currently these systems requires specialist, custom-made timing boxes and highly sophisticated system-specific software.
+In order to make these tools more widely available to research groups around the world we have ported these technologies onto the popular, single-board computer, the Raspberry Pi with Python code for prospective optical gating, microscope triggering and a simple GUI for user-friendliness.
+
+Our fully open-source system is able to perform prospective optical gating with a quality near that achieved by custom and specialised hardware/software packages. We hope that by moving this project into the open-science sphere we can ensure that all groups with an interest are able to implement prospective optical gating in a cheap (<50 Euros) and simple way.
+
+1. Taylor, J.M., Nelson, C.J., Bruton, F.A. et al. Adaptive prospective optical gating enables day-long 3D time-lapse imaging of the beating embryonic zebrafish heart. Nat Commun 10, 5173 (2019) doi:[10.1038/s41467-019-13112-6](https://dx.doi.org/10.1038/s41467-019-13112-6)
+
+## Instructions for Raspberry Pi gated microscopy
 
 The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePius) and perform various tests. Prior to this please ensure that AsclePius has been set up correctly to control the microscope.
 
-
-
-Currently AsclePius can be operated in 5V BNC Only mode and Glasgow SPIM mode. Whilst in 5V BNC Only mode AsclePius sends a trigger signal through pin 22 when an image capture should be performed. Whilst in Glasgow SPIM mode AsclePius controls the laser, fluorescence camera and movement stages separately.
-
-
+Currently AsclePius can be operated in 5V BNC Only mode and Glasgow SPIM mode. Whilst in 5V BNC Only mode AsclePius sends a trigger signal through pin 22 when an image capture should be performed
+Whilst in Glasgow SPIM mode AsclePius controls the laser, fluorescence camera and movement stages separately.
 
 For all programs, please ensure that you are using Python 3 as they have not been tested on Python 2.
 
@@ -18,38 +34,39 @@ The pin numbering system being used is the physical numbering system.
 
 - Connect the 5V BNC cable to pin 22 and a ground pin (pin 6 for example).
 
-
-
 ### Glasgow SPIM Mode
 
 - Connect the laser to pin 22 and a ground pin.
-
 - Connect the fluorescence camera in the following way:
-
-  > - Trigger: pin 8
-  > - SYNC-A: pin 10
-  > - SYNC-B: pin 12
-
+  - Trigger: pin 8
+  - SYNC-A: pin 10
+  - SYNC-B: pin 12
 - Connect the stage controls via USB.
 
 ## Tests
 
 ### Microscope test
 
-The microscope test can be run through the 'laser_and_camera_test.py' file. This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly. The test simply pulses pin 22 and pin 8 and returns an error if the software can not perform the pulsing and the user can detect a hardware if no signal is being detected by the microscope.
+The microscope test can be run through the 'laser_and_camera_test.py' file.
+This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly.
+The test simply pulses pin 22 and pin 8 and returns an error if the software can not perform the pulsing and the user can detect a hardware if no signal is being detected by the microscope.
 
 *Note: the triggering runs for a very very long time so make sure to quit the program*
 
-If the microscope is not being triggered, please check the connections. If the microscope is connected properly check all the required modules have been installed. After this, it would be best to check if the signals are being fired by AsclePius's pins and proceed accordingly.
-
+If the microscope is not being triggered, please check the connections.
+If the microscope is connected properly check all the required modules have been installed.
+After this, it would be best to check if the signals are being fired by AsclePius's pins and proceed accordingly.
 
 ### Stage test
 
 The stages only apply when operating in Glasgow SPIM mode.
 
-The stage testing can be run through the 'stage_test.py'. This operates by obtaining the addresses of all available stages and then enters an enviroment to control the stages. The stages can be tested by entering various commands.
+The stage testing can be run through the 'stage_test.py'.
+This operates by obtaining the addresses of all available stages and then enters an enviroment to control the stages.
+The stages can be tested by entering various commands.
 
-*Note: The stages are assumed to be  a **SMC100CC/PP** and both the testing enviroment and the stage functions will need to be altered for different stages. The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might also need to be updated if different.*
+*Note: The stages are assumed to be  a **SMC100CC/PP** and both the testing enviroment and the stage functions will need to be altered for different stages.
+The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might also need to be updated if different.*
 
 ## Operating the timing box 
 
@@ -89,8 +106,6 @@ The stage testing can be run through the 'stage_test.py'. This operates by obtai
 
 7. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 
-
-
 ## Default settings.json values
 
 ```{json}
@@ -124,5 +139,3 @@ The stage testing can be run through the 'stage_test.py'. This operates by obtai
  "predictionLatency":15
  }
 ```
-
- 
