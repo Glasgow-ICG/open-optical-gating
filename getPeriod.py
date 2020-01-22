@@ -4,20 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
 from scipy.stats import norm
-import tifffile as tif
-
+from skimage import io
 from pprint import pprint
-import time
-import math
 import os
-
-import sys
-sys.path.insert(0, os.path.join(os.getcwd(),'j_postacquisition'))
-import image_loading as jid
-import plist_wrapper as plw
-sys.path.insert(0, '../py_sad_correlation/')
 import j_py_sad_correlation as jps
 
+# Local
 import realTimeSync as rts
 import helper as hlp
 
@@ -56,10 +48,12 @@ def doEstablishPeriodProcessingForFrameIdx(sequence,settings,padding=True,log=Fa
 
             settings = hlp.updateSettings(settings,referencePeriod=periodToUse)#automatically does referenceFrameCount an targetSyncPhase
             if padding:
-                numRefs = math.ceil(periodToUse)+(2*settings['numExtraRefFrames'])
+                # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+                numRefs = int(periodToUse+1)+(2*settings['numExtraRefFrames'])
                 return np.arange(len(pastFrames)-numRefs,len(pastFrames)), settings
             else:
-                numRefs = math.ceil(periodToUse)+settings['numExtraRefFrames']
+                # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+                numRefs = int(periodToUse+1)+settings['numExtraRefFrames']
                 return np.arange(len(pastFrames)-numRefs,len(pastFrames)-settings['numExtraRefFrames']), settings
 
     print('ERROR: I didn\'t find a period I\'m happy with!')
@@ -150,43 +144,12 @@ def saveReferencePeriod(folder,sequenceObj,referenceIdx,period,drift=[0,0],targe
     # as such, does not save plist anymore
     # and I havge yet to work out the best way to save metadata at all
     sequence, dummy = hlp.convertObj(sequenceObj)
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    os.makedirs(folder, exist_ok=True)
     frameNumber = sequenceObj[referenceIdx[0]].frameKeyPath('frame_number')
-    tif.imsave('{0}/{1:03d}.tif'.format(folder,frameNumber),sequence[referenceIdx],metadata={'axes':'TXY'})
+    io.imsave('{0}/{1:03d}.tif'.format(folder,frameNumber),sequence[referenceIdx],metadata={'axes':'TXY'})
     with open('{0}/period.txt'.format(folder), 'w') as text_file:
         text_file.write(str(period)+' '+str(drift[1])+' '+str(drift[0])+' '+str(target))
 
-def saveReferencePeriodOld(folder,sequenceObj,referenceIdx,period):
-    # For compatability with ImageClass_v<lt3>
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    for idx in referenceIdx:
-        plst = sequenceObj[0][idx].plist
-        frameNumber = plst['frame_number']
-        tif.imsave('{0}/{1:03d}.tif'.format(folder,frameNumber),sequenceObj[0][idx].image,metadata={'axes':'XY'})
-        plst['sync_info']['reference_period'] = period
-        plw.writePlist(plst, '{0}/{1:03d}.plist'.format(folder,frameNumber))
-    with open('{0}/period.txt'.format(folder), 'w') as text_file:
-        text_file.write(str(period))
-
 if __name__ == '__main__':
-    settings = hlp.initialiseSettings(drift=[-5,-2],
-                            framerate=80,
-                            referencePeriod=42.410156325856882,
-                            barrierFrame=4.9949327669365964,
-                            predictionLatency=0.01,
-                            referenceFrame=20.994110773833857)
-
-    # load sequence
-    sequenceName = sys.argv[1]
-    sequenceObj = jid.LoadAllImages(sequenceName,True,1,0,-1,None)
-    sequence, idx = hlp.convertObj(sequenceObj)
-
-    # Get Period and Reference Frames from Sequence
-    referenceFrameIdx, settings = doEstablishPeriodProcessingForFrameIdx(sequence,settings,log=True)
-
-    pprint(referenceFrameIdx)
-    print(len(referenceFrameIdx))
-
-    saveReferencePeriod('./localdata',sequenceObj,referenceFrameIdx,settings['referencePeriod'])
+    print('Example removed during refactoring.')
+    print('TODO: Make new example.')
