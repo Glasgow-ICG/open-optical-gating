@@ -3,17 +3,10 @@ These codes are equivalent to the Objective-C codes in spim-interface.'''
 
 # Python Imports
 import numpy as np
-import matplotlib.pyplot as plt
-from pprint import pprint
-import time
-import math
-from copy import copy
 import sys
+import j_py_sad_correlation as jps
 # Local Imports
 import helper as hlp
-sys.path.insert(0, '../py_sad_correlation/')
-import j_py_sad_correlation as jps
-
 
 
 def updateDriftCorrection(frame0, bestMatch0, settings):
@@ -46,7 +39,7 @@ def updateDriftCorrection(frame0, bestMatch0, settings):
         dyp = dy + shft[1]
 
         # Adjust for drift and shift
-        rectF = copy(rect)
+        rectF = np.copy(rect)
         rectF[0] -= dxp
         rectF[1] -= dxp
         rectF[2] -= dyp
@@ -167,7 +160,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
     #print(np.argmin(SADs),np.argmin(diffs))
 
     if log:
-        pprint(SADs)
+        print(SADs)
     if plot:
         f2 = plt.figure()
         a21 = f2.add_axes([0, 0, 1, 1])
@@ -230,22 +223,22 @@ def predictTrigger(frameSummaryHistory,
         print('Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero).')
 
     thisFramePhase = alpha + frameSummaryHistory[-1, 0]*radsPerSec
-    multiPhaseCounter = thisFramePhase//(2*math.pi)
-    phaseToWait = settings['targetSyncPhase'] + (multiPhaseCounter*2*math.pi) - thisFramePhase
+    multiPhaseCounter = thisFramePhase//(2*np.pi)
+    phaseToWait = settings['targetSyncPhase'] + (multiPhaseCounter*2*np.pi) - thisFramePhase
     # c.f. lines 1798-1801 in SyncAnalyzer.mm
     # essentially this fixes for small drops in phase due to SAD errors
-    while phaseToWait < 0:  # this used to be -math.pi
-        phaseToWait += 2*math.pi
+    while phaseToWait < 0:  # this used to be -np.pi
+        phaseToWait += 2*np.pi
 
     timeToWaitInSecs = phaseToWait / radsPerSec
     timeToWaitInSecs = max(timeToWaitInSecs, 0.0)
 
     if log:
         print('Current time: {0};\tTime to wait: {1};'.format(frameSummaryHistory[-1,0], timeToWaitInSecs))
-        print('Current phase: {0};\tPhase to wait: {1};\nTarget phase:{2};\tPredicted phase:{3};'.format(thisFramePhase, phaseToWait, settings['targetSyncPhase'] + (multiPhaseCounter*2*math.pi), thisFramePhase+phaseToWait))
+        print('Current phase: {0};\tPhase to wait: {1};\nTarget phase:{2};\tPredicted phase:{3};'.format(thisFramePhase, phaseToWait, settings['targetSyncPhase'] + (multiPhaseCounter*2*np.pi), thisFramePhase+phaseToWait))
 
     #Fixes sync error due to targetSyncPhase being 2pi greater than target phase
-    if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*math.pi> 0.1:
+    if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*np.pi> 0.1:
         if log:
             print('Phase discrepency, trigger aborted.')
         timeToWaitInSecs = 0.0
@@ -371,6 +364,7 @@ def convertObj(sequenceObj,timestamp='time_processing_started', sortByTimestamp=
     return sequence, idx
 
 if __name__ == "__main__":
+    import time
     sys.path.insert(0, 'j_postacquisition/')
     import image_loading as jil
 
@@ -434,7 +428,7 @@ if __name__ == "__main__":
                                         log,
                                         False)
         # convert phase to 2pi base
-        pp = ((pp-settings['numExtraRefFrames'])/settings['referencePeriod'])*(2*math.pi)
+        pp = ((pp-settings['numExtraRefFrames'])/settings['referencePeriod'])*(2*np.pi)
         # tt = sequenceObj[idxS[i]].plist['timestamp']
         tt = sequenceObj[idxS[i]].timestamp
         times.append(tt)
@@ -444,8 +438,8 @@ if __name__ == "__main__":
             deltaPhase = pp-pp_old
             # c.f. lines 1798-1801 in SyncAnalyzer.mm
             # Allows for small drops in phase due to SAD errors
-            while deltaPhase < -math.pi:
-                deltaPhase += 2*math.pi
+            while deltaPhase < -np.pi:
+                deltaPhase += 2*np.pi
             pastPhases[j, 1] = pastPhases[j-1, 1]+deltaPhase
         else:
             pastPhases[j, 1] = pp
