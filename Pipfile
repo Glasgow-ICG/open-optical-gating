@@ -11,6 +11,4 @@ scipy = "*"
 pprint = "*"
 matplotlib = "*"
 pillow = "*"
-
-[requires]
-python_version = "3.6"
+serial = "*"
