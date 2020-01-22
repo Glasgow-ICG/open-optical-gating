@@ -1,11 +1,8 @@
 #Python imports
 import numpy as np
 import io
-try:  # will prevent fail if not of pi (live won't work)
-	import picamera
-	from picamera import array
-except:
-	pass
+import picamera
+from picamera import array
 import time
 import os
 import sys
