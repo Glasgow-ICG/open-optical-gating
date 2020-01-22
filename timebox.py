@@ -10,10 +10,9 @@ import time
 import os
 import sys
 import serial
-import cv2
+from skimage import io
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import tifffile as tiff
 import shutil
 import json
 
@@ -243,7 +242,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 	def emulate(self, video_file, number_of_frames=1000):
 
 #		# Defines initial variables and objects
-		emulated_data_set = tiff.imread(video_file)
+		emulated_data_set = io.imread(video_file)
 		timestamp = []
 		phase = []
 		process_time = []
@@ -255,7 +254,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		_, self.height,self.width = emulated_data_set.shape
 		self.ref_frames = np.empty((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
 # Defines initial variables and objects
-
+		# DevNote: OpenCV is no longer used
 		#emulated_data_set = cv2.VideoCapture(video_file)
        	
 	# Gets the dimensions of the emulated data and initialises the reference frame array with these dimension
@@ -458,7 +457,7 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, 
 
 		for i in range(brightfield_period.shape[0]):
 			
-			cv2.imwrite(('period_data/'+str(i)+'.tiff'), brightfield_period[i,:,:])
+			io.imsave(('period_data/{0:03d}}.tiff'.format(i)), brightfield_period[i,:,:])
 
 	return brightfield_period, settings
 
