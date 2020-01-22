@@ -9,6 +9,7 @@ import j_py_sad_correlation as jps
 import helper as hlp
 
 
+
 def updateDriftCorrection(frame0, bestMatch0, settings):
     # Assumes frame and bestMatch are numpy arrays of the same size
 
@@ -239,6 +240,12 @@ def predictTrigger(frameSummaryHistory,
 
     #Fixes sync error due to targetSyncPhase being 2pi greater than target phase
     if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*np.pi> 0.1:
+        if log:
+            print('Phase discrepency, trigger aborted.')
+        timeToWaitInSecs = 0.0
+
+    #Fixes sync error due to targetSyncPhase being 2pi greater than target phase
+    if thisFramePhase + phaseToWait - settings['targetSyncPhase'] - multiPhaseCounter*2*math.pi> 0.1:
         if log:
             print('Phase discrepency, trigger aborted.')
         timeToWaitInSecs = 0.0
