@@ -1,44 +1,6 @@
-import math
+## Imports
 import numpy as np
-from pprint import pprint
 
-def convertObj(sequenceObj,timestamp='time_processing_started', sortByTimestamp=True):
-    # Convert to 3D numpy array (ZXY), assumes correctly sorted
-    # Works for new image_class v3 (multipage tiffs)
-    # Should work for old formats
-    if type(sequenceObj) is tuple:
-        sequenceObj = sequenceObj[0]
-    if type(sequenceObj) is list:
-        sequenceObj = np.array(sequenceObj)
-    sequenceLength = sequenceObj.shape[0]
-    sz = sequenceObj[0].image.shape
-    sequence = np.zeros([sequenceLength,sz[0],sz[1]],sequenceObj[0].image.dtype)
-    times = np.zeros(sequenceLength)
-    for i in range(sequenceLength):
-        sequence[i] = np.copy(sequenceObj[i].image)
-        times[i] = sequenceObj[i].frameKeyPath(timestamp)
-    if sortByTimestamp:
-		# Sorting is optional - for JT's purposes he wants to save strictly in the order provided in sequenceObj
-        idx = np.argsort(times)
-        sequence = sequence[idx,:,:]
-
-    return sequence, idx
-
-def convertObjOld(sequenceObj,timestamp='time_processing_started'):
-    # Sort sequence (just in case) and convert to list of numpy arrays
-    # works for old format (multiple files)
-    sequenceObj = sequenceObj[0]
-    sequenceLength = sequenceObj.size
-    sz = sequenceObj[0].image.shape
-    sequence = np.zeros([sequenceLength,sz[0],sz[1]],sequenceObj[0].image.dtype)
-    times = np.zeros(sequenceLength)
-    for i in range(sequenceLength):
-        sequence[i] = np.copy(sequenceObj[i].image)
-        times[i] = sequenceObj[i].frameKeyPath(timestamp)
-    idx = np.argsort(times)
-    sequence = sequence[idx,:,:]
-
-    return sequence, idx
 
 def initialiseSettings(drift=[0,0],framerate=80,referencePeriod=0.0,
                        barrierFrame=0.0,extrapolationFactor=1.5,
@@ -64,9 +26,10 @@ def initialiseSettings(drift=[0,0],framerate=80,referencePeriod=0.0,
     settings.update({'numExtraRefFrames':numExtraRefFrames})#padding number
 
     # automatically added keys
-    settings.update({'referenceFrameCount':math.ceil(settings['referencePeriod'])+(2*settings['numExtraRefFrames'])})#number of reference frames including padding
+    # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+    settings.update({'referenceFrameCount':int(settings['referencePeriod']+1)+(2*settings['numExtraRefFrames'])})#number of reference frames including padding
     if referencePeriod > 0.0:
-      settings.update({'targetSyncPhase':2*math.pi*(settings['referenceFrame']/settings['referencePeriod'])})#target phase in rads
+      settings.update({'targetSyncPhase':2*np.pi*(settings['referenceFrame']/settings['referencePeriod'])})#target phase in rads
     else:
       settings.update({'targetSyncPhase':0})#target phase in rads
     settings.update({'lastSent':0.0})
@@ -74,6 +37,7 @@ def initialiseSettings(drift=[0,0],framerate=80,referencePeriod=0.0,
 
 
     return settings
+
 
 def updateSettings(settings,drift=None,framerate=None,referencePeriod=None,
                        barrierFrame=None,extrapolationFactor=None,
@@ -104,7 +68,13 @@ def updateSettings(settings,drift=None,framerate=None,referencePeriod=None,
         settings['referenceFrame'] = referenceFrame%settings['referencePeriod']
 
     # automatically added keys
-    settings.update({'referenceFrameCount':math.ceil(settings['referencePeriod'])+(2*settings['numExtraRefFrames'])})#number of reference frames including padding
-    settings.update({'targetSyncPhase':2*math.pi*(settings['referenceFrame']/settings['referencePeriod'])})#target phase in rads
+    # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+    settings.update({'referenceFrameCount':int(settings['referencePeriod']+1)+(2*settings['numExtraRefFrames'])})#number of reference frames including padding
+    # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+    settings.update({'targetSyncPhase':2*np.pi*(settings['referenceFrame']/settings['referencePeriod'])})#target phase in rads
 
     return settings
+
+if __name__ == '__main__':
+    print('Never had an example.')
+    print('TODO: Make example.')

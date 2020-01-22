@@ -1,12 +1,6 @@
 ## Imports
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
-from scipy.stats import norm
 from skimage import io
-from pprint import pprint
-import os
 import j_py_sad_correlation as jps
 
 # Local
@@ -137,18 +131,7 @@ def gotScoreForDelta(score,d,values,log=False):
     # Note this is only updated AFTER we have done the other processing (i.e. the mean score used does NOT include the current delta)
     values[3] = values[2] / values[7];#meanScore,totalScore,numeScores
 
-    return False,values
-
-def saveReferencePeriod(folder,sequenceObj,referenceIdx,period,drift=[0,0],target=0.0):
-    # Compatable with ImageClass_v3
-    # as such, does not save plist anymore
-    # and I havge yet to work out the best way to save metadata at all
-    sequence, dummy = hlp.convertObj(sequenceObj)
-    os.makedirs(folder, exist_ok=True)
-    frameNumber = sequenceObj[referenceIdx[0]].frameKeyPath('frame_number')
-    io.imsave('{0}/{1:03d}.tif'.format(folder,frameNumber),sequence[referenceIdx],metadata={'axes':'TXY'})
-    with open('{0}/period.txt'.format(folder), 'w') as text_file:
-        text_file.write(str(period)+' '+str(drift[1])+' '+str(drift[0])+' '+str(target))
+    return False, values
 
 if __name__ == '__main__':
     print('Example removed during refactoring.')

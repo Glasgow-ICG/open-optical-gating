@@ -348,6 +348,28 @@ def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=Fa
     return timeToWaitInSeconds, sendIt, settings
 
 
+def convertObj(sequenceObj,timestamp='time_processing_started', sortByTimestamp=True):
+    # Convert to 3D numpy array (ZXY), assumes correctly sorted
+    # Works for new image_class v3 (multipage tiffs)
+    # Should work for old formats
+    if type(sequenceObj) is tuple:
+        sequenceObj = sequenceObj[0]
+    if type(sequenceObj) is list:
+        sequenceObj = np.array(sequenceObj)
+    sequenceLength = sequenceObj.shape[0]
+    sz = sequenceObj[0].image.shape
+    sequence = np.zeros([sequenceLength,sz[0],sz[1]],sequenceObj[0].image.dtype)
+    times = np.zeros(sequenceLength)
+    for i in range(sequenceLength):
+        sequence[i] = np.copy(sequenceObj[i].image)
+        times[i] = sequenceObj[i].frameKeyPath(timestamp)
+    if sortByTimestamp:
+		# Sorting is optional - for JT's purposes he wants to save strictly in the order provided in sequenceObj
+        idx = np.argsort(times)
+        sequence = sequence[idx,:,:]
+
+    return sequence, idx
+
 if __name__ == "__main__":
     sys.path.insert(0, 'j_postacquisition/')
     import image_loading as jil
