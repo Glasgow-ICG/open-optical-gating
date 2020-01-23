@@ -429,7 +429,7 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 
 
 # Gets the period from sample set
-def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=predictionLatency):
+def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, maxRecievedFramesForFit=80, predictionLatency=15):
 
 
 	# Function inputs
@@ -454,7 +454,7 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, 
 
 		for i in range(brightfield_period.shape[0]):
 			
-			io.imsave(('period_data/{0:03d}}.tiff'.format(i)), brightfield_period[i,:,:])
+			io.imsave(('period_data/{0:03d}.tiff'.format(i)), brightfield_period[i,:,:])
 
 	return brightfield_period, settings
 

@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "04cf6eebf649ab7db2064188bdbba2ab3fd6051beda9968011a49996bd774e2d"
+            "sha256": "ef676bb4260e2e102c12125502b3e2f13b7bcb736e0550bca503afa11994fed4"
         },
         "pipfile-spec": 6,
         "requires": {},
@@ -143,6 +143,13 @@
             ],
             "index": "pypi",
             "version": "==1.18.1"
+        },
+        "picamera": {
+            "hashes": [
+                "sha256:890815aa01e4d855a6a95dd3ad0953b872a6b954982106407df0c5a31a163e50"
+            ],
+            "index": "pypi",
+            "version": "==1.13"
         },
         "pillow": {
             "hashes": [
