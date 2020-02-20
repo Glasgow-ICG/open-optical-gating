@@ -129,11 +129,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			self.settings = hlp.initialiseSettings(framerate=self.framerate, referencePeriod=ref_frames.shape[0])
 			self.settings = rts.deduceBarrierFrameArray(self.settings)
 			self.initial_process_time = time.time()
-		
+			
+		# DEVNOTE - if the laser doesn't trigger check this line works
+		# trigger_fluorescence_image_capture(0, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
 
 
 	def analyze(self, frame):
-		sys.stdout=sys.__stdout__  # DEBUG
 		
 		# For logging processing time
 		time_init = time.time()
@@ -142,7 +143,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
 		
-		if self.trigger_num == self.updateAfterNTriggers:
+		if self.trigger_num >= self.updateAfterNTriggers:
 			# time to update the reference period whilst maintaining phase lock
 			# set get_period_status to 1 (so we clear things for a new reference period)
 			# as part of this trigger_num will be reset
@@ -193,7 +194,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 																	knownPhaseIndex=0,
 																	knownPhase=80*self.initialTarget/self.settings['referencePeriod'],
 																	log=self.log)
-					self.settings['referenceFrame'] = (self.settings['referencePeriod']*rF/80)%self.settings['referencePeriod']
+					self.settings = hlp.updateSettings(self.settings,referenceFrame=(self.settings['referencePeriod']*rF/80)%self.settings['referencePeriod'])
 					if self.log:
 						print('Reference period updated. New period of length {0} with reference frame at {1}'.format(self.settings['referencePeriod'],self.settings['referenceFrame']))
 					
@@ -216,7 +217,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				else:
 					# Obtains a reference period
 					self.ref_frames, self.settings = get_period(self.ref_buffer,{}, framerate=self.framerate)
-					#(self.settings).update({'framerate':self.framerate})
+					# TODO: CJN makes sure ref_period doesn't change by more than 20%
 					# User selects the period
 					self.settings, self.get_period_status = select_period(self.ref_frames,self.settings)
 
@@ -296,7 +297,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				# Doesn't predict if haven't done on whole period
 				self.pp_old = float(pp)
 				self.frame_num +=1
-				
+
 				if self.frame_num-1 > self.settings['referencePeriod']:
 					
 					# Gets the trigger response
@@ -509,16 +510,15 @@ def init_controls(laser_trigger_pin=None, fluorescence_camera_pins=None, usb_inf
 							parity=usb_information[4],
 							stopbits=usb_information[5],
 							xonxoff=usb_information[6])
+							
+			# Serial object is the only new object
+			return ser
 		except Exception as inst:
 			print('Error setting up usb.')
 			print(inst)
 			return 4
-
-		# Serial object is the only new object
-		return ser
 		
 	return 0  # default return if no stage
-
 
 
 # Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
@@ -534,19 +534,16 @@ def trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_ca
 	#			True = the fluorescence camera captures the image once detecting the start of an increased signal
 	#			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
 	#		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
-
-	#print(delay,file=sys.__stdout__)  # DEBUG
+	# TODO: ABD add some logging here
 	# Captures an image in edge mode
 	if edge_trigger:
 
 		fp.edge(delay, laser_trigger_pin, fluorescence_camera_pins[0], fluorescence_camera_pins[2])
-		#print('DEBUG: eDGE', file=sys.__stdout__)
 
 	# Captures in trigger mode
 	else:
 
 		fp.pulse(delay, duration, laser_trigger_pin, fluorescence_camera_pins[0])
-		#print('DEBUG: PULSE', file=sys.__stdout__)
 
 
 
@@ -670,13 +667,28 @@ def live_data_capture():
 	log = dict_data['log']
 	laser_trigger_pin = dict_data['laser_trigger_pin']
 	fluorescence_camera_pins = dict_data['fluorescence_camera_pins'] # Trigger, SYNC-A, SYNC-B
-	usb_information = (dict_data['usb_name'],dict_data['usb_timeout'],dict_data['usb_baudrate'],dict_data['usb_dataBits'],dict_data['usb_parity'],dict_data['usb_XOnOff'],True)	#USB address, timeout, baud rate, data bits, parity, Xon/Xoff
-	
-	#Defines variables for USB serial stage commands
-	plane_address = dict_data['plane_address']
-	encoding = dict_data['encoding']
-	terminator = chr(dict_data['terminators'][0])+chr(dict_data['terminators'][1])
-	increment = dict_data['increment']
+	usb_information = dict_data['usb_stages']
+	# will be either None (no stages) or a dict of:
+	# 'usb_name', 'usb_timeout', 'usb_baudrate', 'usb_dataBits', 'usb_parity', 'usb_XOnOff'
+	# usb_information needs to be a tuple of
+	# (USB address, timeout, baud rate, data bits, parity, Xon/Xoff, True)
+	if usb_information is not None:
+		usb_information = (usb_information['usb_name'],
+						usb_information['usb_timeout'],
+						usb_information['usb_baudrate'],
+						usb_information['usb_dataBits'],
+						usb_information['usb_parity'],
+						usb_information['usb_XOnOff'],
+						True)
+		# TODO: ABD to make rest of code work with dict instead of tuple
+		# TODO: ABD to work out what True is for!
+		# TODO: CJN to migrate to spaces not tabs!
+		
+		#Defines variables for USB serial stage commands
+		plane_address = usb_information['plane_address']
+		encoding = usb_information['encoding']
+		terminator = chr(usb_information['terminators'][0])+chr(usb_information['terminators'][1])
+		increment = usb_information['increment']
 
 	# Sets up basic picam
 	brightfield_resolution = dict_data['brightfield_resolution'] 
@@ -694,22 +706,23 @@ def live_data_capture():
 
 	# Starts preview
 	# camera.start_preview(fullscreen=False, window = (500,20,640,480))
-
-	if dict_data['output_mode'] == '5V_BNC_Only':
-		
-		# USB serial not used so set to None
+	
+	# Initialise signallers
+	# usb_serial will be one of:
+	# 0 - if no failure and no usb stage
+	# 1 - if fastpins fails
+	# 2 - if laser pin fails
+	# 3 - if camera pins fail
+	# 4 - if usb stages fail
+	# serial object - if no failure and usb stages desired
+	usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
+	# Checks if usb_serial has recieved an error code
+	if isinstance(usb_serial,int) and usb_serial>0:
+		print('Error code '+str(usb_serial))
+		sys.exit()
+	elif isinstance(usb_serial,int) and usb_serial==0:
 		usb_serial = None
-
 	else:
-		
-		# Sets up pins and usb
-		usb_serial = init_controls(laser_trigger_pin, fluorescence_camera_pins, usb_information)
-
-		# Checks if usb_serial has recieved an error code
-		if isinstance(usb_serial, int):
-			print('Error code '+str(usb_serial))
-			sys.exit()
-
 		# Sets up stage to recieve input
 		neg_limit, pos_limit, current_position = scf.set_user_stage_limits(usb_serial,plane_address,encoding,terminator)
 		input('Press any key once the heart is in position.')
@@ -747,8 +760,8 @@ if __name__ == '__main__':
 
 
 	# Reads data from json file
-	data_file = open("settings.json")
-	dict_data = json.load(data_file)	
+	with open("settings.json") as data_file:
+		dict_data = json.load(data_file)
 
 	# Sets the prediction latency
 	predictionLatency = dict_data['predictionLatency']

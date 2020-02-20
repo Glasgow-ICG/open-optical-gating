@@ -101,7 +101,7 @@ def compareFrame(frame0, referenceFrames0, settings=None, log=False, plot=False)
 
     
     # Redirects all stdout to a log file
-    sys.stdout=open('output.log','w+')
+    sys.stdout=open('output.log','a+')
     # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
 
 #   print(type(frame0),type(referenceFrames0))
@@ -194,7 +194,8 @@ def predictTrigger(frameSummaryHistory,
     # targetSyncPhase should be in [0,2pi]
 
     # Redirects all stdout to a log file
-    sys.stdout=open('output.log','w+')
+    #sys.stdout=open('output.log','a+')
+    sys.stdout=sys.__stdout__  # DEBUG
 
     if frameSummaryHistory.shape[0] < settings['minFramesForFit']+1:
         if log:
@@ -306,7 +307,8 @@ def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=Fa
 
     #print(timeToWaitInSeconds,settings['predictionLatency'])
     # Redirects all stdout to a log file
-    sys.stdout=open('output.log','w+')
+    #sys.stdout=open('output.log','a+')
+    sys.stdout=sys.__stdout__  # DEBUG
 
     if timeToWaitInSeconds < settings['predictionLatency']:
         if log:
@@ -336,7 +338,7 @@ def gotNewSyncEstimateTimeDelay(timestamp, timeToWaitInSeconds, settings, log=Fa
         sendIt = 0
     elif sendIt > 0:
         if log:
-            print('Trigger to be sent, updating `settings[\'lastSent\']`.')
+            print('Trigger to be sent, updating `settings[\'lastSent\']`.', file=sys.__stdout__)
         settings['lastSent'] = timestamp
 
     return timeToWaitInSeconds, sendIt, settings
