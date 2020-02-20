@@ -1,0 +1,3 @@
+[submodule "optical-gating-alignment"]
+	path = optical-gating-alignment
+	url = https://github.com/Glasgow-ICG/optical-gating-alignment.git
