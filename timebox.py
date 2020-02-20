@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import shutil
 import json
+from datetime import datetime
 
 # Local imports
 import j_py_sad_correlation as jps
@@ -445,16 +446,19 @@ def get_period(brightfield_sequence, settings, framerate=80, minFramesForFit=5, 
 	settings = rts.deduceBarrierFrameArray(settings)
 
 	# Deletes the contents of the dir before creating a new one 
-	if os.path.isdir('period_data') == True:
-		shutil.rmtree('period_data')
-	os.mkdir('period_data')
+	# if os.path.isdir('period_data') == True:
+	# 	shutil.rmtree('period_data')
+	# os.mkdir('period_data')
+
+	# Add new folder with time stamp
+	os.mkdirs(os.path.join('period_data',datetime.now.isoformat()),exists_ok=True)
 
 	# Saves the period
 	if isinstance(brightfield_period, int) == False:
 
 		for i in range(brightfield_period.shape[0]):
 			
-			io.imsave(('period_data/{0:03d}.tiff'.format(i)), brightfield_period[i,:,:])
+			io.imsave(os.path.join('period_data',datetime.now.isoformat(),'/{0:03d}.tiff'.format(i)), brightfield_period[i,:,:])
 
 	return brightfield_period, settings
 
