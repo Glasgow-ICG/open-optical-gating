@@ -21,6 +21,9 @@ import getPeriod as gp
 import realTimeSync as rts
 import helper as hlp
 import stage_control_functions as scf
+sys.path.insert(0,'./optical-gating-alignment/')
+import memoryCC as mcc
+import memorycNW as mcnw
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
 
@@ -78,6 +81,16 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 		self.frame_buffer_length = frame_buffer_length
 		self.frameSummaryHistory = np.zeros((self.frame_buffer_length,3))
 		self.dtype = 'uint8'
+		
+		# Variables for adaptive algorithm
+		# Should be compatible with standard adaptive algorithm
+		#  (Nat Comms paper) and dynamic algorithm (unpublished, yet)
+		self.updateAfterNTriggers = updateAfterNTriggers  # if 0 turns adaptive mode off
+		self.trigger_num = 0
+		self.resampledSequence = []
+		self.periodHistory = []
+		self.shifts = []
+		self.driftHistory = []
 
 		# Variable for emulator
 		self.live = live 
@@ -128,11 +141,64 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 			frame = frame[:,:,0]
 		#method to analyse each frame as they are captured by the camera. Must be fast since it is running within
 		#the encoder's callback, and so must return before the next frame is produced.
+		
+		if self.trigger_num == self.updateAfterNTriggers:
+			# time to update the reference period whilst maintaining phase lock
+			# set get_period_status to 1 (so we clear things for a new reference period)
+			# as part of this trigger_num will be reset
+			self.get_period_status = 1
 
 		# Ensures stage is always within user defined limits (only needed for RPi-controlled stages)
 		if self.current_position <= self.positive_limit and self.current_position >= self.negative_limit:
+			
+			# Captures a set of reference frames syncing target frame with original user selection
+			if self.get_period_status == 3:
+				# In this mode we obtain a minimum number of frames
+				# Get a period guess and then align with previous
+				# periods using an adaptive algorithm (there is a choice here)
+
+				# Obtains a minimum amount of reference frames
+				if self.frame_num < self.frame_buffer_length:
+
+					# Adds current frame to reference
+					self.ref_buffer[self.frame_num,:,:] = frame
+					
+					# Increases frame number
+					self.frame_num += 1
+
+				# Once a suitible reference size has been obtained
+				# gets a period and align to the history
+				else:
+					# Obtains a reference period
+					self.ref_frames, self.settings = get_period(self.ref_buffer,{}, framerate=self.framerate)
+					self.get_period_status = 0
+
+					self.frame_num = 0
+					# add to periods history for adaptive updates
+					(self.resampledSequence,
+						self.periodHistory,
+						self.driftHistory,
+						self.shifts,
+						rF,
+						residuals,
+						indels,
+						score) = mcc.processNewReferenceSequence(self.ref_frames,
+																	self.settings['referencePeriod'],
+																	self.settings['drift'],
+																	self.resampledSequence,
+																	self.periodHistory,
+																	self.driftHistory,
+																	self.shifts,
+																	maxOffsetToConsider=3,
+																	knownPhaseIndex=0,
+																	knownPhase=80*self.initialTarget/self.settings['referencePeriod'],
+																	log=self.log)
+					self.settings['referenceFrame'] = (self.settings['referencePeriod']*rF/80)%self.settings['referencePeriod']
+					if self.log:
+						print('Reference period updated. New period of length {0} with reference frame at {1}'.format(self.settings['referencePeriod'],self.settings['referenceFrame']))
+					
 						
-			if self.get_period_status == 2:
+			elif self.get_period_status == 2:
 				# In this mode we obtain a minimum number of frames
 				# Get a period guess and then ask the user to select
 				# a frame or ask for a new period
@@ -157,6 +223,26 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 					# If user is happy with period
 					if self.get_period_status == 0:
 						self.frame_num = 0
+						# add to periods history for adaptive updates
+						(self.resampledSequence,
+						 self.periodHistory,
+						 self.driftHistory,
+						 self.shifts,
+						 rF,
+						 residuals,
+						 indels,
+						 score) = mcc.processNewReferenceSequence(self.ref_frames,
+																	self.settings['referencePeriod'],
+																	self.settings['drift'],
+																	self.resampledSequence,
+																	self.periodHistory,
+																	self.driftHistory,
+																	self.shifts,
+																	maxOffsetToConsider=3,
+																	knownPhaseIndex=0,
+																	knownPhase=80*self.settings['referenceFrame']/self.settings['referencePeriod'],
+																	log=self.log)
+						self.initialTarget = self.settings['referenceFrame'].copy()
 
 			# Clears ref_frames and resets frame number to reselect period
 			elif self.get_period_status == 1:
@@ -165,7 +251,13 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 				# Or before getting a new reference period in the adaptive mode
 				self.frame_num = 0
 				self.ref_frames = np.zeros((self.frame_buffer_length, self.height, self.width), dtype=self.dtype)
-				self.get_period_status = 2
+				if self.updateAfterNTriggers>0 and self.trigger_num>=self.updateAfterNTriggers:
+					# i.e. if adaptive reset trigger_num and get new period
+					# automatically phase-locking with the existing period
+					self.trigger_num = 0
+					self.get_period_status = 3
+				else:
+					self.get_period_status = 2
 
 
 			# Once period has been selected, analyses brightfield data for phase triggering
@@ -223,6 +315,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 						trigger_response, send, self.settings = rts.gotNewSyncEstimateTimeDelay(tt,trigger_response,self.settings,log=self.log)
 						if send>0:
 							
+							self.trigger_num = self.trigger_num + 1  # update trigger number for adaptive algorithm
 							#print('sending: ',send,end='\t')
 							if self.live:
 								
