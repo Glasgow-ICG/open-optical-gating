@@ -71,8 +71,8 @@ if __name__ == '__main__':
 
 	laser_trigger_pin = 22
 	fluorescence_camera_pins = (8,10,12)
-	delay = 400000
-	duration = 200000
+	delay = 500e3  # us
+	duration = 50e3  # us
 
 
 	if init_controls(laser_trigger_pin,fluorescence_camera_pins) == 0:
