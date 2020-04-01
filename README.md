@@ -47,7 +47,7 @@ The pin numbering system being used is the physical numbering system.
 
 ### Microscope test
 
-The microscope test can be run through the 'laser_and_camera_test.py' file.
+The microscope test can be run through the 'trigger_check' file.
 This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly.
 The test simply pulses pin 22 and pin 8 and returns an error if the software can not perform the pulsing and the user can detect a hardware if no signal is being detected by the microscope.
 
@@ -90,10 +90,10 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
 
    Which will save a file with name RPi-vidcap-NAME-DATE.h264 with a length of 60s at a frame rate of 80 fps.
 
-3. Launching the timebox program.
+3. Launching the cli program.
 
    ```{bash}
-   python3 timebox.py
+   python3 cli.py
    ```
 
    
@@ -102,7 +102,7 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
 
 5. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
-6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period_data//' in the same directory as the 'timebox.py' program. You can obtain a new reference period by entering -1.  
+6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period_data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
 
 7. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 

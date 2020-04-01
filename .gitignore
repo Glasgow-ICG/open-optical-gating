@@ -1,5 +1,19 @@
-*.swp
-**/__pycache__/**
-**/period_data/**
+**/local-data/**
 output.log
-simulated_trigger.png
+
+# Caches
+**/.ipynb_checkpoints/**
+*.pyc
+**/__pycache__/**
+*.swp
+
+# Packages
+**/dist/**
+
+# Unit test / coverage reports
+.coverage
+coverage.xml
+.tox
+.pytest_cache
+
+.DS_Store

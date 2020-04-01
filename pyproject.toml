@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "open-optical-gating"
+version = "1.0.0"
+description = ""
+authors = ["Chas Nelson <chas.nelson@glasgow.ac.uk>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastpins = { git = "https://github.com/abdrysdale/fastpins" }
+optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gating-alignment" }
+loguru = "^0.4.1"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+black = "^19.10b0"
+pytest-cov = "^2.8.1"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
