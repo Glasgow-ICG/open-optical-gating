@@ -12,7 +12,7 @@ from flask import Flask, render_template, Response
 from camera_pi import Camera
 
 #
-import cli
+import open_optical_gating.cli as cli
 
 app = Flask(__name__)
 
