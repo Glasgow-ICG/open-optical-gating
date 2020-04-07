@@ -28,7 +28,7 @@ def initialise(
     numExtraRefFrames=2,
 ):
     """Function to intialise our custom settings dict with sensible pre-sets."""
-    settings = {}
+    parameters = {}
     parameters.update({"drift": drift})  # starting drift corrections
     parameters.update({"framerate": framerate})  # starting est frame rate
     parameters.update(
@@ -68,8 +68,8 @@ def initialise(
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
     parameters.update(
         {
-            "referenceFrameCount": int(settings["referencePeriod"] + 1)
-            + (2 * settings["numExtraRefFrames"])
+            "referenceFrameCount": int(parameters["referencePeriod"] + 1)
+            + (2 * parameters["numExtraRefFrames"])
         }
     )  # number of reference frames including padding
     if referencePeriod > 0.0:
@@ -77,7 +77,7 @@ def initialise(
             {
                 "targetSyncPhase": 2
                 * np.pi
-                * (settings["referenceFrame"] / settings["referencePeriod"])
+                * (parameters["referenceFrame"] / parameters["referencePeriod"])
             }
         )  # target phase in rads
     else:
@@ -85,11 +85,11 @@ def initialise(
     parameters.update({"lastSent": 0.0})
     # parameters.update({'frameToUseArray':[0]})#this should be created locally when needed
 
-    return settings
+    return parameters
 
 
 def update(
-    settings,
+    parameters,
     drift=None,
     framerate=None,
     referencePeriod=None,
@@ -107,36 +107,36 @@ def update(
     as it will not automatically update certain keys.
     """
     if drift is not None:
-        settings["drift"] = drift
+        parameters["drift"] = drift
     if framerate is not None:
-        settings["framerate"] = framerate
+        parameters["framerate"] = framerate
     if referencePeriod is not None:
-        settings["referencePeriod"] = referencePeriod
+        parameters["referencePeriod"] = referencePeriod
     if numExtraRefFrames is not None:
-        settings["numExtraRefFrames"] = numExtraRefFrames
+        parameters["numExtraRefFrames"] = numExtraRefFrames
     if barrierFrame is not None:
-        settings["barrierFrame"] = (
-            (barrierFrame - settings["numExtraRefFrames"]) % settings["referencePeriod"]
-        ) + settings["numExtraRefFrames"]
+        parameters["barrierFrame"] = (
+            (barrierFrame - parameters["numExtraRefFrames"]) % parameters["referencePeriod"]
+        ) + parameters["numExtraRefFrames"]
     if extrapolationFactor is not None:
-        settings["extrapolationFactor"] = extrapolationFactor
+        parameters["extrapolationFactor"] = extrapolationFactor
     if maxReceivedFramesToStore is not None:
-        settings["maxReceivedFramesToStore"] = maxReceivedFramesToStore
+        parameters["maxReceivedFramesToStore"] = maxReceivedFramesToStore
     if maxFramesForFit is not None:
-        settings["maxFramesForFit"] = maxFramesForFit
+        parameters["maxFramesForFit"] = maxFramesForFit
     if minFramesForFit is not None:
-        settings["minFramesForFit"] = minFramesForFit
+        parameters["minFramesForFit"] = minFramesForFit
     if predictionLatency is not None:
-        settings["predictionLatency"] = predictionLatency
+        parameters["predictionLatency"] = predictionLatency
     if referenceFrame is not None:
-        settings["referenceFrame"] = referenceFrame % settings["referencePeriod"]
+        parameters["referenceFrame"] = referenceFrame % parameters["referencePeriod"]
 
     # automatically added keys
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
     parameters.update(
         {
-            "referenceFrameCount": int(settings["referencePeriod"] + 1)
-            + (2 * settings["numExtraRefFrames"])
+            "referenceFrameCount": int(parameters["referencePeriod"] + 1)
+            + (2 * parameters["numExtraRefFrames"])
         }
     )  # number of reference frames including padding
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
@@ -144,8 +144,8 @@ def update(
         {
             "targetSyncPhase": 2
             * np.pi
-            * (settings["referenceFrame"] / settings["referencePeriod"])
+            * (parameters["referenceFrame"] / parameters["referencePeriod"])
         }
     )  # target phase in rads
 
-    return settings
+    return parameters

@@ -5,7 +5,7 @@ These codes are equivalent to the Objective-C codes in spim-interface."""
 import numpy as np
 
 # Module imports
-import loguru as logger
+from loguru import logger
 import j_py_sad_correlation as jps
 
 # Local imports
@@ -143,10 +143,10 @@ def phase_matching(frame0, referenceFrames0, settings=None):
 
     frame = frame0[rectF[0] : rectF[1], rectF[2] : rectF[3]]
     referenceFrames = referenceFrames0[:, rect[0] : rect[1], rect[2] : rect[3]]
-    if plot:
-        a12 = f1.add_subplot(122)
-        a12.imshow(frame)
-        plt.show()
+    #if plot:
+    #    a12 = f1.add_subplot(122)
+    #    a12.imshow(frame)
+    #    plt.show()
 
     # Calculate SADs
     logger.trace(
@@ -167,15 +167,15 @@ def phase_matching(frame0, referenceFrames0, settings=None):
     )
 
     logger.trace(SADs)
-    if plot:
-        f2 = plt.figure()
-        a21 = f2.add_axes([0, 0, 1, 1])
-        a21.plot(range(len(SADs)), SADs)
-        plt.show()
+    #if plot:
+    #    f2 = plt.figure()
+    #    a21 = f2.add_axes([0, 0, 1, 1])
+    #    a21.plot(range(len(SADs)), SADs)
+    #    plt.show()
 
     # Identify best match
     phase = subframe_fitting(SADs, settings)
-    log.debug("Found frame phase to be {0}", phase)
+    logger.debug("Found frame phase to be {0}", phase)
 
     # Update drift
     settings = update_drift(frame0, referenceFrames0[np.argmin(SADs)], settings)

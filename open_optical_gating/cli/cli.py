@@ -4,7 +4,7 @@ import os
 import time
 from datetime import datetime
 from tqdm import tqdm
-import loguru as logger
+from loguru import logger
 
 # Numpy, Scipy, Pandas and Scikits
 import numpy as np
@@ -209,10 +209,10 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
                     self.frame_num = 0
                     # add to periods history for adaptive updates
-                        (self.sequence_history, self.period_history,self.drift_history,self.shift_history,self.global_solution,self.target) = oga.process_sequence(self.ref_frames,self.settings["referencePeriod"],self.settings["drift"],sequence_history=self.sequence_history,period_history=self.period_history,drift_history=self.drift_history,shift_history=self.shift_history,global_solution=self.global_solution,max_offset=3,ref_seq_id=0,ref_seq_phase=self.settings["referenceFrame"])
+                    (self.sequence_history, self.period_history,self.drift_history,self.shift_history,self.global_solution,self.target) = oga.process_sequence(self.ref_frames,self.settings["referencePeriod"],self.settings["drift"],sequence_history=self.sequence_history,period_history=self.period_history,drift_history=self.drift_history,shift_history=self.shift_history,global_solution=self.global_solution,max_offset=3,ref_seq_id=0,ref_seq_phase=self.settings["referenceFrame"])
                     self.settings = parameters.update(
                         self.settings,
-                        referenceFrame=(self.settings["referencePeriod"] * rF / 80)
+                        referenceFrame=(self.settings["referencePeriod"] * self.target / 80)
                         % self.settings["referencePeriod"],
                     )
                     logger.success("Reference period updated. New period of length {0} with reference frame at {1}",
@@ -714,9 +714,9 @@ def select_period(brightfield_period_frames, settings, framerate=80):
 
 #  TODO: move emulate to a separate script? Maybe an examples module/script?
 # Defines the three main modes (emulate capture, check fps and live data capture)
-def emulate_data_capture():
+def emulate_data_capture(emulate_data_set):
     # Emulated data capture for a set of sample data
-    emulate_data_set = "sample_data.tif"
+    # emulate_data_set = "sample_data.tif"
     # emulate_data_set = 'sample_data.h264'
     analyse_camera = YUVLumaAnalysis(
         output_mode=dict_data["output_mode"],
@@ -838,9 +838,9 @@ def live_data_capture():
     )
     # Checks if usb_serial has recieved an error code
     if isinstance(usb_serial, int) and usb_serial > 0:
-		## TODO: replace with a true exception
+	## TODO: replace with a true exception
         logger.critical("Error code " + str(usb_serial))
-		return False
+        return False
     elif isinstance(usb_serial, int) and usb_serial == 0:
         usb_serial = None
     else:
@@ -872,6 +872,7 @@ def live_data_capture():
 
 
 if __name__ == "__main__":
+    import sys
     # Iterates through a sample stack (with no period)
     # 	neg_limit = 0
     # 	pos_limit = 4
@@ -890,7 +891,12 @@ if __name__ == "__main__":
     # 	scf.move_stage(usb_serial, plane_address, pos_limit*(-1), encoding, terminator)
 
     # Reads data from json file
-    with open("settings.json") as data_file:
+    if len(sys.argv)>1:
+        settings = sys.argv[1]
+    else:
+        settings = "settings.json"
+
+    with open(settings) as data_file:
         dict_data = json.load(data_file)
 
     # Sets the prediction latency
@@ -901,4 +907,4 @@ if __name__ == "__main__":
     if live_capture == True:
         live_data_capture()
     else:
-        emulate_data_capture()
+        emulate_data_capture(dict_data['path'])

@@ -4,10 +4,11 @@ as used from prospective optical gating."""
 # Module imports
 import numpy as np
 import j_py_sad_correlation as jps
-import loguru as logger
+from loguru import logger
 
 # Local
 import parameters
+import prospective_optical_gating as pog
 
 
 def establish(sequence, settings, padding=True):
