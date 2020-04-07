@@ -40,6 +40,12 @@ def run(settings="settings.json", delay=500e3, number=10):
 
 if __name__ == "__main__":
 
+    # Reads data from json file
+    if len(sys.argv) > 1:
+        settings = sys.argv[1]
+    else:
+        settings = "settings.json"
+
     success = run()
 
     if success:

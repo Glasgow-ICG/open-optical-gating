@@ -1,4 +1,4 @@
-# A python script to test the Mecury movement stages
+# A python script to test the Mercury stages
 import serial
 
 
