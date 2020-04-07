@@ -1,12 +1,4 @@
-<html>
-
-<head>
-    <title>Video Streaming Demonstration</title>
-</head>
-
-<body>
-    <h1>Video Streaming Demonstration</h1>
-    <img src="{{ url_for('video_feed') }}">
-</body>
-
-</html>
+{% extends "base.html" %}
+{% block content %}
+<img src="{{ url_for('video_feed') }}" width="90%">
+{% endblock %}
