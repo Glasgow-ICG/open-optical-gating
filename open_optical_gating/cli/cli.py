@@ -713,7 +713,7 @@ def get_period(
 
     # Add new folder with time stamp
     dt = datetime.now().isoformat()
-    os.makedirs(os.path.join("period_data", dt), exist_ok=True)
+    os.makedirs(os.path.join("period-data", dt), exist_ok=True)
 
     # Saves the period
     if isinstance(brightfield_period, int) == False:
@@ -721,7 +721,7 @@ def get_period(
         for i in range(brightfield_period.shape[0]):
 
             io.imsave(
-                os.path.join("period_data", dt, "{0:03d}.tiff".format(i)),
+                os.path.join("period-data", dt, "{0:03d}.tiff".format(i)),
                 brightfield_period[i, :, :],
             )
 
@@ -958,4 +958,3 @@ if __name__ == "__main__":
         live_data_capture()
     else:
         emulate_data_capture(dict_data["path"])
-

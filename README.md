@@ -102,7 +102,7 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
 
 5. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
-6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period_data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
+6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
 
 7. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 
