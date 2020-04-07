@@ -5,6 +5,7 @@ import fastpins as fp
 import time
 import cli
 import json
+import sys
 
 
 def run(settings="settings.json", delay=500e3, number=10):
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     else:
         settings = "settings.json"
 
-    success = run()
+    success = run(settings)
 
     if success:
         print("If your microscope triggered, this was successful")
