@@ -143,7 +143,7 @@ def phase_matching(frame0, referenceFrames0, settings=None):
 
     frame = frame0[rectF[0] : rectF[1], rectF[2] : rectF[3]]
     referenceFrames = referenceFrames0[:, rect[0] : rect[1], rect[2] : rect[3]]
-    #if plot:
+    # if plot:
     #    a12 = f1.add_subplot(122)
     #    a12.imshow(frame)
     #    plt.show()
@@ -167,7 +167,7 @@ def phase_matching(frame0, referenceFrames0, settings=None):
     )
 
     logger.trace(SADs)
-    #if plot:
+    # if plot:
     #    f2 = plt.figure()
     #    a21 = f2.add_axes([0, 0, 1, 1])
     #    a21.plot(range(len(SADs)), SADs)

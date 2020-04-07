@@ -1,4 +1,4 @@
-'''Main CLI Open Optical Gating System'''
+"""Main CLI Open Optical Gating System"""
 
 import os
 import time
@@ -38,9 +38,9 @@ logger.disable("open_optical_gating")
 
 
 class YUVLumaAnalysis(array.PiYUVAnalysis):
-    '''Custom class to convert and analyse Y (luma) channel of each YUV frame.
+    """Custom class to convert and analyse Y (luma) channel of each YUV frame.
     Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
-    '''
+    """
 
     def __init__(
         self,
@@ -209,16 +209,38 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
                     self.frame_num = 0
                     # add to periods history for adaptive updates
-                    (self.sequence_history, self.period_history,self.drift_history,self.shift_history,self.global_solution,self.target) = oga.process_sequence(self.ref_frames,self.settings["referencePeriod"],self.settings["drift"],sequence_history=self.sequence_history,period_history=self.period_history,drift_history=self.drift_history,shift_history=self.shift_history,global_solution=self.global_solution,max_offset=3,ref_seq_id=0,ref_seq_phase=self.settings["referenceFrame"])
+                    (
+                        self.sequence_history,
+                        self.period_history,
+                        self.drift_history,
+                        self.shift_history,
+                        self.global_solution,
+                        self.target,
+                    ) = oga.process_sequence(
+                        self.ref_frames,
+                        self.settings["referencePeriod"],
+                        self.settings["drift"],
+                        sequence_history=self.sequence_history,
+                        period_history=self.period_history,
+                        drift_history=self.drift_history,
+                        shift_history=self.shift_history,
+                        global_solution=self.global_solution,
+                        max_offset=3,
+                        ref_seq_id=0,
+                        ref_seq_phase=self.settings["referenceFrame"],
+                    )
                     self.settings = parameters.update(
                         self.settings,
-                        referenceFrame=(self.settings["referencePeriod"] * self.target / 80)
+                        referenceFrame=(
+                            self.settings["referencePeriod"] * self.target / 80
+                        )
                         % self.settings["referencePeriod"],
                     )
-                    logger.success("Reference period updated. New period of length {0} with reference frame at {1}",
-                                self.settings['referencePeriod'],
-                                self.settings["referenceFrame"],
-                        )
+                    logger.success(
+                        "Reference period updated. New period of length {0} with reference frame at {1}",
+                        self.settings["referencePeriod"],
+                        self.settings["referenceFrame"],
+                    )
 
             elif self.get_period_status == 2:
                 # In this mode we obtain a minimum number of frames
@@ -250,7 +272,21 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                     if self.get_period_status == 0:
                         self.frame_num = 0
                         # add to periods history for adaptive updates
-                        (self.sequence_history, self.period_history,self.drift_history,self.shift_history,self.global_solution,self.target) = oga.process_sequence(self.ref_frames,self.settings["referencePeriod"],self.settings["drift"],max_offset=3,ref_seq_id=0,ref_seq_phase=self.settings["referenceFrame"])
+                        (
+                            self.sequence_history,
+                            self.period_history,
+                            self.drift_history,
+                            self.shift_history,
+                            self.global_solution,
+                            self.target,
+                        ) = oga.process_sequence(
+                            self.ref_frames,
+                            self.settings["referencePeriod"],
+                            self.settings["drift"],
+                            max_offset=3,
+                            ref_seq_id=0,
+                            ref_seq_phase=self.settings["referenceFrame"],
+                        )
                         self.initialTarget = self.settings["referenceFrame"].copy()
 
             # Clears ref_frames and resets frame number to reselect period
@@ -352,12 +388,8 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                     # Captures the image  and then moves the stage if triggered
                     if trigger_response > 0:
 
-                        logger.info('Possible trigger: {0}',trigger_response)
-                        (
-                            trigger_response,
-                            send,
-                            self.settings,
-                        ) = pog.decide_trigger(
+                        logger.info("Possible trigger: {0}", trigger_response)
+                        (trigger_response, send, self.settings,) = pog.decide_trigger(
                             tt, trigger_response, self.settings
                         )
                         if send > 0:
@@ -365,7 +397,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                             self.trigger_num = (
                                 self.trigger_num + 1
                             )  # update trigger number for adaptive algorithm
-                            logger.success('Sending trigger: {0}',send)
+                            logger.success("Sending trigger: {0}", send)
                             if self.live:
 
                                 if self.outputMode == 1:
@@ -393,13 +425,25 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                                         self.terminator,
                                     )
                             else:
-                                logger.info('Not Live: {0}, {1}, {2}, {3}',send,trigger_response,pp,tt)
+                                logger.info(
+                                    "Not Live: {0}, {1}, {2}, {3}",
+                                    send,
+                                    trigger_response,
+                                    pp,
+                                    tt,
+                                )
                                 # Returns the trigger response, phase and timestamp for emulated data
                                 return trigger_response, pp, tt
 
                             # self.targetSyncPhaseOld = current_sync_phase
                         elif not self.live:
-                            logger.info('Not sent: {0}, {1}, {2}, {3}',send,trigger_response,pp,tt)
+                            logger.info(
+                                "Not sent: {0}, {1}, {2}, {3}",
+                                send,
+                                trigger_response,
+                                pp,
+                                tt,
+                            )
                             return None, pp, tt
 
                         # Do something with the stage result:
@@ -459,7 +503,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                 # Gets data from analyse function (also times function call)
                 time_init = time.time()
                 trigger_response, pp, tt = self.analyze(frame)
-                logger.trace('t = {0}; p = {1}; tr = {2};',tt,pp,trigger_response)
+                logger.trace("t = {0}; p = {1}; tr = {2};", tt, pp, trigger_response)
                 time_fin = time.time()
 
                 # Adds data to lists
@@ -493,8 +537,14 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         phase = np.array(phase)
         trigger_times = np.array(trigger_times)
 
-        logger.info("Processing time (min and max): {0} {1}", process_time.min(), process_time.max())
-        logger.info("Timestamp (min and max): {0} {1}", timestamp.min(), timestamp.max())
+        logger.info(
+            "Processing time (min and max): {0} {1}",
+            process_time.min(),
+            process_time.max(),
+        )
+        logger.info(
+            "Timestamp (min and max): {0} {1}", timestamp.min(), timestamp.max()
+        )
         logger.info("Phase (min and max): {0} {1}", phase.min(), phase.max())
 
         # Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
@@ -595,7 +645,7 @@ def init_controls(
             # Serial object is the only new object
             return ser
         except Exception as inst:
-            logger.critical('Error setting up usb.')
+            logger.critical("Error setting up usb.")
             logger.critical(inst)
             return 4
 
@@ -658,9 +708,7 @@ def get_period(
         )
 
     # Calculates period from determine_reference_period.py
-    brightfield_period, settings = ref.establish(
-        brightfield_sequence, settings
-    )
+    brightfield_period, settings = ref.establish(brightfield_sequence, settings)
     settings = pog.determine_barrier_frames(settings)
 
     # Add new folder with time stamp
@@ -724,6 +772,7 @@ def emulate_data_capture(emulate_data_set):
     )
     analyse_camera.emulate(emulate_data_set)
 
+
 # TODO: is this needed/can this be incorporated elsewhere?
 # Checks that the analyze function can run at the desired framerate
 def check_fps(brightfield_framerate=80, brightfield_resolution=128):
@@ -759,7 +808,7 @@ def check_fps(brightfield_framerate=80, brightfield_resolution=128):
 
     # Gets longest time of analyze function
     longest_analyse_time = max(analyse_camera.time_ary)
-    logger.debug('Longest call to \'analyze()\'',longest_analyse_time)
+    logger.debug("Longest call to 'analyze()'", longest_analyse_time)
 
     if 1 / longest_analyse_time > brightfield_framerate:
 
@@ -838,7 +887,7 @@ def live_data_capture():
     )
     # Checks if usb_serial has recieved an error code
     if isinstance(usb_serial, int) and usb_serial > 0:
-	## TODO: replace with a true exception
+        ## TODO: replace with a true exception
         logger.critical("Error code " + str(usb_serial))
         return False
     elif isinstance(usb_serial, int) and usb_serial == 0:
@@ -873,6 +922,7 @@ def live_data_capture():
 
 if __name__ == "__main__":
     import sys
+
     # Iterates through a sample stack (with no period)
     # 	neg_limit = 0
     # 	pos_limit = 4
@@ -891,7 +941,7 @@ if __name__ == "__main__":
     # 	scf.move_stage(usb_serial, plane_address, pos_limit*(-1), encoding, terminator)
 
     # Reads data from json file
-    if len(sys.argv)>1:
+    if len(sys.argv) > 1:
         settings = sys.argv[1]
     else:
         settings = "settings.json"
@@ -907,4 +957,5 @@ if __name__ == "__main__":
     if live_capture == True:
         live_data_capture()
     else:
-        emulate_data_capture(dict_data['path'])
+        emulate_data_capture(dict_data["path"])
+

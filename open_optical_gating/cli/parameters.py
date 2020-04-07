@@ -116,7 +116,8 @@ def update(
         parameters["numExtraRefFrames"] = numExtraRefFrames
     if barrierFrame is not None:
         parameters["barrierFrame"] = (
-            (barrierFrame - parameters["numExtraRefFrames"]) % parameters["referencePeriod"]
+            (barrierFrame - parameters["numExtraRefFrames"])
+            % parameters["referencePeriod"]
         ) + parameters["numExtraRefFrames"]
     if extrapolationFactor is not None:
         parameters["extrapolationFactor"] = extrapolationFactor
