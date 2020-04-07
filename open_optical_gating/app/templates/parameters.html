@@ -3,8 +3,8 @@
 <div class="parameters-item">
     {% if val is mapping %}
     <!-- <p>dict</p> -->
-    <button type="button" class="btn btn-info btn-lg" data-toggle="modal" data-target="#myModal">Open Modal</button>
-    <div id="myModal" class="modal fade" role="dialog">
+    <button type="button" class="btn btn-info btn-lg" data-toggle="modal" data-target="#{{ key }}">{{ key }}</button>
+    <div id="{{ key }}" class="modal fade" role="dialog">
         <div class="modal-dialog">
             <div class="modal-content parameters-form">
                 <input type="hidden" id="{{ key }}" name="{{ key }}" value="">
@@ -35,7 +35,7 @@
 
 {% extends "base.html" %}
 {% block content %}
-<form class="parameters-form" action="{{ url_for('save_settings') }}" method="post" enctype='application/json'>
+<form class="parameters-form" action="{{ url_for('parameters') }}" method="post" enctype='application/json'>
     {{ layout_parameters(settings) }}
     <input type="submit" value="Submit">
 </form>

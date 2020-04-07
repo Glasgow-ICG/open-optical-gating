@@ -27,10 +27,10 @@ import json  # TODO move this into parameters.py
 import fastpins as fp
 
 # Local imports
-import determine_reference_period as ref
-import prospective_optical_gating as pog
-import parameters
-import stage_control_functions as scf
+from . import determine_reference_period as ref
+from . import prospective_optical_gating as pog
+from . import parameters
+from . import stage_control_functions as scf
 
 import optical_gating_alignment.optical_gating_alignment as oga
 
@@ -595,17 +595,38 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         plt.show()
 
 
-# Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
-def init_controls(
-    laser_trigger_pin=None, fluorescence_camera_pins=None, usb_information=None
-):
+def init_controls(settings):
+    '''Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
+    Function inputs:
+        laser_trigger_pin = the GPIO pin number connected to fire the laser
+        fluorescence_camera_pins = an array of 3 pins used to for the fluoresence camera
+                                        (trigger, SYNC-A, SYNC-B)
+        usb_information = a list containing the information used to set up the usb for controlling the Newport stages
+                                (USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
+    '''
 
-    # Function inputs:
-    # 	laser_trigger_pin = the GPIO pin number connected to fire the laser
-    # 	fluorescence_camera_pins = an array of 3 pins used to for the fluoresence camera
-    # 									(trigger, SYNC-A, SYNC-B)
-    # 	usb_information = a list containing the information used to set up the usb for controlling the Newport stages
-    # 							(USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
+    # Defines initial variables
+    laser_trigger_pin = settings["laser_trigger_pin"]
+    fluorescence_camera_pins = settings[
+        "fluorescence_camera_pins"
+    ]  # Trigger, SYNC-A, SYNC-B
+    usb_information = settings["usb_stages"]
+    # will be either None (no stages) or a dict of:
+    # 'usb_name', 'usb_timeout', 'usb_baudrate', 'usb_dataBits', 'usb_parity', 'usb_XOnOff'
+    # usb_information needs to be a tuple of
+    # (USB address, timeout, baud rate, data bits, parity, Xon/Xoff, True)
+    if usb_information is not None:
+        usb_information = (
+            usb_information["usb_name"],
+            usb_information["usb_timeout"],
+            usb_information["usb_baudrate"],
+            usb_information["usb_dataBits"],
+            usb_information["usb_parity"],
+            usb_information["usb_XOnOff"],
+            True,
+        )
+        # TODO: ABD to make rest of code work with dict instead of tuple
+        # TODO: ABD to work out what True is for!
 
     # Initialises fastpins module
     try:
@@ -652,10 +673,10 @@ def init_controls(
     return 0  # default return if no stage
 
 
-# Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 def trigger_fluorescence_image_capture(
     delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=True, duration=1e3
 ):
+    '''Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 
     # Function inputs:
     # 		delay = delay time (in microseconds) before the image is captured
@@ -668,6 +689,8 @@ def trigger_fluorescence_image_capture(
     # 			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
     # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
     # TODO: ABD add some logging here
+    '''
+
     # Captures an image in edge mode
     if edge_trigger:
 
@@ -824,56 +847,7 @@ def check_fps(brightfield_framerate=80, brightfield_resolution=128):
 
 
 # Performs a live capture of the data
-def live_data_capture():
-    # Defines initial variables
-    laser_trigger_pin = dict_data["laser_trigger_pin"]
-    fluorescence_camera_pins = dict_data[
-        "fluorescence_camera_pins"
-    ]  # Trigger, SYNC-A, SYNC-B
-    usb_information = dict_data["usb_stages"]
-    # will be either None (no stages) or a dict of:
-    # 'usb_name', 'usb_timeout', 'usb_baudrate', 'usb_dataBits', 'usb_parity', 'usb_XOnOff'
-    # usb_information needs to be a tuple of
-    # (USB address, timeout, baud rate, data bits, parity, Xon/Xoff, True)
-    if usb_information is not None:
-        usb_information = (
-            usb_information["usb_name"],
-            usb_information["usb_timeout"],
-            usb_information["usb_baudrate"],
-            usb_information["usb_dataBits"],
-            usb_information["usb_parity"],
-            usb_information["usb_XOnOff"],
-            True,
-        )
-        # TODO: ABD to make rest of code work with dict instead of tuple
-        # TODO: ABD to work out what True is for!
-        # TODO: CJN to migrate to spaces not tabs!
-
-        # Defines variables for USB serial stage commands
-        plane_address = usb_information["plane_address"]
-        encoding = usb_information["encoding"]
-        terminator = chr(usb_information["terminators"][0]) + chr(
-            usb_information["terminators"][1]
-        )
-        increment = usb_information["increment"]
-
-    # Sets up basic picam
-    brightfield_resolution = dict_data["brightfield_resolution"]
-    brightfield_framerate = dict_data["brightfield_framerate"]
-
-    analyse_time = dict_data["analyse_time"]  # s
-
-    camera = picamera.PiCamera()
-    camera.framerate = brightfield_framerate
-    camera.resolution = (brightfield_resolution, brightfield_resolution)
-    camera.awb_mode = dict_data["awb_mode"]
-    camera.exposure_mode = dict_data["exposure_mode"]
-    camera.shutter_speed = dict_data["shutter_speed"]  # us
-    camera.image_denoise = dict_data["image_denoise"]
-
-    # Starts preview
-    # camera.start_preview(fullscreen=False, window = (500,20,640,480))
-
+def live_data_capture(dict_data):
     # Initialise signallers
     # usb_serial will be one of:
     # 0 - if no failure and no usb stage
@@ -882,9 +856,8 @@ def live_data_capture():
     # 3 - if camera pins fail
     # 4 - if usb stages fail
     # serial object - if no failure and usb stages desired
-    usb_serial = init_controls(
-        laser_trigger_pin, fluorescence_camera_pins, usb_information
-    )
+    usb_serial = init_controls(dict_data)
+
     # Checks if usb_serial has recieved an error code
     if isinstance(usb_serial, int) and usb_serial > 0:
         ## TODO: replace with a true exception
@@ -893,17 +866,33 @@ def live_data_capture():
     elif isinstance(usb_serial, int) and usb_serial == 0:
         usb_serial = None
     else:
+        # Defines variables for USB serial stage commands
+        plane_address = usb_information["plane_address"]
+        encoding = usb_information["encoding"]
+        terminator = chr(usb_information["terminators"][0]) + chr(
+            usb_information["terminators"][1]
+        )
+        increment = usb_information["increment"]
+
         # Sets up stage to recieve input
         neg_limit, pos_limit, current_position = scf.set_user_stage_limits(
             usb_serial, plane_address, encoding, terminator
         )
-        input("Press any key once the heart is in position.")
+
+    # Camera settings
+    camera = picamera.PiCamera()
+    camera.framerate = dict_data["brightfield_framerate"]
+    camera.resolution = (dict_data["brightfield_resolution"], dict_data["brightfield_resolution"])
+    camera.awb_mode = dict_data["awb_mode"]
+    camera.exposure_mode = dict_data["exposure_mode"]
+    camera.shutter_speed = dict_data["shutter_speed"]  # us
+    camera.image_denoise = dict_data["image_denoise"]
 
     # Sets up YUVLumaAnalysis object
     # DEVNOTE: Remember to update the equivalent line in emulate_data_capture()
     analyse_camera = YUVLumaAnalysis(
         camera=camera,
-        brightfield_framerate=brightfield_framerate,
+        brightfield_framerate=camera.framerate,
         usb_serial=usb_serial,
         output_mode=dict_data["output_mode"],
         updateAfterNTriggers=dict_data["updateAfterNTriggers"],
@@ -912,12 +901,8 @@ def live_data_capture():
 
     # Starts analysing brightfield data
     camera.start_recording(analyse_camera, format="yuv")
-    camera.wait_recording(analyse_time)
+    camera.wait_recording(dict_data["analyse_time"])  # s
     camera.stop_recording()
-
-    # Ends preview
-    # input('Press any key to end camera preview')
-    # camera.stop_preview()
 
 
 if __name__ == "__main__":
@@ -952,6 +937,6 @@ if __name__ == "__main__":
     # Performs a live or emulated data capture
     live_capture = dict_data["live"]
     if live_capture == True:
-        live_data_capture()
+        live_data_capture(dict_data)
     else:
         emulate_data_capture(dict_data["path"])

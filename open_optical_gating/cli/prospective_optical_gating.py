@@ -9,7 +9,7 @@ from loguru import logger
 import j_py_sad_correlation as jps
 
 # Local imports
-import parameters
+from . import parameters
 
 
 def update_drift(frame0, bestMatch0, settings):

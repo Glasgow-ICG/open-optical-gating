@@ -7,8 +7,8 @@ import j_py_sad_correlation as jps
 from loguru import logger
 
 # Local
-import parameters
-import prospective_optical_gating as pog
+from . import parameters
+from . import prospective_optical_gating as pog
 
 
 def establish(sequence, settings, padding=True):
