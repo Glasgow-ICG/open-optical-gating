@@ -949,9 +949,6 @@ if __name__ == "__main__":
     with open(settings) as data_file:
         dict_data = json.load(data_file)
 
-    # Sets the prediction latency
-    predictionLatency = dict_data["predictionLatency"]
-
     # Performs a live or emulated data capture
     live_capture = dict_data["live"]
     if live_capture == True:

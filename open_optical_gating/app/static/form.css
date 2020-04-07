@@ -1,0 +1,14 @@
+.parameters-form {
+    width: 100%;
+    display: flex; /* or inline-flex */
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-content: space-around;
+}
+.parameters-item {
+    padding: 10px;
+}
+.modal-dialog {
+    width:80%;
+}
