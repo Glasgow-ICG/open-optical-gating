@@ -29,8 +29,6 @@
                             href="{{ url_for('index') }}">Live Stream</a></li>
                     <li {% if request.endpoint == "parameters" %} class='active' {% endif %}><a
                             href="{{ url_for('parameters') }}">Settings Editor</a></li>
-                    <li {% if request.endpoint == "check" %} class='active' {% endif %}><a
-                            href="{{ url_for('check') }}">Check Set-up</a></li>
                     <li {% if request.endpoint == "emulate" %} class='active' {% endif %}><a
                             href="{{ url_for('emulate') }}">Emulate</a></li>
                     <li {% if request.endpoint == "run" %} class='active' {% endif %}><a

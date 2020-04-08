@@ -33,13 +33,13 @@ def index():
 
     # manual reset for session keys
     # stages = session.pop('stages')
+    # pos = session.pop('positions')
 
     # initialise or move stages
     if 'stages' not in session.keys():
         session['stages'] = {}
-        init_stage(1)  # need make these ints x/y/z
-        init_stage(2)
-        init_stage(3)
+        session['positions'] = {'x':0,'y':0,'z':0}
+        init_hardware()
     elif request.args.get('stage') is not None:
         move_stage(request.args.get('stage'),request.args.get('size'))
 
@@ -59,8 +59,8 @@ def video_feed():
     return Response(gen(Camera()), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-def init_stage(stage):
-    # NOTE: stage is currently the address, need to map those somewhere a la https://raw.githubusercontent.com/RuiSantosdotme/Random-Nerd-Tutorials/master/Projects/RPi-Web-Server/app_outputs.py
+def init_hardware():
+    # NOTE: stage currently the address, need to map those to xyz somewhere a la https://raw.githubusercontent.com/RuiSantosdotme/Random-Nerd-Tutorials/master/Projects/RPi-Web-Server/app_outputs.py
     # load current settings
     with open(settings_file) as f:
         settings_dict = json.load(f)
@@ -74,8 +74,10 @@ def init_stage(stage):
     # 4 - if usb stages fail
     # serial object - if no failure and usb stages desired
     usb_serial = cli.init_controls(settings_dict)
+    # also inits laser and fluorescence camera triggers
+    # TODO deal with errors
 
-    # TODO add camera settings?
+    # TODO add picamera settings?
 
     # Checks if usb_serial has recieved an error code
     if isinstance(usb_serial, int) and usb_serial > 0:
@@ -95,7 +97,9 @@ def init_stage(stage):
 
     # store the stage details for future calls
     if usb_serial is not None:
-        session['stages'][stage] = [usb_serial, plane_address, encoding, terminator, 0]  # zero is the position # TODO make it so
+        session['stages'] = [usb_serial, plane_address, encoding, terminator]
+    # for testing only
+    session['stages'] = [0, 0, 0, 0]
 
 
 # The function below is executed when someone requests a URL with the stage, direction and step size in it:
@@ -104,27 +108,36 @@ def move_stage(stage, size):
     size = int(size)
 
 
-    if 'stages' in session.keys() and stage in session['stages'].keys():
+    if 'positions' in session.keys():
         # load current stage settings
-        stages = session.pop('stages')
-        stage_settings = stages[stage]
+        pos = session.pop('positions')
 
-        state = scf.set_stage_to_recieve_input(stage_settings[0], stage, stage_settings[1], stage_settings[2])
+        state = scf.set_stage_to_recieve_input(session['stages'][0], stage, session['stages'][2], session['stages'][3])
         if state is 0:
-            stage_result = scf.move_stage(stage_settings[0],
-                                        stage_settings[1],
+            stage_result = scf.move_stage(session['stages'][0],
+                                        stage,
                                         size,
-                                        stage_settings[2],
-                                        stage_settings[3])
-            stage_settings[-1] = stage_settings[-1]+size
+                                        session['stages'][2],
+                                        session['stages'][3])
         else:
             logger.critical('No response from stage {0}',stage)
         
-        stages[stage] = stage_settings
-        session['stages'] = stages
+        pos[stage] = pos[stage] + size
+        session['positions'] = pos
     else:
         logger.critical('You appear to be trying to move stage {0}, which doesn\'t exist.',stage)
 
+
+@app.route("/fire")
+def trigger(duration=500):
+    """A script to trigger the laser and camera on button press."""
+    with open(settings_file) as f:
+        settings_dict = json.load(f)
+
+    laser_trigger_pin = settings_file["laser_trigger_pin"]
+    fluorescence_camera_pins = settings_file["fluorescence_camera_pins"]
+
+    cli.trigger_fluorescence_image_capture(0,laser_trigger_pin,fluorescence_camera_pins,edge_trigger=False,duration=duration)
 
 @app.route("/parameters", methods=['GET','POST'])
 def parameters():
@@ -173,12 +186,6 @@ def parameters():
             json.dump(settings_dict, f, indent=2, sort_keys=True)
 
     return render_template("parameters.html", settings=settings_dict)
-
-
-@app.route("/check")
-def check():
-    """Page to check triggering and stages."""
-    return render_template("check.html")
 
 
 @app.route("/emulate")
