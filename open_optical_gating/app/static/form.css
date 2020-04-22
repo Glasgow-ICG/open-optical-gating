@@ -12,3 +12,15 @@
 .modal-dialog {
     width:80%;
 }
+.reference-period {
+    clear: both;
+    margin: auto;
+}
+.reference-period  img{
+    width: 100%;
+}
+.results-img {
+    clear:both;
+    width: 100%;
+    margin: auto;
+}
