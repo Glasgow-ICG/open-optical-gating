@@ -9,7 +9,7 @@ from loguru import logger
 import j_py_sad_correlation as jps
 
 # Local imports
-import parameters
+import open_optical_gating.cli.parameters as parameters
 
 
 def update_drift(frame0, bestMatch0, settings):
@@ -102,13 +102,13 @@ def v_fitting(y1, y2, y3):
 def phase_matching(frame0, referenceFrames0, settings=None):
     # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
 
-    logger.trace(
+    logger.debug(
         "Reference frame types: {0} and {1}", type(frame0), type(referenceFrames0)
     )
-    logger.trace(
+    logger.debug(
         "Reference frame dtypes: {0} and {1}", frame0.dtype, referenceFrames0.dtype
     )
-    logger.trace(
+    logger.debug(
         "Reference frame shapes: {0} and {1}", frame0.shape, referenceFrames0.shape
     )
     if settings == None:
@@ -199,6 +199,7 @@ def predict_trigger_wait(
     if frameSummaryHistory.shape[0] < settings["minFramesForFit"] + 1:
         logger.debug("Fit failed due to too few frames...")
         return -1
+
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(
@@ -210,9 +211,12 @@ def predict_trigger_wait(
         framesForFit = settings["minFramesForFit"]
         allowedToExtendNumberOfFittedPoints = True
 
-    pastPhases0 = frameSummaryHistory[-int(framesForFit) :, :]
+    pastPhases = frameSummaryHistory[-int(framesForFit) : :, :]
 
-    radsPerSec, alpha = np.polyfit(pastPhases0[:, 0], pastPhases0[:, 1], 1)
+    radsPerSec, alpha = np.polyfit(pastPhases[:, 0], pastPhases[:, 1], 1)
+
+    logger.trace(pastPhases[:, 0])
+    logger.trace(pastPhases[:, 1])
 
     logger.info("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
     if radsPerSec < 0:
@@ -243,9 +247,10 @@ def predict_trigger_wait(
         timeToWaitInSecs,
     )
     logger.debug(
-        "Current phase: {0};\tPhase to wait: {1};\nTarget phase:{2};\tPredicted phase:{3};",
-        thisFramePhase,
-        phaseToWait,
+        "Current phase: {0};\tPhase to wait: {1};", thisFramePhase, phaseToWait,
+    )
+    logger.debug(
+        "Target phase:{0};\tPredicted phase:{1};",
         settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi),
         thisFramePhase + phaseToWait,
     )
@@ -322,7 +327,11 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     sendIt = 0
     framerateFactor = 1.6  # in frames
 
-    logger.trace(timeToWaitInSeconds, settings["predictionLatency"])
+    logger.debug(
+        "Time to wait: {0} s; with latency: {1} s;",
+        timeToWaitInSeconds,
+        settings["predictionLatency"],
+    )
 
     if timeToWaitInSeconds < settings["predictionLatency"]:
         logger.info("Too close but if not sent this period then give it a shot...")

@@ -1,5 +1,8 @@
 **/local-data/**
+**/period-data/**
 output.log
+**/triggers.png
+**/accuracy.png
 
 # Caches
 **/.ipynb_checkpoints/**

@@ -1,13 +1,64 @@
+<!DOCTYPE html>
 <html>
-    `<head>
-      <title>Welcome to AsclePius</title>
-    </head>
-    <body>
-        <div>AsclePius: 
-	<a href="/">Capture</a>
-	<a href="/test">Test</a>
-	</div>
-        <hr>
+
+<head>
+    <title>asclePIus - open optical gating</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="http://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet" media="screen">
+    <link href="../static/form.css" rel="stylesheet">
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <h1>asclePIus - Open optical gating</h1>
+    <nav class="navbar navbar-inverse" role="navigation">
+        <div class="container-fluid">
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle" data-toggle="collapse"
+                    data-target="#bs-example-navbar-collapse-1">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="navbar-brand" href="/">asclePIus</a>
+            </div>
+
+            <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+                <ul class="nav navbar-nav">
+                    <li {% if request.endpoint == "index" %} class='active' {% endif %}><a
+                            href="{{ url_for('index') }}">Live Stream</a></li>
+                    <li {% if request.endpoint == "parameters" %} class='active' {% endif %}><a
+                            href="{{ url_for('parameters') }}">Settings Editor</a></li>
+                    <li {% if request.endpoint == "emulate" %} class='active' {% endif %}><a
+                            href="{{ url_for('emulate') }}">Emulate</a></li>
+                    <li {% if request.endpoint == "run" %} class='active' {% endif %}><a
+                            href="{{ url_for('run') }}">Run!</a></li>
+                </ul>
+                <ul class="nav navbar-nav navbar-right">
+                    <li><a href="#">Link</a></li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Dropdown <b class="caret"></b></a>
+                        <ul class="dropdown-menu">
+                            <li><a href="#">Action</a></li>
+                            <li><a href="#">Another action</a></li>
+                            <li><a href="#">Something else here</a></li>
+                            <li class="divider"></li>
+                            <li><a href="#">Separated link</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div><!-- /.navbar-collapse -->
+        </div><!-- /.container-fluid -->
+    </nav>
+
+    <div class="container">
+        <br>
         {% block content %}{% endblock %}
-    </body>
+        <br>
+    </div>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+</body>
+
 </html>

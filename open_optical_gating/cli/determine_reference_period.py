@@ -7,8 +7,8 @@ import j_py_sad_correlation as jps
 from loguru import logger
 
 # Local
-import parameters
-import prospective_optical_gating as pog
+from . import parameters
+from . import prospective_optical_gating as pog
 
 
 def establish(sequence, settings, padding=True):
@@ -100,7 +100,7 @@ def calculate_period_length(diffs):
 def estimate_period_length(diffs):
     # unlike JTs codes I assume 1 period with a start frame of 1
     if diffs.size < 2:
-        logger.warning("Not enough diffs, returning -1")
+        logger.debug("Not enough diffs, returning -1")
         return -1
 
     score = diffs[diffs.size - 1]
@@ -122,7 +122,7 @@ def estimate_period_length(diffs):
         if got:
             return values[5]
 
-    logger.warning("I didn't find a whole period, returning -1")
+    logger.debug("I didn't find a whole period, returning -1")
     return -1  # catch if doesn't find a period
 
 
