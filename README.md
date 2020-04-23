@@ -120,10 +120,10 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
  "fluorescence_camera_pins":[8,10,12],
  "usb_name":"/dev/tty/USB0",
  "usb_timeout":0.1,
- "usb_baudrate":57600,
- "usb_dataBits":8,
+ "usb_baud_rate":57600,
+ "usb_data_bits":8,
  "usb_parity":"N",
- "usb_XOnOff":1,
+ "usb_x_on_off":1,
  "plane_address":1,
  "encoding":"utf-8",
  "terminators":[13,10],
@@ -134,8 +134,8 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
  "frame_buffer_length":100,
  "frame_num":0,
  "live":0,
- "output_mode":"5V_BNC_Only",
+ "trigger_mode":"5V_BNC_Only",
  "log":0,
- "predictionLatency":15
+ "prediction_latency":15
  }
 ```

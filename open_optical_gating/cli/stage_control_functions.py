@@ -10,7 +10,7 @@ def init_stage(usb_information):
     ser = serial.Serial(
         usb_information[0],
         timeout=usb_information[1],
-        baudrate=usb_information[2],
+        baud_rate=usb_information[2],
         bytesize=usb_information[3],
         parity=usb_information[4],
         stopbits=usb_information[5],

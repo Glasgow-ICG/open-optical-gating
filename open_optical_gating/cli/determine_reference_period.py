@@ -2,9 +2,12 @@
 as used from prospective optical gating."""
 
 # Module imports
+import os
 import numpy as np
+from skimage import io
 import j_py_sad_correlation as jps
 from loguru import logger
+from datetime import datetime
 
 # Local
 from . import parameters
@@ -174,3 +177,14 @@ def gotScoreForDelta(score, d, values):
     # meanScore,totalScore,numeScores
 
     return False, values
+
+
+def save_period(reference_period, period_dir="~/"):
+    '''Function to save a reference period in a time-stamped folder.'''
+    dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
+    os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
+
+    # Saves the period
+    if isinstance(reference_period, int) == False:
+        for i, frame in enumerate(reference_period):
+            io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),frame)

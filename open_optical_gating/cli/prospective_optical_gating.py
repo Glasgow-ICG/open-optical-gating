@@ -87,14 +87,14 @@ def subframe_fitting(diffs, settings):
     return thisFrameReferencePos
 
 
-def v_fitting(y1, y2, y3):
+def v_fitting(y_1, y_2, y_3):
     # Fit an even V to three points at x=-1, x=0 and x=+1
-    if y1 > y3:
-        x = 0.5 * (y1 - y3) / (y1 - y2)
-        y = y2 - x * (y1 - y2)
+    if y_1 > y_3:
+        x = 0.5 * (y_1 - y_3) / (y_1 - y_2)
+        y = y_2 - x * (y_1 - y_2)
     else:
-        x = 0.5 * (y1 - y3) / (y3 - y2)
-        y = y2 + x * (y3 - y2)
+        x = 0.5 * (y_1 - y_3) / (y_3 - y_2)
+        y = y_2 + x * (y_3 - y_2)
 
     return x, y
 
@@ -190,28 +190,28 @@ def phase_matching(frame0, referenceFrames0, settings=None):
 
 
 def predict_trigger_wait(
-    frameSummaryHistory, settings, fitBackToBarrier=True, output="seconds"
+    frame_history, settings, fitBackToBarrier=True, output="seconds"
 ):
-    # frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-    # phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+    # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
+    # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
     # targetSyncPhase should be in [0,2pi]
 
-    if frameSummaryHistory.shape[0] < settings["minFramesForFit"] + 1:
+    if frame_history.shape[0] < settings["minFramesForFit"] + 1:
         logger.debug("Fit failed due to too few frames...")
         return -1
 
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(
-            settings["frameToUseArray"][int(frameSummaryHistory[-1, 2])],
-            frameSummaryHistory.shape[0],
+            settings["frameToUseArray"][int(frame_history[-1, 2])],
+            frame_history.shape[0],
         )
         logger.debug("Consider {0} past frames for prediction;", framesForFit)
     else:
         framesForFit = settings["minFramesForFit"]
         allowedToExtendNumberOfFittedPoints = True
 
-    pastPhases = frameSummaryHistory[-int(framesForFit) : :, :]
+    pastPhases = frame_history[-int(framesForFit) : :, :]
 
     radsPerSec, alpha = np.polyfit(pastPhases[:, 0], pastPhases[:, 1], 1)
 
@@ -228,7 +228,7 @@ def predict_trigger_wait(
             "Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero)."
         )
 
-    thisFramePhase = alpha + frameSummaryHistory[-1, 0] * radsPerSec
+    thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec
     multiPhaseCounter = thisFramePhase // (2 * np.pi)
     phaseToWait = (
         settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
@@ -243,7 +243,7 @@ def predict_trigger_wait(
 
     logger.info(
         "Current time: {0};\tTime to wait: {1};",
-        frameSummaryHistory[-1, 0],
+        frame_history[-1, 0],
         timeToWaitInSecs,
     )
     logger.debug(
@@ -256,6 +256,7 @@ def predict_trigger_wait(
     )
 
     # Fixes sync error due to targetSyncPhase being 2pi greater than target phase
+    # TODO check with JTs system
     if (
         thisFramePhase
         + phaseToWait
@@ -263,7 +264,7 @@ def predict_trigger_wait(
         - multiPhaseCounter * 2 * np.pi
         > 0.1
     ):
-        logger.warning("Phase discrepency, trigger aborted.")
+        logger.warning("Phase discrepency, trigger aborted. At {0} with wait {1} for target {2} [{3}]", thisFramePhase%(2*np.pi), phaseToWait, settings["targetSyncPhase"], thisFramePhase - (multiPhaseCounter*2*np.pi))
         timeToWaitInSecs = 0.0
 
     frameInterval = 1.0 / settings["framerate"]
@@ -330,10 +331,10 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     logger.debug(
         "Time to wait: {0} s; with latency: {1} s;",
         timeToWaitInSeconds,
-        settings["predictionLatency"],
+        settings["prediction_latency"],
     )
 
-    if timeToWaitInSeconds < settings["predictionLatency"]:
+    if timeToWaitInSeconds < settings["prediction_latency"]:
         logger.info("Too close but if not sent this period then give it a shot...")
         if settings["lastSent"] < timestamp - (
             settings["referencePeriod"] / settings["framerate"]
@@ -344,7 +345,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             logger.info("Trigger not sent! Starting prediction for next cycle.")
             timeToWaitInSeconds += settings["referencePeriod"] / settings["framerate"]
     elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
-        "predictionLatency"
+        "prediction_latency"
     ]:
         logger.success("We won't be able to do another calculation... so trigger sent!")
         sendIt = 2

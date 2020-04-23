@@ -3,6 +3,7 @@
 output.log
 **/triggers.png
 **/accuracy.png
+**/running.png
 
 # Caches
 **/.ipynb_checkpoints/**

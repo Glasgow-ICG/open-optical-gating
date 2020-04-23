@@ -7,7 +7,7 @@ def test_address():
 
     # Opens the usb port and sets initial parameters
     timeout = 0.1
-    baudrate = 57600
+    baud_rate = 57600
     bytesize = 8
     parity = "N"
     stopbits = 1
@@ -15,7 +15,7 @@ def test_address():
     ser = serial.Serial(
         "/dev/ttyUSB0",
         timeout=timeout,
-        baudrate=baudrate,
+        baud_rate=baud_rate,
         bytesize=bytesize,
         parity=parity,
         stopbits=stopbits,
