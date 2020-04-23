@@ -8,5 +8,6 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.nosetestsEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.pythonPath": "/home/pi/.cache/pypoetry/virtualenvs/open-optical-gating-BlrmpXKH-py3.7/bin/python"
 }

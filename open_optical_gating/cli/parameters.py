@@ -23,7 +23,7 @@ def initialise(
     maxReceivedFramesToStore=260,
     maxFramesForFit=32,
     minFramesForFit=3,
-    predictionLatency=15,
+    prediction_latency=15,
     referenceFrame=0.0,
     numExtraRefFrames=2,
 ):
@@ -54,7 +54,7 @@ def initialise(
         {"minFramesForFit": minFramesForFit}
     )  # frames to fit for prediction (min)
     parameters.update(
-        {"predictionLatency": predictionLatency}
+        {"prediction_latency": prediction_latency}
     )  # prediction latency in milliseconds
     if referenceFrame > 0.0:
         parameters.update(
@@ -98,7 +98,7 @@ def update(
     maxReceivedFramesToStore=None,
     maxFramesForFit=None,
     minFramesForFit=None,
-    predictionLatency=None,
+    prediction_latency=None,
     referenceFrame=None,
     numExtraRefFrames=None,
 ):
@@ -127,8 +127,8 @@ def update(
         parameters["maxFramesForFit"] = maxFramesForFit
     if minFramesForFit is not None:
         parameters["minFramesForFit"] = minFramesForFit
-    if predictionLatency is not None:
-        parameters["predictionLatency"] = predictionLatency
+    if prediction_latency is not None:
+        parameters["prediction_latency"] = prediction_latency
     if referenceFrame is not None:
         parameters["referenceFrame"] = referenceFrame % parameters["referencePeriod"]
 

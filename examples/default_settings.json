@@ -13,9 +13,9 @@
     "frame_buffer_length": "100",
     "frame_num": "0",
     "live": "1",
-    "output_mode": "5V_BNC_Only",
+    "trigger_mode": "5V_BNC_Only",
     "log": "0",
     "period_dir": "period-data/",
-    "predictionLatency": "15",
-    "updateAfterNTriggers": "5"
+    "prediction_latency": "15",
+    "update_after_n_triggers": "5"
 }

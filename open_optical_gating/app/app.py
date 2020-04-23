@@ -22,21 +22,21 @@ import open_optical_gating.cli.stage_control_functions as scf
 # TODO make this passable argument
 # settings_file = '/home/pi/open-optical-gating/examples/default_settings_with_stages.json'
 settings_file = "/home/pi/open-optical-gating/examples/example_data_settings.json"
-def load_settings_dict():
+def load_settings():
     logger.success('Settings loaded into session.')
     with open(settings_file, 'r') as f:
-        session['settings_dict'] = json.load(f)
-def save_settings_dict():
+        session['settings'] = json.load(f)
+def save_settings():
     logger.success('Settings dumped into file.')
     with open(settings_file, 'w') as f:
-        json.dump(session['settings_dict'], f, indent=2, sort_keys=True)
+        json.dump(session['settings'], f, indent=2, sort_keys=True)
 
 # how do I do this properly?
 analyse_camera = None
 
 app = Flask(__name__)
 app.secret_key = "test"
-app.before_first_request(load_settings_dict)
+app.before_first_request(load_settings)
 app.config.from_object(__name__)
 
 
@@ -83,13 +83,13 @@ def init_hardware():
     # 3 - if camera pins fail
     # 4 - if usb stages fail
     # serial object - if no failure and usb stages desired
-    usb_serial = cli.init_controls(session['settings_dict'])
+    usb_serial = cli.init_controls(session['settings'])
     # also inits laser and fluorescence camera triggers
     # TODO deal with errors
 
     # TODO add picamera settings?
 
-    usb_information = session['settings_dict']['usb_stages']
+    usb_information = session['settings']['usb_stages']
 
     # Checks if usb_serial has recieved an error code
     if isinstance(usb_serial, int) and usb_serial > 0:
@@ -150,8 +150,8 @@ def move_stage(stage, size):
 def trigger(duration=500):
     """A script to trigger the laser and camera on button press."""
 
-    laser_trigger_pin = session['settings_dict']["laser_trigger_pin"]
-    fluorescence_camera_pins = session['settings_dict']["fluorescence_camera_pins"]
+    laser_trigger_pin = session['settings']["laser_trigger_pin"]
+    fluorescence_camera_pins = session['settings']["fluorescence_camera_pins"]
 
     cli.trigger_fluorescence_image_capture(
         0,
@@ -174,43 +174,43 @@ def parameters():
         for (key, val) in sorted(new_settings.items()):
             # we assume there's only one val for each
             # because there should be!
-            if key in session['settings_dict'].keys():
-                logger.success("Converting type of {0} from {1} to {2}", key, type(val[0]), type(session['settings_dict'][key]))
-                if isinstance(session['settings_dict'][key], dict):
+            if key in session['settings'].keys():
+                logger.success("Converting type of {0} from {1} to {2}", key, type(val[0]), type(session['settings'][key]))
+                if isinstance(session['settings'][key], dict):
                     logger.success("Found nest {0}",key)
                     new_settings[key] = {}
-                    for nestkey in session['settings_dict'][key].keys():
+                    for nestkey in session['settings'][key].keys():
                         # assume only one level of nesting
                         # if additional levels are needed, make this a function and recurse
                         if nestkey in new_settings.keys():
-                            logger.success("Converting type of {0} from {1} to {2}", nestkey, type(new_settings[nestkey][0]), type(session['settings_dict'][key][nestkey]))
-                            new_settings[key][nestkey] = type(session['settings_dict'][key][nestkey])(new_settings[nestkey][0])
-                            if isinstance(session['settings_dict'][key][nestkey], list):
+                            logger.success("Converting type of {0} from {1} to {2}", nestkey, type(new_settings[nestkey][0]), type(session['settings'][key][nestkey]))
+                            new_settings[key][nestkey] = type(session['settings'][key][nestkey])(new_settings[nestkey][0])
+                            if isinstance(session['settings'][key][nestkey], list):
                                 new_settings[key][nestkey] = list(
                                     json.loads(new_settings[nestkey][0])
                                 )
                             else:
                                 new_settings[key][nestkey] = type(
-                                    session['settings_dict'][key][nestkey]
+                                    session['settings'][key][nestkey]
                                 )(new_settings[nestkey][0])
-                elif isinstance(session['settings_dict'][key], list):
+                elif isinstance(session['settings'][key], list):
                     new_settings[key] = list(json.loads(val[0]))
                 else:
                     if val[0]=="None" or val[0]=="null":
                         logger.info('Found a None or null, converting.')
                         new_settings[key] = None
                     else:
-                        new_settings[key] = type(session['settings_dict'][key])(val[0])
+                        new_settings[key] = type(session['settings'][key])(val[0])
             else:
                 logger.info("Deleting unknown key: {0}".format(key))
                 to_delete.append(key)
         for key in to_delete:
             del new_settings[key]
 
-        session['settings_dict'] = new_settings
-        save_settings_dict()
+        session['settings'] = new_settings
+        save_settings()
 
-    return render_template("parameters.html", settings=session['settings_dict'])
+    return render_template("parameters.html", settings=session['settings'])
 
 
 @app.route("/emulate")
@@ -225,9 +225,9 @@ def emulate():
     if request.args.get("state", False) is False:
         logger.success("Initialising")
         analyse_camera = cli.YUVLumaAnalysis(
-            output_mode=session['settings_dict']["output_mode"],
-            updateAfterNTriggers=session['settings_dict']["updateAfterNTriggers"],
-            period_dir=session['settings_dict']["period_dir"],
+            trigger_mode=session['settings']["trigger_mode"],
+            update_after_n_triggers=session['settings']["update_after_n_triggers"],
+            period_dir=session['settings']["period_dir"],
         )
         logger.debug('analyse_camera object: {0}',analyse_camera)
     elif request.args.get("state", False) == "get":
@@ -235,7 +235,7 @@ def emulate():
         if "period" in session.keys():
             logger.info("Clearing an existing period")
             session.pop("period")
-        analyse_camera.emulate_get_period(session['settings_dict']["path"])
+        analyse_camera.emulate_get_period(session['settings']["path"])
         # save period in jpg for webpage
         for (i, frame) in enumerate(analyse_camera.ref_frames):
             io.imsave(
@@ -268,7 +268,7 @@ def emulate():
         logger.success("Running emulator")
         analyse_camera.emulate()
 
-    return render_template("emulate.html", resolution=session['settings_dict']["brightfield_resolution"])
+    return render_template("emulate.html")
 
 
 @app.route("/live")
@@ -279,13 +279,14 @@ def run():
     global analyse_camera
     logger.debug('analyse_camera object: {0}',analyse_camera)
 
-    # Initialise
+    # TODO need to be able to set the stage z bounds for the glasgow set up, e.g. state=bounds?
     if request.args.get("state", False) is False:
         logger.success("Initialising")
+        init_hardware() # we re-do this in case somethings happened since doing so at index
         analyse_camera = cli.YUVLumaAnalysis(
-            output_mode=session['settings_dict']["output_mode"],
-            updateAfterNTriggers=session['settings_dict']["updateAfterNTriggers"],
-            period_dir=session['settings_dict']["period_dir"],
+            trigger_mode=session['settings']["trigger_mode"],
+            update_after_n_triggers=session['settings']["update_after_n_triggers"],
+            period_dir=session['settings']["period_dir"],
         )
         logger.debug('analyse_camera object: {0}',analyse_camera)
     elif request.args.get("state", False) == "get":
@@ -293,7 +294,7 @@ def run():
         if "period" in session.keys():
             logger.info("Clearing an existing period")
             session.pop("period")
-        analyse_camera.emulate_get_period(session['settings_dict']["path"])
+        analyse_camera.emulate_get_period(session['settings']["path"])
         # save period in jpg for webpage
         for (i, frame) in enumerate(analyse_camera.ref_frames):
             io.imsave(
@@ -315,16 +316,18 @@ def run():
             ]
         )
     elif request.args.get("state", False) == "set":
+        print(type(analyse_camera.ref_frames))
         logger.success("Setting target frame as {0}", int(request.args.get("target", 1))-1)
         analyse_camera.state = analyse_camera.select_period(
             int(request.args.get("target", 1)) - 1
         )
+        print(type(analyse_camera.ref_frames))
     elif request.args.get("state", False) == "run":
+        print(type(analyse_camera.ref_frames))
         logger.success("Running emulator")
         analyse_camera.emulate()
 
-    return render_template("live.html", resolution=session['settings_dict']["brightfield_resolution"])
-
+    return render_template("emulate.html")
 
 if __name__ == "__main__":
     app.run(debug=True, host="192.168.0.13", threaded=True)

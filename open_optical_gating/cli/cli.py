@@ -1,32 +1,21 @@
 """Main CLI Open Optical Gating System"""
 
-import os
+# Python imports
+import sys
+import json
 import time
-from datetime import datetime
-from tqdm import tqdm
+
+# Module imports
+import numpy as np
+import matplotlib.pyplot as plt
+import picamera
+import picamera.array
 from loguru import logger
 
-# Numpy, Scipy, Pandas and Scikits
-import numpy as np
-import pandas as pd
-from skimage import io
-
-# Matplotlib
-import matplotlib.pyplot as plt
-
-# PiCamera imports
-import picamera
-from picamera import array  # TODO: can I remove this and use picamera.array?
-
-# Serial imports - for stages? # TODO: move stage stuff into separate file?
-import serial
-
-import json  # TODO move this into parameters.py
-
-# Fastpins
+# Fastpins module
 import fastpins as fp
 
-# Optical Gating Alignment
+# Optical Gating Alignment module
 import optical_gating_alignment.optical_gating_alignment as oga
 
 # Local imports
@@ -35,175 +24,254 @@ import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
 import open_optical_gating.cli.stage_control_functions as scf
 
-import sys
-
 logger.remove()
 logger.add(sys.stderr, level="SUCCESS")
 logger.enable("open_optical_gating")
 
+# TODO there are one or two places where settings should be updated, e.g. user-bound limits
+# TODO create a time-stamped copy of the settings file after this
+# TODO create a time-stamped log somewhere
 
-class YUVLumaAnalysis(array.PiYUVAnalysis):
+
+class OpticalGater(picamera.array.PiYUVAnalysis):
     """Custom class to convert and analyse Y (luma) channel of each YUV frame.
     Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
     """
 
-    def __init__(
-        self,
-        camera=None,
-        usb_serial=None,
-        brightfield_framerate=80,
-        laser_trigger_pin=22,
-        fluorescence_camera_pins=(8, 10, 12),
-        plane_address=1,
-        encoding="utf-8",
-        terminator=chr(13) + chr(10),
-        increment=0.0005,
-        negative_limit=0,
-        positive_limit=0.075,
-        current_position=0,
-        frame_buffer_length=100,
-        ref_frames=None,
-        frame_num=0,
-        live=True,
-        output_mode="glaSPIM",
-        updateAfterNTriggers=200,
-        duration=1e3,
-        period_dir="~/",
-    ):
-        # Function inputs:
-        # 	camera = the raspberry picam PiCamera object
-        # 	laser_trigger_pin = the pin number (int) of the laser trigger
-        # 	fluorescence_camera_pins = an array (int) of fluorescence camera pin numbers containg (trigger,SYNC-A, SYNC-B)
-        # 	usb_serial = the usb serial object for controlling the movement stages
-        # 	plane_address = the address of the stage that moves the zebrafish through the light sheet
-        # 	encoding = the encoding used to control the Newport stages (usually utf-8)
-        # 	terminator = the character set used to terminate a command sent to the Newport stages
-        # 	increment = the required increment to move the stage by after each image capture (float)
-        # 	negative_limit = the smallest z value (float) of the edge of the zebrafish heart (selected by the user)
-        # 	positive_limit = the largest z value (float) of the edge of the zebrafish heart (selected by the user)
-        # 	current_position = the current z value of the stage.
+    def __init__(self, camera=None, settings=None, ref_frames=None):
+        """Function inputs:
+            camera - the raspberry picam PiCamera object
+            settings - a dictionary of settings (see default_settings.json)
+        """
 
-        # Optional inputs:
-        # 	ref_frames = a set of reference frames containg a whole period for the zebrafish
-        # 	frame_num = the current frame number
+        # store the whole settings dict
+        # we occassionally store some of this informatione elsewhere too
+        # that's not ideal but works for now
+        self.settings = settings
+        # NOTE: there is also self.pog_settings, be careful of this
 
-        super(YUVLumaAnalysis, self).__init__(camera)
-        self.frame_num = frame_num
-        if camera is not None:
-            self.width, self.height = camera.resolution
+        logger.success("Setting camera settings...")
+        if camera is not None and not isinstance(camera, str):
+            super(OpticalGater, self).__init__(camera)
+            self.setup_camera(camera)
+        elif isinstance(camera, str):
+            self.load_data(camera)
         else:
-            self.width, self.height = (115, 170)  # for emulated sequence
+            logger.critical("No camera or data found.")
+        logger.success("Initialising triggering hardware...")
+        self.init_hardware()
+        if ref_frames is not None:
+            logger.success("Using existing reference frames...")
+        self.ref_frames = ref_frames
+        logger.success("Initialising internal parameters...")
+        self.initialise_internal_parameters()
 
-        self.framerate = brightfield_framerate
-
-        # Defines laser, fluorescence camera and usb serial information
-        self.laser_trigger_pin = laser_trigger_pin
-        self.fluorescence_camera_pins = fluorescence_camera_pins
-
-        self.usb_serial = usb_serial
-        self.plane_address = plane_address
-        self.encoding = encoding
-        self.terminator = terminator
-        self.increment = increment
-        self.negative_limit = negative_limit
-        self.positive_limit = positive_limit
-        self.current_position = current_position
-
+    def setup_camera(self, camera):
+        """Initialise and apply camera-related settings."""
+        self.frame_num = self.settings["frame_num"]
+        self.width, self.height = camera.resolution
+        self.framerate = camera.framerate
         self.camera = camera
 
-        # Defines the arrays for sad and frameSummaryHistory (which contains period, timestamp and argmin(sad))
-        self.frame_buffer_length = frame_buffer_length
-        self.frameSummaryHistory = np.zeros((self.frame_buffer_length, 3))
+    def load_data(self, filename):
+        """Place holder function for loading data in emulator."""
+        logger.critical("No camera found in live mode ({0}).", filename)
+
+    def initialise_internal_parameters(self):
+        """Defines all internal parameters not already initialised"""
+        # Defines the arrays for sad and frame_history (which contains period, timestamp and argmin(sad))
+        self.frame_history = np.zeros((self.settings["frame_buffer_length"], 3))
         self.dtype = "uint8"
-        self.ref_frames = ref_frames
 
         # Variables for adaptive algorithm
         # Should be compatible with standard adaptive algorithm
         #  (Nat Comms paper) and dynamic algorithm (unpublished, yet)
-        self.updateAfterNTriggers = updateAfterNTriggers  # if 0 turns adaptive mode off
+        # if update_after_n_triggers is 0 turns adaptive mode off
         self.trigger_num = 0
-        self.resampledSequence = []
-        self.periodHistory = []
-        self.shifts = []
-        self.driftHistory = []
+        self.sequence_history = []
+        self.period_history = []
+        self.shift_history = []
+        self.drift_history = []
 
-        # Variable for emulator
-        self.live = live
-        self.targetSyncPhaseOld = -1
-
-        # Array for fps test
-        self.time_ary = []
-
-        # Start experiment timer
-        self.initial_process_time = time.time()
-
-        # Sets ouput mode, reverts to Glasgow SPIM mode by default (mode specified in JSON file)
-        if output_mode == "5V_BNC_Only":
-            self.outputMode = 1
+        # Sets ouput mode for normal trigger or special Glasgow mode
+        if self.settings["trigger_mode"] == "5V_BNC_Only":
+            self.trigger_mode = 1
         else:
-            self.outputMode = 0
+            self.trigger_mode = 0
 
         # Initialises reference frames if not specified
-        # get_period has several modes:
+        # state has several modes:
         #   0 - run prospective gating mode (phase locked triggering)
         #   1 - re-initialise (clears for mode 2)
         #   2 - get period mode (requires user input)
         #   3 - adaptive mode (update period but maintain phase lock)
         if self.ref_frames is None:
             logger.info("No reference frames found, switching to get period mode.")
-            self.ref_buffer = np.empty(
-                (self.frame_buffer_length, self.height, self.width), dtype=self.dtype
-            )
-            self.state = 2
+            self.state = 1
+            self.pog_settings = parameters.initialise(framerate=self.framerate)
 
         else:
-            logger.debug("Using existing reference frames.")
+            logger.info("Using existing reference frames with integer period.")
             self.state = 0
-            self.settings = parameters.initialise(
-                framerate=self.framerate, referencePeriod=ref_frames.shape[0]
+            self.pog_settings = parameters.initialise(
+                framerate=self.framerate, referencePeriod=self.ref_frames.shape[0]
             )
-            self.settings = pog.determine_barrier_frames(self.settings)
-            self.initial_process_time = time.time()
+            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
-        self.period_dir = period_dir
+        # Start experiment timer
+        self.initial_process_time = time.time()
 
-        self.progress = 0  # for webapp progress bars
+        # Defines variables and objects used for plotting
+        self.timestamp = []
+        self.phase = []
+        self.process_time = []
+        self.trigger_times = []
 
-        # DEVNOTE - if the laser doesn't trigger check this line works
-        # trigger_fluorescence_image_capture(0, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
+        # Flag for interrupting the program at key points
+        # E.g. when user-input is needed
+        # It is assumed that the user/app controls what this interaction is
+        self.stop = False
 
-    def analyze(self, frame):
+    def init_hardware(self):
+        """Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
+        Function inputs:
+            laser_trigger_pin = the GPIO pin number connected to fire the laser
+            fluorescence_camera_pins = an array of 3 pins used to for the fluoresence camera
+                                            (trigger, SYNC-A, SYNC-B)
+            self.settings["usb_stages"] = a list containing the information used to set up the usb for controlling the Newport stages
+                                    (USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
+        Outputs:
+                usb_serial will be one of:
+                    0 - if no failure and no usb stage
+                    1 - if fastpins fails
+                    2 - if laser pin fails
+                    3 - if camera pins fail
+                    4 - if usb stages fail
+                    serial object - if no failure and usb stages desired
+        """
+        # TODO update this docstring
+        self.usb_serial = (
+            None  # default - no stages but carry on as if everything else worked
+        )
+
+        # Initialises fastpins module
+        try:
+            logger.debug("Initialising fastpins...")
+            fp.init()
+        except Exception as inst:
+            logger.critical("Error setting up fastpins module. {0}", inst)
+
+        # Sets up laser trigger pin
+        laser_trigger_pin = self.settings["laser_trigger_pin"]
+        if laser_trigger_pin is not None:
+            try:
+                logger.debug("Initialising BNC trigger pin... (Laser/Trigger Box)")
+                # PUD resistor needs to be specified but will be ignored in setup
+                fp.setpin(laser_trigger_pin, 1, 0)
+            except Exception as inst:
+                logger.critical("Error setting up laser pin. {0}", inst)
+
+        # Sets up fluorescence camera pins
+        fluorescence_camera_pins = self.settings[
+            "fluorescence_camera_pins"
+        ]  # Trigger, SYNC-A, SYNC-B
+        if fluorescence_camera_pins is not None:
+            try:
+                logger.debug("Initialising fluorescence camera pins...")
+                fp.setpin(fluorescence_camera_pins[0], 1, 0)  # Trigger
+                fp.setpin(fluorescence_camera_pins[1], 0, 0)  # SYNC-A
+                fp.setpin(fluorescence_camera_pins[2], 0, 0)  # SYNC-B
+                self.duration = 1e3  # TODO relate to settings
+                self.edge_trigger = True  #  TODO relate to settings
+            except Exception as inst:
+                logger.critical("Error setting up fluorescence camera pins. {0}", inst)
+
+        # Sets up USB for Newport stages (Glasgow)
+        # self.settings["usb_stages"] will be either None (no stages) or a dict of:
+        # "name", "timeout", "baud_rate", "data_bits", "parity", "x_on_off"
+        # "current_position", "encoding", "increment", "negative_limit", "plane_address", "positive_limit", "terminators"
+        if self.settings["usb_stages"] is not None:
+            # init_stage function needs to a tuple of
+            # (address, timeout, baud_rate, data_bits, parity, x_on_off, True)
+            # TODO: ABD to work out what True is for!
+            try:
+                logger.debug("Initialising USB stages...")
+                self.usb_serial = scf.init_stage(
+                    (
+                        self.settings["usb_stages"]["name"],
+                        self.settings["usb_stages"]["timeout"],
+                        self.settings["usb_stages"]["baud_rate"],
+                        self.settings["usb_stages"]["data_bits"],
+                        self.settings["usb_stages"]["parity"],
+                        self.settings["usb_stages"]["x_on_off"],
+                        True,
+                    )
+                )
+            except Exception as inst:
+                logger.critical("Error setting up stages. {0}", inst)
+        else:
+            logger.debug("No USB stage information provided.")
+
+        # Checks if usb_serial has recieved an error code
+        if self.usb_serial is not None:
+            logger.success("Serial stages found; getting z-stage stack bounds.")
+            # Defines variables for USB serial stage commands
+            self.settings["usb_stages"]["terminator"] = chr(
+                self.settings["usb_stages"]["terminators"][0]
+            ) + chr(self.settings["usb_stages"]["terminators"][1])
+
+            # Sets up stage to recieve future input
+            # TODO integrate into web app
+            (
+                self.negative_limit,
+                self.positive_limit,
+                self.current_position,
+            ) = scf.set_user_stage_limits(
+                self.usb_serial,
+                self.settings["usb_stages"]["plane_address"],
+                self.settings["usb_stages"]["encoding"],
+                self.settings["usb_stages"]["terminator"],
+            )
+
+    def analyze(self, array):
         """ Method to analyse each frame as they are captured by the camera.
         Must be fast since it is running within the encoder's callback,
         and so must return before the next frame is produced.
         Essentialy this method just calls the appropriate method based on the state attribute."""
+        logger.debug("Analysing frame.")
 
         # For logging processing time
         time_init = time.time()
 
         # if we're passed a colour image, take the first channel
-        if len(frame.shape) == 3:
-            frame = frame[:, :, 0]
+        if len(array.shape) == 3:
+            array = array[:, :, 0]
 
-        if self.trigger_num >= self.updateAfterNTriggers:
+        if self.trigger_num >= self.settings["update_after_n_triggers"]:
             # time to update the reference period whilst maintaining phase lock
             # set state to 1 (so we clear things for a new reference period)
             # as part of this trigger_num will be reset
             self.state = 1
 
         # Ensures stage is always within user defined limits (only needed for RPi-controlled stages)
-        stages_safe = self.current_position <= self.positive_limit and self.current_position >= self.negative_limit
+        stages_safe = (self.usb_serial is None) or (
+            self.current_position <= self.positive_limit
+            and self.current_position >= self.negative_limit
+        )
+        logger.debug("Stages safe? {0}", stages_safe)
         if stages_safe:
             if self.state == 0:
                 # Using determined reference peiod, analyse brightfield frames
                 # to determine prospective optical gating triggers
-                (trigger_response, pp, tt) = self.pog_state(frame)
+                (trigger_response, current_phase, current_time) = self.pog_state(array)
 
-                # Logs processing time
+                # Logs results and processing time
                 time_fin = time.time()
-                (self.time_ary).append(time_fin - time_init)
+                self.timestamp.append(current_time)
+                self.phase.append(current_phase)
+                self.process_time.append(time_fin - time_init)
 
-                return trigger_response, pp, tt
+                return trigger_response, current_phase, current_time
 
             elif self.state == 1:
                 # Clears reference period and resets frame number
@@ -212,204 +280,163 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
             elif self.state == 2:
                 # Determine initial reference period and target frame
-                self.get_period_state(frame)
-
-                # Logs processing time
-                time_fin = time.time()
-                (self.time_ary).append(time_fin - time_init)
-
-                if self.ref_frames is not None:
-                    logger.debug('Returning reference frames for target fram selection.')
-                    # Return the determined period
-                    # The user (or app) then needs to run self.select_period()
-                    # (updating self.state) before starting the analyse again
-                    return (
-                        None,
-                        -1,
-                        -1,
-                    )  # a negative phase and time can be caught by the parent program
+                self.get_period_state(array)
 
             elif self.state == 3:
                 # Determine reference period syncing target frame with original user selection
-                self.update_period_state(frame)
+                self.update_period_state(array)
 
             else:
                 logger.critical("Unknown state {0}.", self.state)
 
-        # Logs processing time
-        time_fin = time.time()
-        (self.time_ary).append(time_fin - time_init)
-
-        return None, None, None  # default return of response, pp, tt all empty
+        # Default return - all None
+        return (None, None, None)
 
     def pog_state(self, frame):
         """State 0 - run prospective optical gating mode (phase locked triggering)."""
         logger.debug("Processing frame in prospective optical gating mode.")
 
         # Gets the phase (in frames) and sad of the current frame
-        pp, sad, self.settings = pog.phase_matching(
-            frame, self.ref_frames, settings=self.settings
+        current_phase, sad, self.pog_settings = pog.phase_matching(
+            frame, self.ref_frames, settings=self.pog_settings
         )
         logger.trace(sad)
 
         # Convert phase to 2pi base
-        pp = (
+        current_phase = (
             2
             * np.pi
-            * (pp - self.settings["numExtraRefFrames"])
-            / self.settings["referencePeriod"]
+            * (current_phase - self.pog_settings["numExtraRefFrames"])
+            / self.pog_settings["referencePeriod"]
         )  # rad
 
         # Gets the current timestamp in milliseconds
-        tt = (
+        current_time = (
             time.time() - self.initial_process_time
         ) * 1000  # Converts time into milliseconds
 
-        # Calculate cumulative phase (phase) from delta phase (pp - pp_old)
+        # Calculate cumulative phase (phase) from delta phase (current_phase - last_phase)
         if self.frame_num == 0:
-            logger.debug('First frame, using pp as cumulative phase.')
-            deltaPhase = 0
-            phase = pp
-            self.pp_old = pp
+            logger.debug("First frame, using current phase as cumulative phase.")
+            delta_phase = 0
+            phase = current_phase
+            self.last_phase = current_phase
         else:
-            deltaPhase = pp - self.pp_old
-            while deltaPhase < -np.pi:
-                deltaPhase += 2 * np.pi
-            if self.frame_num < self.frame_buffer_length:
-                phase = self.frameSummaryHistory[self.frame_num - 1, 1] + deltaPhase
+            delta_phase = current_phase - self.last_phase
+            while delta_phase < -np.pi:
+                delta_phase += 2 * np.pi
+            if self.frame_num < self.settings["frame_buffer_length"]:
+                phase = self.frame_history[self.frame_num - 1, 1] + delta_phase
             else:
-                phase = self.frameSummaryHistory[-1, 1] + deltaPhase
-            self.pp_old = pp
+                phase = self.frame_history[-1, 1] + delta_phase
+            self.last_phase = current_phase
 
         # Clears last entry of framerateSummaryHistory if it exceeds the reference frame length
-        if self.frame_num >= self.frame_buffer_length:
-            self.frameSummaryHistory = np.roll(self.frameSummaryHistory, -1, axis=0)
+        if self.frame_num >= self.settings["frame_buffer_length"]:
+            self.frame_history = np.roll(self.frame_history, -1, axis=0)
 
-        # Gets the argmin of SAD and adds to frameSummaryHistory array
-        if self.frame_num < self.frame_buffer_length:
-            self.frameSummaryHistory[self.frame_num, :] = (
-                tt,
+        # Gets the argmin of SAD and adds to frame_history array
+        if self.frame_num < self.settings["frame_buffer_length"]:
+            self.frame_history[self.frame_num, :] = (
+                current_time,
                 phase,
                 np.argmin(sad),
             )
         else:
-            self.frameSummaryHistory[-1, :] = tt, phase, np.argmin(sad)
+            self.frame_history[-1, :] = current_time, phase, np.argmin(sad)
 
-        self.pp_old = float(pp)
+        self.last_phase = float(current_phase)
         self.frame_num += 1
 
-        logger.trace(self.frameSummaryHistory[-1,:])
+        logger.trace(self.frame_history[-1, :])
         logger.debug(
             "Current time: {0};, cumulative phase: {1} ({2:+f}); sad: {3}",
-            tt,
+            current_time,
             phase,
-            deltaPhase,
-            self.frameSummaryHistory[-1, -1],
+            delta_phase,
+            self.frame_history[-1, -1],
         )
 
         # If at least one period has passed, have a go at predicting a trigger
-        if self.frame_num - 1 > self.settings["referencePeriod"]:
+        if self.frame_num - 1 > self.pog_settings["referencePeriod"]:
             logger.debug("Predicting trigger...")
 
             # Gets the trigger response
-            if self.frame_num < self.frame_buffer_length:
-                logger.trace('Triggering with partial buffer.')
+            if self.frame_num < self.settings["frame_buffer_length"]:
+                logger.trace("Triggering with partial buffer.")
                 trigger_response = pog.predict_trigger_wait(
-                    self.frameSummaryHistory[:self.frame_num:, :],
-                    self.settings,
+                    self.frame_history[: self.frame_num :, :],
+                    self.pog_settings,
                     fitBackToBarrier=True,
                     output="seconds",
                 )
             else:
-                logger.trace('Triggering with full buffer.')
+                logger.trace("Triggering with full buffer.")
                 trigger_response = pog.predict_trigger_wait(
-                    self.frameSummaryHistory,
-                    self.settings,
+                    self.frame_history,
+                    self.pog_settings,
                     fitBackToBarrier=True,
                     output="seconds",
                 )
-            # frameSummaryHistory is an nx3 array of [timestamp, phase, argmin(SAD)]
-            # phase (i.e. frameSummaryHistory[:,1]) should be cumulative 2Pi phase
+            # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
+            # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
             # Captures the image  and then moves the stage if triggered
             if trigger_response > 0:
                 logger.info("Possible trigger: {0}", trigger_response)
 
-                (trigger_response, send, self.settings,) = pog.decide_trigger(
-                    tt, trigger_response, self.settings
+                (trigger_response, send, self.pog_settings,) = pog.decide_trigger(
+                    current_time, trigger_response, self.pog_settings
                 )
                 if send > 0:
-
-                    self.trigger_num = (
-                        self.trigger_num + 1
-                    )  # update trigger number for adaptive algorithm
-                    logger.success("Sending trigger: {0}", send)
-                    if self.live:
-
-                        if self.outputMode == 1:
-                            trigger_fluorescence_image_capture(
-                                tt + trigger_response,
-                                self.laser_trigger_pin,
-                                self.fluorescence_camera_pins,
-                                edge_trigger=False,
-                                duration=1e3,
-                            )
-                        else:
-
-                            trigger_fluorescence_image_capture(
-                                tt + trigger_response,
-                                self.laser_trigger_pin,
-                                self.fluorescence_camera_pins,
-                                edge_trigger=False,
-                                duration=1e3,
-                            )
-                            stage_result = scf.move_stage(
-                                self.usb_serial,
-                                self.plane_address,
-                                self.increment,
-                                self.encoding,
-                                self.terminator,
-                            )
-                            logger.info(stage_result)
-                    else:
-                        logger.info(
-                            "Not Live: {0}, {1}, {2}, {3}",
-                            send,
-                            trigger_response,
-                            pp,
-                            tt,
+                    logger.success("Sending trigger {0} at {1} in {2} ms", send, current_time, trigger_response)
+                    if self.trigger_mode == 1:
+                        # Trigger only
+                        self.trigger_fluorescence_image_capture(
+                            current_time + trigger_response
                         )
-                        # Returns the trigger response, phase and timestamp for emulated data
-                        return trigger_response, pp, tt
+                    else:
+                        # Trigger and move stage
+                        self.trigger_fluorescence_image_capture(
+                            current_time + trigger_response
+                        )
+                        stage_result = scf.move_stage(
+                            self.usb_serial,
+                            self.settings["usb_stages"]["plane_address"],
+                            self.settings["usb_stages"]["increment"],
+                            self.settings["usb_stages"]["encoding"],
+                            self.settings["usb_stages"]["terminator"],
+                        )
+                        logger.info(stage_result)
+                        # Do something with the stage result:
+                        # 	0 = Continue as normal
+                        # 	1 or 2 = Pause capture
+                    
+                    # Store trigger time and update trigger number (for adaptive algorithm)
+                    self.trigger_times.append(current_time + trigger_response)
+                    self.trigger_num = (self.trigger_num + 1)
+                    # Returns the trigger response, phase and timestamp for emulated data
+                    return trigger_response, current_phase, current_time
 
-                    # self.targetSyncPhaseOld = current_sync_phase
-                elif not self.live:
-                    logger.info(
-                        "Not sent: {0}, {1}, {2}, {3}", send, trigger_response, pp, tt,
-                    )
-                    return None, pp, tt
-
-                # Do something with the stage result:
-                # 	0 = Continue as normal
-                # 	1 or 2 = Pause capture
-
-        return None, pp, tt
+        return None, current_phase, current_time
 
     def clear_state(self):
         """State 1 - re-initialise (clears for mode 2).
-        Clears everything required to get a new period.
+        Clears everything required to get a new period.debug
         Used if the user is not happy with a period choice
         Or before getting a new reference period in the adaptive mode.
         """
         logger.info("Resetting for new period determination.")
         self.frame_num = 0
-        self.ref_frames = np.zeros(
-            (self.frame_buffer_length, self.height, self.width), dtype=self.dtype,
+        self.ref_frames = None
+        self.ref_buffer = np.empty(
+            (self.settings["frame_buffer_length"], self.width, self.height),
+            dtype=self.dtype,
         )
         if (
-            self.updateAfterNTriggers > 0
-            and self.trigger_num >= self.updateAfterNTriggers
+            self.settings["update_after_n_triggers"] > 0
+            and self.trigger_num >= self.settings["update_after_n_triggers"]
         ):
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
@@ -417,6 +444,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
             self.state = 3
         else:
             self.state = 2
+
 
     def get_period_state(self, frame):
         """ State 2 - get period mode (default requires user input).
@@ -429,7 +457,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         logger.debug("Processing frame in get period mode.")
 
         # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.frame_buffer_length:
+        if self.frame_num < self.settings["frame_buffer_length"]:
             logger.debug("Not yet enough frames to determine a new period.")
 
             # Adds current frame to buffer
@@ -441,16 +469,21 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         # Once a suitible reference size has been buffered
         # gets a period and ask the user to select the target frame
         else:
-            logger.debug("Determining new reference period")
-
-            # Obtains a reference period
-            self.ref_frames, self.settings = get_period(
-                self.ref_buffer,
-                {},
-                framerate=self.framerate,
-                period_dir=self.period_dir,
+            logger.info("Determining new reference period")
+            # Calculate period from determine_reference_period.py
+            self.ref_frames, self.pog_settings = ref.establish(
+                self.ref_buffer, self.pog_settings
             )
+
+            # Determine barrier frames
+            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
+
+            # Save the period
+            ref.save_period(self.ref_frames, self.settings["period_dir"])
             logger.success("Period determined.")
+
+            # Note, passing the new period to the adaptive system is left to the user/app
+            self.stop = True
 
     def update_period_state(self, frame):
         """State 3 - adaptive mode (update period but maintain phase lock).
@@ -461,7 +494,7 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         logger.debug("Processing frame in update period mode.")
 
         # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.frame_buffer_length:
+        if self.frame_num < self.settings["frame_buffer_length"]:
             logger.debug("Not yet enough frames to determine a new period.")
 
             # Adds current frame to buffer
@@ -473,18 +506,24 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
         # Once a suitable number of frames has been buffered
         # gets a period and align to the history
         else:
-            logger.debug("Determining new reference period")
-
             # Obtains a reference period
-            self.ref_frames, self.settings = get_period(
-                self.ref_buffer,
-                {},
-                framerate=self.framerate,
-                period_dir=self.period_dir,
+            logger.debug("Determining new reference period")
+            # Calculate period from determine_reference_period.py
+            self.ref_frames, self.pog_settings = ref.establish(
+                self.ref_buffer, self.pog_settings
             )
+
+            # Determine barrier frames
+            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
+
+            # Save the period
+            ref.save_period(self.ref_frames, self.settings["period_dir"])
+            logger.success("Period determined.")
+
             self.state = 0
 
             self.frame_num = 0
+
             # add to periods history for adaptive updates
             (
                 self.sequence_history,
@@ -495,8 +534,8 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                 self.target,
             ) = oga.process_sequence(
                 self.ref_frames,
-                self.settings["referencePeriod"],
-                self.settings["drift"],
+                self.pog_settings["referencePeriod"],
+                self.pog_settings["drift"],
                 sequence_history=self.sequence_history,
                 period_history=self.period_history,
                 drift_history=self.drift_history,
@@ -504,168 +543,27 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
                 global_solution=self.global_solution,
                 max_offset=3,
                 ref_seq_id=0,
-                ref_seq_phase=self.settings["referenceFrame"],
+                ref_seq_phase=self.pog_settings["referenceFrame"],
             )
-            self.settings = parameters.update(
-                self.settings,
+            self.pog_settings = parameters.update(
+                self.pog_settings,
                 referenceFrame=(
-                    self.settings["referencePeriod"] * self.target / 80
+                    self.pog_settings["referencePeriod"] * self.target / 80
                 )  # TODO IS THIS CORRECT?
-                % self.settings["referencePeriod"],
+                % self.pog_settings["referencePeriod"],
             )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",
-                self.settings["referencePeriod"],
-                self.settings["referenceFrame"],
+                self.pog_settings["referencePeriod"],
+                self.pog_settings["referenceFrame"],
             )
-
-    def emulate(self):
-        """ Function to emulate live data based on a saved multi-page TIFF."""
-
-        # Defines initial variables and objects
-        timestamp = []
-        phase = []
-        process_time = []
-        trigger_times = []
-        self.live = False
-        self.targetSyncPhaseOld = -1
-
-        number_of_frames = len(self.emulated_data) - self.emulate_start
-        logger.trace(self.emulated_data.shape)
-
-        for i, frame in enumerate(self.emulated_data[self.emulate_start : :]):
-            logger.debug("Processing frame {0} of {1}", i, number_of_frames)
-            self.progress = 100 * i / number_of_frames  # for static progress bar
-            # yield "data:{0:.0f}\n\n".format(100*i/number_of_frames)  # for dynamic progress bar
-
-            # Only send to analyze() if an initial period has been determined and a target frame set
-            # i.e. all states but 2 (get_period_state())
-            if self.state != 2:
-                # Gets data from analyse function (also times function call)
-                time_init = time.time()
-                trigger_response, pp, tt = self.analyze(frame)
-                logger.trace("t = {0}; p = {1}; tr = {2};", tt, pp, trigger_response)
-                time_fin = time.time()
-
-                # Adds data to lists
-                if tt is None:
-                    continue
-                if tt != 0:
-                    process_time.append(time_fin - time_init)
-                    timestamp.append(tt)
-                    phase.append(pp)
-                    # If sucessful trigger response and sync phase has increased
-                    if (
-                        trigger_response is not None and trigger_response
-                    ):  # != 0 and current_sync_phase > self.targetSyncPhaseOld:
-                        trigger_times.append(trigger_response + tt)
-                        # self.targetSyncPhaseOld = current_sync_phase
-                else:
-                    logger.warning("This is wrong!")
-
-            # Gets period if trigger conditions are not met
-            else:
-                logger.critical("No period has been determined! (State {0})", self.state)
-                return None
-
-        # Converts lists to numpy arrays
-        process_time = np.array(process_time)
-        timestamp = np.array(timestamp)
-        phase = np.array(phase)
-        trigger_times = np.array(trigger_times)
-
-        logger.info(
-            "Processing time (min and max): {0} {1}",
-            process_time.min(),
-            process_time.max(),
-        )
-        logger.info(
-            "Timestamp (min and max): {0} {1}", timestamp.min(), timestamp.max()
-        )
-        logger.info("Phase (min and max): {0} {1}", phase.min(), phase.max())
-        logger.success(trigger_times)
-
-        # Should have a sawtooth for Phase vs time and scatter points should lie on the saw tooth
-        plt.figure()
-        plt.title("Zebrafish heart phase with simulated trigger fire")
-        plt.plot(timestamp, phase, label="Heart phase")
-        plt.scatter(
-            trigger_times[0:-1],
-            np.full(max(len(trigger_times) - 1, 0), self.settings["targetSyncPhase"]),
-            color="r",
-            label="Simulated trigger fire",
-        )
-        # Add labels etc
-        x1, x2, y1, y2 = plt.axis()
-        plt.axis((x1, x2, 0, y2 * 1.1))
-        plt.legend()
-        plt.xlabel("Time (ms)")
-        plt.ylabel("Phase (rad)")
-
-        # Saves the figure
-        plt.savefig(
-            os.path.join(
-                "open_optical_gating", "app", "static", "triggers.png"
-            ),
-            dpi=1000,
-        )
-        plt.show()
-
-        triggeredPhase = []
-        for i in range(len(trigger_times)):
-
-            triggeredPhase.append(
-                phase[(np.abs(timestamp - trigger_times[i])).argmin()]
-            )
-
-        plt.figure()
-        plt.title("Frequency density of triggered phase")
-        bins = np.arange(0, 2 * np.pi, 0.1)
-        plt.hist(triggeredPhase, bins=bins, color="g", label="Triggered phase")
-        x1, x2, y1, y2 = plt.axis()
-        plt.plot(
-            np.full(2, self.settings["targetSyncPhase"]),
-            (y1, y2),
-            "r-",
-            label="Target phase",
-        )
-        plt.xlabel("Triggered phase (rad)")
-        plt.ylabel("Frequency")
-        plt.legend()
-        plt.axis((x1, x2, y1, y2))
-
-        plt.tight_layout()
-        plt.savefig(
-            os.path.join(
-                "open_optical_gating", "app", "static", "accuracy.png"
-            ),
-            dpi=1000,
-        )
-        plt.show()
-
-    def emulate_get_period(self, video_file):
-        """ Function to emulate getting reference period"""
-
-        # Defines initial variables and objects
-        self.emulated_data = io.imread(video_file)
-        self.live = False
-        self.targetSyncPhaseOld = -1
-
-        pp = 0
-        i = 0
-        while pp != -1:
-            # Reads a frame from the emulated data set
-            frame = self.emulated_data[i, :, :]
-            _, pp, _ = self.analyze(frame)
-            i = i + 1
-        self.emulate_start = i
 
     def select_period(self, frame=None):
         """Selects the period from a set of reference frames
 
         Function inputs:
             self.ref_frames = a 3D array consisting of evenly spaced frames containing exactly one period
-            self.settings = the settings dictionary (for more information see the helper.py file)
+            self.pog_settings = the settings dictionary (for more information see the parameters.py file)
 
         Optional inputs:
             framerate = the framerate of the brightfield picam (float or int)
@@ -685,10 +583,12 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
 
         # Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
         if frame < 0:
+            logger.success("User has asked for a new period to be determined.")
+            self.state = 1
             return 1
 
         # Otherwise, if user is happy with period
-        self.settings = parameters.update(self.settings, referenceFrame=frame)
+        self.pog_settings = parameters.update(self.pog_settings, referenceFrame=frame)
         self.frame_num = 0
         # add to periods history for adaptive updates
         (
@@ -700,366 +600,189 @@ class YUVLumaAnalysis(array.PiYUVAnalysis):
             self.target,
         ) = oga.process_sequence(
             self.ref_frames,
-            self.settings["referencePeriod"],
-            self.settings["drift"],
+            self.pog_settings["referencePeriod"],
+            self.pog_settings["drift"],
             max_offset=3,
             ref_seq_id=0,
             ref_seq_phase=frame,
         )
-        self.initialTarget = frame
+
+        # turn recording back on for rest of run
+        self.stop = False
 
         return 0
 
+    def trigger_fluorescence_image_capture(self, delay):
+        """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
 
-def init_controls(settings):
-    """Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
-    Function inputs:
-        laser_trigger_pin = the GPIO pin number connected to fire the laser
-        fluorescence_camera_pins = an array of 3 pins used to for the fluoresence camera
-                                        (trigger, SYNC-A, SYNC-B)
-        usb_information = a list containing the information used to set up the usb for controlling the Newport stages
-                                (USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
-    """
+        # Function inputs:
+        # 		delay = delay time (in microseconds) before the image is captured
+        # 		laser_trigger_pin = the pin number (int) of the laser trigger
+        # 		fluorescence_camera_pins = an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
+        #
+        # Optional inputs:
+        # 		edge_trigger:
+        # 			True = the fluorescence camera captures the image once detecting the start of an increased signal
+        # 			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
+        # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
+        # TODO: ABD add some logging here
+        """
 
-    # Defines initial variables
-    laser_trigger_pin = settings["laser_trigger_pin"]
-    fluorescence_camera_pins = settings[
-        "fluorescence_camera_pins"
-    ]  # Trigger, SYNC-A, SYNC-B
-    usb_information = settings["usb_stages"]
-    # will be either None (no stages) or a dict of:
-    # 'usb_name', 'usb_timeout', 'usb_baudrate', 'usb_dataBits', 'usb_parity', 'usb_XOnOff'
-    # usb_information needs to be a tuple of
-    # (USB address, timeout, baud rate, data bits, parity, Xon/Xoff, True)
-    if usb_information is not None:
-        usb_information = (
-            usb_information["usb_name"],
-            usb_information["usb_timeout"],
-            usb_information["usb_baudrate"],
-            usb_information["usb_dataBits"],
-            usb_information["usb_parity"],
-            usb_information["usb_XOnOff"],
-            True,
-        )
-        # TODO: ABD to make rest of code work with dict instead of tuple
-        # TODO: ABD to work out what True is for!
-
-    # Initialises fastpins module
-    try:
-        fp.init()
-    except Exception as inst:
-        logger.critical("Error setting up fastpins module.")
-        logger.critical(inst)
-        return 1
-
-    # Sets up laser trigger pin
-    if laser_trigger_pin is not None:
-        try:
-            fp.setpin(
-                laser_trigger_pin, 1, 0
-            )  # PUD resistor needs to be specified but will be ignored in setup
-        except Exception as inst:
-            logger.critical("Error setting up laser pin.")
-            logger.critical(inst)
-            return 2
-
-    # Sets up fluorescence camera pins
-    if fluorescence_camera_pins is not None:
-        try:
-            fp.setpin(fluorescence_camera_pins[0], 1, 0)  # Trigger
-            fp.setpin(fluorescence_camera_pins[1], 0, 0)  # SYNC-A
-            fp.setpin(fluorescence_camera_pins[2], 0, 0)  # SYNC-B
-        except Exception as inst:
-            logger.critical("Error setting up fluorescence camera pins.")
-            logger.critical(inst)
-            return 3
-
-    # Sets up USB for Newport stages
-    if usb_information is not None:
-        try:
-            ser = scf.init_stage(usb_information)
-
-            # Serial object is the only new object
-            return ser
-        except Exception as inst:
-            logger.critical("Error setting up usb.")
-            logger.critical(inst)
-            return 4
-
-    return 0  # default return if no stage
-
-
-def trigger_fluorescence_image_capture(
-    delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=True, duration=1e3
-):
-    """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
-
-    # Function inputs:
-    # 		delay = delay time (in microseconds) before the image is captured
-    # 		laser_trigger_pin = the pin number (int) of the laser trigger
-    # 		fluorescence_camera_pins = an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
-    #
-    # Optional inputs:
-    # 		edge_trigger:
-    # 			True = the fluorescence camera captures the image once detecting the start of an increased signal
-    # 			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
-    # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
-    # TODO: ABD add some logging here
-    """
-
-    # Captures an image in edge mode
-    if edge_trigger:
-
-        fp.edge(
-            delay,
-            laser_trigger_pin,
-            fluorescence_camera_pins[0],
-            fluorescence_camera_pins[2],
-        )
-
-    # Captures in trigger mode
-    else:
-
-        fp.pulse(delay, duration, laser_trigger_pin, fluorescence_camera_pins[0])
-
-
-# Gets the period from sample set
-def get_period(
-    brightfield_sequence,
-    settings,
-    framerate=80,
-    minFramesForFit=5,
-    maxRecievedFramesForFit=80,
-    predictionLatency=15,
-    period_dir="~/",
-):
-
-    # Function inputs
-    # 		brightfield_sequence = (numpy array) a 3D array of the brightfiled picam data
-    # 		settings = the settings
-
-    # If the settings are empty creates settings
-    if not settings:
-        settings = parameters.initialise(
-            framerate=framerate,
-            referencePeriod=brightfield_sequence.shape[0],
-            minFramesForFit=minFramesForFit,
-            predictionLatency=predictionLatency,
-        )
-
-    # Calculates period from determine_reference_period.py
-    brightfield_period, settings = ref.establish(brightfield_sequence, settings)
-    settings = pog.determine_barrier_frames(settings)
-
-    # Add new folder with time stamp
-    dt = datetime.now().strftime("%Y%m%dT%H%M%S")
-    os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
-
-    # Saves the period
-    if isinstance(brightfield_period, int) == False:
-
-        for i in range(brightfield_period.shape[0]):
-            io.imsave(
-                os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),
-                brightfield_period[i, :, :],
+        # Captures an image in edge mode
+        if self.edge_trigger:
+            fp.edge(
+                delay,
+                self.settings["laser_trigger_pin"],
+                self.settings["fluorescence_camera_pins"][0],
+                self.settings["fluorescence_camera_pins"][2],
+            )
+        # Captures in trigger mode
+        else:
+            fp.pulse(
+                delay,
+                self.duration,
+                self.settings["laser_trigger_pin"],
+                self.settings["fluorescence_camera_pins"][0],
             )
 
-    return brightfield_period, settings
+    def plot_triggers(self, outfile="triggers.png"):
+        """Plot the phase vs. time sawtooth line with trigger events."""
+        self.timestamp = np.array(self.timestamp)
+        self.phase = np.array(self.phase)
+        self.trigger_times = np.array(self.trigger_times)
+
+        plt.figure()
+        plt.title("Zebrafish heart phase with trigger fires")
+        plt.plot(self.timestamp, self.phase, label="Heart phase")
+        plt.scatter(
+            self.trigger_times,
+            np.full(
+                max(len(self.trigger_times), 0), self.pog_settings["targetSyncPhase"]
+            ),
+            color="r",
+            label="Trigger fire",
+        )
+        # Add labels etc
+        x_1, x_2, _, y_2 = plt.axis()
+        plt.axis((x_1, x_2, 0, y_2 * 1.1))
+        plt.legend()
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Phase (rad)")
+
+        # Saves the figure
+        plt.savefig(outfile)
+        plt.show()
+
+    def plot_accuracy(self, outfile="accuracy.png"):
+        """Plot the target phase and adjusted real phase of trigger events."""
+        self.timestamp = np.array(self.timestamp)
+        self.phase = np.array(self.phase)
+        self.trigger_times = np.array(self.trigger_times)
+
+        triggeredPhase = []
+        for i in range(len(self.trigger_times)):
+
+            triggeredPhase.append(
+                self.phase[(np.abs(self.timestamp - self.trigger_times[i])).argmin()]
+            )
+
+        plt.figure()
+        plt.title("Frequency density of triggered phase")
+        bins = np.arange(0, 2 * np.pi, 0.1)
+        plt.hist(triggeredPhase, bins=bins, color="g", label="Triggered phase")
+        x_1, x_2, y_1, y_2 = plt.axis()
+        plt.plot(
+            np.full(2, self.pog_settings["targetSyncPhase"]),
+            (y_1, y_2),
+            "r-",
+            label="Target phase",
+        )
+        plt.xlabel("Triggered phase (rad)")
+        plt.ylabel("Frequency")
+        plt.legend()
+        plt.axis((x_1, x_2, y_1, y_2))
+
+        plt.tight_layout()
+        plt.savefig(outfile)
+        plt.show()
+
+    def plot_running(self, outfile='running.png'):
+        self.timestamps = np.array(self.timestamp)
+        self.process_time = np.array(self.process_time)
+
+        plt.figure()
+        plt.title("Frame processing times")
+        plt.plot(self.timestamp, self.process_time, label="Processing time")
+        # Add labels etc
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Processing time (ms)")
+
+        # Saves the figure
+        plt.savefig(outfile)
+        plt.show()
 
 
-#  TODO: move emulate to a separate script? Maybe an examples module/script?
-# Defines the three main modes (emulate capture, check fps and live data capture)
-def emulate_data_capture(dict_data):
-    # Emulated data capture for a set of sample data
-    # emulate_data_set = "sample_data.tif"
-    # emulate_data_set = 'sample_data.h264'
-    logger.success("Initialising emulation...")
-    analyse_camera = YUVLumaAnalysis(
-        output_mode=dict_data["output_mode"],
-        updateAfterNTriggers=dict_data["updateAfterNTriggers"],
-        period_dir=dict_data["period_dir"],
+def run(settings):
+    """Run the software using a live PiCam."""
+
+    # Initialise PiCamera
+    logger.success("Initialising camera...")
+    # Camera settings
+    camera = picamera.PiCamera()
+    camera.framerate = settings["brightfield_framerate"]
+    camera.resolution = (
+        settings["brightfield_resolution"],
+        settings["brightfield_resolution"],
     )
+    camera.awb_mode = settings["awb_mode"]
+    camera.exposure_mode = settings["exposure_mode"]
+    camera.shutter_speed = settings["shutter_speed"]  # us
+    camera.image_denoise = settings["image_denoise"]
+
+    # Initialise Gater
+    logger.success("Initialising gater...")
+    analyser = OpticalGater(camera=camera, settings=settings,)
+
     logger.success("Determining reference period...")
-    analyse_camera.emulate_get_period(dict_data["path"])
-    logger.success("Getting user-input...")
-    analyse_camera.state = analyse_camera.select_period(10)
-    # deal with being asked to get new reference period
-    while analyse_camera.state > 0:
-        analyse_camera.emulate_get_period(dict_data["path"])
-        analyse_camera.state = analyse_camera.select_period(10)
-    logger.success("Emulating...")
-    analyse_camera.emulate()
+    while analyser.state > 0:
+        camera.start_recording(analyser, format="yuv")
+        while not analyser.stop:
+            camera.wait_recording(0.001)  # s
+        camera.stop_recording()
+        logger.info("Requesting user input...")
+        analyser.state = analyser.select_period(10)
+    logger.success(
+        "Period determined ({0} frames long) and user has selected frame {1} as target.",
+        analyser.pog_settings["referencePeriod"],
+        analyser.pog_settings["referenceFrame"],
+    )
+
+    logger.success("Running...")
+    camera.start_recording(analyser, format="yuv")
+    time_started = time.time()  # so we can time-out
+    time_running = 0
+    while not analyser.stop and time_running < settings["analyse_time"]:
+        camera.wait_recording(0.001)  # s
+        time_running = time.time() - time_started
+    camera.stop_recording()
+
+    logger.success("Plotting summaries...")
+    analyser.plot_triggers()
+    analyser.plot_accuracy()
+    analyser.plot_running()
+
     logger.success("Fin.")
 
 
-# TODO: is this needed/can this be incorporated elsewhere?
-# Checks that the analyze function can run at the desired framerate
-def check_fps(brightfield_framerate=80, brightfield_resolution=128):
-
-    # Defines initial variables
-    analyse_time = 10
-
-    # Sets up basic picam
-    camera = picamera.PiCamera()
-    camera.framerate = brightfield_framerate
-    camera.resolution = (brightfield_resolution, brightfield_resolution)
-
-    # Generate fake reference frame set
-    dummy_reference_frames = np.random.randint(
-        0,
-        high=128,
-        size=(10, brightfield_resolution, brightfield_resolution),
-        dtype=np.uint8,
-    )
-
-    # Sets up YUVLumaAnalysis object
-    analyse_camera = YUVLumaAnalysis(
-        camera=camera,
-        brightfield_framerate=brightfield_framerate,
-        ref_frames=dummy_reference_frames,
-        live=False,
-    )
-
-    # Starts analysing brightfield data
-    camera.start_recording(analyse_camera, format="yuv")
-    camera.wait_recording(analyse_time)
-    camera.stop_recording()
-
-    # Gets longest time of analyze function
-    longest_analyse_time = max(analyse_camera.time_ary)
-    logger.debug("Longest call to 'analyze()'", longest_analyse_time)
-
-    if 1 / longest_analyse_time > brightfield_framerate:
-
-        logger.success("Success at fps: " + str(brightfield_framerate))
-        camera.close()
-        return brightfield_framerate, brightfield_resolution
-
-    else:
-        logger.success("Unsucessful at fps: " + str(brightfield_framerate))
-        brightfield_framerate += -10
-        camera.close()
-        check_fps(brightfield_framerate=brightfield_framerate)
-
-
-# Performs a live capture of the data
-def live_data_capture(dict_data):
-    # Initialise signallers
-    # usb_serial will be one of:
-    # 0 - if no failure and no usb stage
-    # 1 - if fastpins fails
-    # 2 - if laser pin fails
-    # 3 - if camera pins fail
-    # 4 - if usb stages fail
-    # serial object - if no failure and usb stages desired
-    usb_serial = init_controls(dict_data)
-    usb_information = dict_data["usb_stages"]
-
-    # Checks if usb_serial has recieved an error code
-    if isinstance(usb_serial, int) and usb_serial > 0:
-        ## TODO: replace with a true exception
-        logger.critical("Error code {0}", usb_serial)
-        return False
-    elif isinstance(usb_serial, int) and usb_serial == 0:
-        usb_serial = None
-    else:
-        # Defines variables for USB serial stage commands
-        plane_address = usb_information["plane_address"]
-        encoding = usb_information["encoding"]
-        terminator = chr(usb_information["terminators"][0]) + chr(
-            usb_information["terminators"][1]
-        )
-
-        # Sets up stage to recieve input
-        neg_limit, pos_limit, current_position = scf.set_user_stage_limits(
-            usb_serial, plane_address, encoding, terminator
-        )
-
-    # Camera settings
-    camera = picamera.PiCamera()
-    camera.framerate = dict_data["brightfield_framerate"]
-    camera.resolution = (
-        dict_data["brightfield_resolution"],
-        dict_data["brightfield_resolution"],
-    )
-    camera.awb_mode = dict_data["awb_mode"]
-    camera.exposure_mode = dict_data["exposure_mode"]
-    camera.shutter_speed = dict_data["shutter_speed"]  # us
-    camera.image_denoise = dict_data["image_denoise"]
-
-    # Sets up YUVLumaAnalysis object
-    # DEVNOTE: Remember to update the equivalent line in emulate_data_capture()
-    if usb_serial is not None:
-        analyse_camera = YUVLumaAnalysis(
-            camera=camera,
-            usb_serial=usb_serial,
-            output_mode=dict_data["output_mode"],
-            updateAfterNTriggers=dict_data["updateAfterNTriggers"],
-            duration=dict_data["fluorescence_exposure"],
-            period_dir=dict_data["period_dir"],
-            brightfield_framerate=camera.framerate,
-            increment=usb_information["increment"],
-            negative_limit=neg_limit,
-            positive_limit=pos_limit,
-            current_position=current_position,
-            plane_address=plane_address,
-            encoding=encoding,
-            terminator=terminator,
-            # laser_trigger_pin=22,  # TODO
-            # fluorescence_camera_pins=(8, 10, 12),  # TODO
-            # frame_buffer_length=100,  # TODO
-            # ref_frames=None,  # TODO
-            # frame_num=0,  # TODO
-        )
-    else:
-        analyse_camera = YUVLumaAnalysis(
-            camera=camera,
-            usb_serial=usb_serial,
-            brightfield_framerate=camera.framerate,
-            output_mode=dict_data["output_mode"],
-            updateAfterNTriggers=dict_data["updateAfterNTriggers"],
-            duration=dict_data["fluorescence_exposure"],
-            period_dir=dict_data["period_dir"],
-        )
-
-    # Starts analysing brightfield data
-    camera.start_recording(analyse_camera, format="yuv")
-    camera.wait_recording(dict_data["analyse_time"])  # s
-    camera.stop_recording()
-
-
 if __name__ == "__main__":
-    import sys
-
-    # Iterates through a sample stack (with no period)
-    # 	neg_limit = 0
-    # 	pos_limit = 4
-    # 	current_position = 0
-    # 	increment = 0.01
-    # 	plane_address = 1
-    # 	encoding = 'utf-8'
-    # 	terminator = chr(13)+chr(10)
-    # 	delay = 400000
-    # 	duration = 20000
-    #
-    # 	for i in tqdm(range(neg_limit, int(pos_limit/increment))):
-    #
-    # 		trigger_fluorescence_image_capture(delay, laser_trigger_pin, fluorescence_camera_pins, edge_trigger=False, duration=duration)
-    # 		stage_result = scf.move_stage(usb_serial, plane_address,increment, encoding, terminator)
-    # 	scf.move_stage(usb_serial, plane_address, pos_limit*(-1), encoding, terminator)
-
-    # Reads data from json file
+    # Reads data from settings json file
     if len(sys.argv) > 1:
-        settings = sys.argv[1]
+        settings_file = sys.argv[1]
     else:
-        settings = "settings.json"
+        settings_file = "settings.json"
 
-    with open(settings) as data_file:
-        dict_data = json.load(data_file)
+    with open(settings_file) as data_file:
+        settings = json.load(data_file)
 
-    # Performs a live or emulated data capture
-    live_capture = dict_data["live"]
-    if live_capture == True:
-        live_data_capture(dict_data)
-    else:
-        emulate_data_capture(dict_data)
+    # Performs a live data capture
+    run(settings)
