@@ -6,15 +6,16 @@ authors = ["Chas Nelson <chas.nelson@glasgow.ac.uk>"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-fastpins = { git = "https://github.com/abdrysdale/fastpins" }
 optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gating-alignment" }
 loguru = "^0.4.1"
 tqdm = "^4.45.0"
 pandas = "^1.0.3"
 scikit-image = "^0.16.2"
-picamera = "^1.13"
 serial = "^0.0.97"
 flask = "^1.1.2"
+# RPi Specific
+picamera = { version = "^1.13", optional = true}
+fastpins = { git = "https://github.com/abdrysdale/fastpins" , optional = true}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
