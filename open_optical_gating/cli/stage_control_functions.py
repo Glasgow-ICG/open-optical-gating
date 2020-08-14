@@ -19,8 +19,10 @@ def init_stage(usb_information):
     return ser
 
 
-def set_stage_to_recieve_input(ser, address, encoding, terminator):
-    """A function that ensures the stage is set to the correct mode."""
+def set_stage_to_receive_input(ser, address, encoding, terminator):
+    """A function that ensures the stage is set to the correct mode.
+        This code currently assumes Physik Instrumente stages,
+        with firmware that supports the "old" Mercury command interface. """
 
     # Function inputs:
     # 	ser = the serial object for the usb (already set up in initialisation function)
@@ -51,7 +53,7 @@ def set_stage_to_recieve_input(ser, address, encoding, terminator):
     response = ser.readline()
     if not response:
         print(
-            "No information recieved when requesting version information.\nCommand sent: "
+            "No information received when requesting version information.\nCommand sent: "
             + command
         )
         return 1
@@ -100,12 +102,12 @@ def set_stage_to_recieve_input(ser, address, encoding, terminator):
 
 
 def move_stage(ser, address, increment, encoding, terminate):
-    """Moves stage by an increment to move the zebrafish through the plane."""
+    """Moves stage by an increment to translate the sample through the imaging focal plane."""
     # Function inputs
     # 		ser = the serial object return by the init_controls function
     # 		address = the address of the stage to be moved
     # 		increment = the increment to move the stage by (float)
-    # 		encoding = the type of encoding to be used to send/recieve commands (usually 'utf-8') (str)
+    # 		encoding = the type of encoding to be used to send/receive commands (usually 'utf-8') (str)
     # 		terminate = the termination character set (str)
 
     # To-dos:
@@ -186,7 +188,7 @@ def move_stage(ser, address, increment, encoding, terminate):
 
 
 def set_user_stage_limits(ser, address, encoding, terminator):
-    """ Gets the user set limits of the of the specific address."""
+    """ Interactive function to configure the user-set z scan limits, for the specific stage address."""
     # Function inputs:
     # 	ser = the serial object for the usb
     # 	address = the address number (int or str) for the stage to be controlled
@@ -198,8 +200,8 @@ def set_user_stage_limits(ser, address, encoding, terminator):
     get_current_position = "TP"
     toggle_disable_state = "MM"
 
-    # Activates the stages to recieve input and checks the result
-    if set_stage_to_recieve_input(ser, address, encoding, terminator) != 0:
+    # Activates the stages to receive input and checks the result
+    if set_stage_to_receive_input(ser, address, encoding, terminator) != 0:
         print("Could not set user stage limits. Check stages.")
         return 1
 

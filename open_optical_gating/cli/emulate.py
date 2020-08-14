@@ -16,7 +16,7 @@ class OpticalGater(cli.OpticalGater):
     """Custom class to extend optical gater for emulating from a data file.
     """
 
-    def __init__(self, file=None, settings=None, ref_frames=None):
+    def __init__(self, file=None, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
             camera - the raspberry picam PiCamera object
             settings - a dictionary of settings (see default_settings.json)
@@ -24,7 +24,7 @@ class OpticalGater(cli.OpticalGater):
 
         # initialise parent
         super(OpticalGater, self).__init__(
-            camera=file, settings=settings, ref_frames=ref_frames
+            camera=file, settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period
         )
         self.emulate_frame = (
             -1

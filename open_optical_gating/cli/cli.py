@@ -8,9 +8,15 @@ import time
 # Module imports
 import numpy as np
 import matplotlib.pyplot as plt
-import picamera
-import picamera.array
 from loguru import logger
+try:
+    import picamera
+    from picamera.array import PiYUVAnalysis
+except:
+    # JT: Temporary hack for now, creating a dummy PiYUVAnalysis class to enable the code below to compile in non-Pi environments
+    class PiYUVAnalysis:
+        def __init__(self, camera):
+            pass
 
 # Fastpins module
 import fastpins as fp
@@ -33,22 +39,33 @@ logger.enable("open_optical_gating")
 # TODO create a time-stamped log somewhere
 
 
-class OpticalGater(picamera.array.PiYUVAnalysis):
+class OpticalGater(PiYUVAnalysis):
     """Custom class to convert and analyse Y (luma) channel of each YUV frame.
-    Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analze that is overidden here.
+    Extends the picamera.array.PiYUVAnalysis class, which has a stub method called analyze that is overidden here.
+
+    # TODO: JT writes: I think these should be short strings instead of numbers, to be suitably descriptive of what the mode is, rather than just magic numbers:
+    self.state has several modes:
+       0 - run prospective gating mode (phase locked triggering)
+       1 - re-initialise (clears for mode 2)
+       2 - get period mode (requires user input)
+       3 - adaptive mode (update period but maintain phase lock)
+
     """
 
-    def __init__(self, camera=None, settings=None, ref_frames=None):
+    def __init__(self, camera=None, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
             camera - the raspberry picam PiCamera object
             settings - a dictionary of settings (see default_settings.json)
         """
 
         # store the whole settings dict
-        # we occassionally store some of this informatione elsewhere too
+        # we occasionally store some of this information elsewhere too
         # that's not ideal but works for now
         self.settings = settings
         # NOTE: there is also self.pog_settings, be careful of this
+        # TODO: JT writes: UGH! Who has responsibility for the settings object? What is the distinction between settings and pog_settings?
+        #                  Surely settings["frame_buffer_length"] should be in pog_settings?
+        #                  Maybe hold off doing anything about this until after the refactors I believe are needed - but we should make sure this is tidied and clarified eventually
 
         logger.success("Setting camera settings...")
         if camera is not None and not isinstance(camera, str):
@@ -63,6 +80,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         if ref_frames is not None:
             logger.success("Using existing reference frames...")
         self.ref_frames = ref_frames
+        self.ref_frame_period = ref_frame_period
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
 
@@ -75,6 +93,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
 
     def load_data(self, filename):
         """Place holder function for loading data in emulator."""
+        # TODO: JT writes: What is the intention of this function (what would be loaded?), and what is there a clear idea of how an emulator would be structured?
         logger.critical("No camera found in live mode ({0}).", filename)
 
     def initialise_internal_parameters(self):
@@ -86,7 +105,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         # Variables for adaptive algorithm
         # Should be compatible with standard adaptive algorithm
         #  (Nat Comms paper) and dynamic algorithm (unpublished, yet)
-        # if update_after_n_triggers is 0 turns adaptive mode off
+        # if update_after_n_triggers is 0, turns adaptive mode off   # TODO: JT writes: what does this comment have to do with the surrounding code? Does it belong somewhere else, perhaps?
         self.trigger_num = 0
         self.sequence_history = []
         self.period_history = []
@@ -95,26 +114,33 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
 
         # Sets ouput mode for normal trigger or special Glasgow mode
         if self.settings["trigger_mode"] == "5V_BNC_Only":
-            self.trigger_mode = 1
+            self.moveStagesAfterTrigger = False
         else:
-            self.trigger_mode = 0
+            self.moveStagesAfterTrigger = True
 
-        # Initialises reference frames if not specified
-        # state has several modes:
-        #   0 - run prospective gating mode (phase locked triggering)
-        #   1 - re-initialise (clears for mode 2)
-        #   2 - get period mode (requires user input)
-        #   3 - adaptive mode (update period but maintain phase lock)
+        # TODO: JT writes: this seems as good a place as any to flag the fact that I don't think barrier frames are being implemented properly.
+        # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
+        # It certainly isn't when using existing reference frames. This seems like an important missing bit of code.
+        # I think it just defaults to 0 when the settings are initialised, and stays that way.
+        
+        # Start by acquiring a sequence of reference frames, unless we have been provided with them
         if self.ref_frames is None:
-            logger.info("No reference frames found, switching to get period mode.")
+            logger.info("No reference frames found, switching to 'get period' mode.")
             self.state = 1
             self.pog_settings = parameters.initialise(framerate=self.framerate)
-
         else:
             logger.info("Using existing reference frames with integer period.")
             self.state = 0
+            if self.ref_frame_period is None:
+                # Deduce an integer reference period from the reference frames we were provided with.
+                # This is just a legacy mode - caller who constructed this object should really have provided a reference period
+                rp = self.ref_frames.shape[0]   # TODO: JT writes: what about padding!? I think this does not take proper account of numExtraRefFrames, does it?
+            else:
+                # Use the reference period provided when this object was constructed.
+                rp = self.ref_frame_period
+
             self.pog_settings = parameters.initialise(
-                framerate=self.framerate, referencePeriod=self.ref_frames.shape[0]
+                framerate=self.framerate, referencePeriod=rp
             )
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
@@ -133,21 +159,21 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         self.stop = False
 
     def init_hardware(self):
-        """Function that initialises various controlls (pins for triggering laser and fluorescence camera along with the USB for controlling the Newport stages)
+        """Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera, along with the USB for controlling the Newport stages)
         Function inputs:
             laser_trigger_pin = the GPIO pin number connected to fire the laser
-            fluorescence_camera_pins = an array of 3 pins used to for the fluoresence camera
+            fluorescence_camera_pins = an array of 3 pins used to interact with the fluoresence camera
                                             (trigger, SYNC-A, SYNC-B)
             self.settings["usb_stages"] = a list containing the information used to set up the usb for controlling the Newport stages
                                     (USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
-        Outputs:
-                usb_serial will be one of:
-                    0 - if no failure and no usb stage
-                    1 - if fastpins fails
-                    2 - if laser pin fails
-                    3 - if camera pins fail
-                    4 - if usb stages fail
-                    serial object - if no failure and usb stages desired
+                                    TODO: JT writes: no, this seems to be a dictionary, not a list...
+        When this function return, self.usb_serial will be one of:
+            0 - if no failure and no usb stage
+            1 - if fastpins fails
+            2 - if laser pin fails
+            3 - if camera pins fail
+            4 - if usb stages fail
+            serial object - if no failure and usb stages desired
         """
         # TODO update this docstring
         self.usb_serial = (
@@ -172,6 +198,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
                 logger.critical("Error setting up laser pin. {0}", inst)
 
         # Sets up fluorescence camera pins
+        # TODO: JT writes: why not make these a [sub-]dictionary, so we don't have to keep track of what [0], [1], and [2] represent?
         fluorescence_camera_pins = self.settings[
             "fluorescence_camera_pins"
         ]  # Trigger, SYNC-A, SYNC-B
@@ -182,7 +209,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
                 fp.setpin(fluorescence_camera_pins[1], 0, 0)  # SYNC-A
                 fp.setpin(fluorescence_camera_pins[2], 0, 0)  # SYNC-B
                 self.duration = 1e3  # TODO relate to settings
-                self.edge_trigger = True  #  TODO relate to settings
+                self.edge_trigger = True  #  TODO relate to settings     # TODO: JT writes: flagging this again as definitely belonging in settings!
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
 
@@ -194,6 +221,8 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             # init_stage function needs to a tuple of
             # (address, timeout, baud_rate, data_bits, parity, x_on_off, True)
             # TODO: ABD to work out what True is for!
+            # TODO: JT writes: this is just wrong. Check init_stage parameters, this code is passing x_on_off as the stopbits parameter!
+            #                  Why not just pass the settings dictionary, and have init_stage parse it? That will avoid bugs like this.
             try:
                 logger.debug("Initialising USB stages...")
                 self.usb_serial = scf.init_stage(
@@ -212,15 +241,14 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         else:
             logger.debug("No USB stage information provided.")
 
-        # Checks if usb_serial has recieved an error code
+        # Check that usb_serial was successfully set up
         if self.usb_serial is not None:
             logger.success("Serial stages found; getting z-stage stack bounds.")
             # Defines variables for USB serial stage commands
-            self.settings["usb_stages"]["terminator"] = chr(
-                self.settings["usb_stages"]["terminators"][0]
-            ) + chr(self.settings["usb_stages"]["terminators"][1])
+            self.settings["usb_stages"]["terminator"] = chr(self.settings["usb_stages"]["terminators"][0])
+                                                        + chr(self.settings["usb_stages"]["terminators"][1])
 
-            # Sets up stage to recieve future input
+            # Sets up stage to receive future input
             # TODO integrate into web app
             (
                 self.negative_limit,
@@ -233,24 +261,24 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
                 self.settings["usb_stages"]["terminator"],
             )
 
-    def analyze(self, array):
+    def analyze(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
-        Must be fast since it is running within the encoder's callback,
-        and so must return before the next frame is produced.
-        Essentialy this method just calls the appropriate method based on the state attribute."""
+            The documentation explains that this must be fast, since it is running within the encoder's callback,
+            and so must return before the next frame is produced.
+            Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
         logger.debug("Analysing frame.")
 
         # For logging processing time
         time_init = time.time()
 
-        # if we're passed a colour image, take the first channel
-        if len(array.shape) == 3:
-            array = array[:, :, 0]
+        # If we're passed a colour image, take the first channel (Y; luma)
+        if len(pixelArray.shape) == 3:
+            pixelArray = pixelArray[:, :, 0]
 
         if self.trigger_num >= self.settings["update_after_n_triggers"]:
-            # time to update the reference period whilst maintaining phase lock
-            # set state to 1 (so we clear things for a new reference period)
-            # as part of this trigger_num will be reset
+            # It is time to update the reference period (whilst maintaining phase lock)
+            # Set state to 1 (so we clear things for a new reference period)
+            # As part of this reset, trigger_num will be reset
             self.state = 1
 
         # Ensures stage is always within user defined limits (only needed for RPi-controlled stages)
@@ -258,12 +286,17 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             self.current_position <= self.positive_limit
             and self.current_position >= self.negative_limit
         )
+        # TODO: JT writes: this test "if stages_safe" is pretty counter-intuitive at this point.
+        # Needs a comment to explain why the stages have anything at all to do with this!
+        # That said, after my proposed refactor this should not need to appear here,
+        # so let's just leave this comment in place as a reminder, for now.
+        # Related: pog_state() updates the stages, which would also be tackled in my refactor.
         logger.debug("Stages safe? {0}", stages_safe)
         if stages_safe:
             if self.state == 0:
-                # Using determined reference peiod, analyse brightfield frames
-                # to determine prospective optical gating triggers
-                (trigger_response, current_phase, current_time) = self.pog_state(array)
+                # Using previously-determined reference peiod, analyse brightfield frames
+                # to determine predicted trigger time for prospective optical gating
+                (trigger_response, current_phase, current_time) = self.pog_state(pixelArray)
 
                 # Logs results and processing time
                 time_fin = time.time()
@@ -280,11 +313,11 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
 
             elif self.state == 2:
                 # Determine initial reference period and target frame
-                self.get_period_state(array)
+                self.get_period_state(pixelArray)
 
             elif self.state == 3:
                 # Determine reference period syncing target frame with original user selection
-                self.update_period_state(array)
+                self.update_reference_sequence(pixelArray)
 
             else:
                 logger.critical("Unknown state {0}.", self.state)
@@ -296,8 +329,8 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         """State 0 - run prospective optical gating mode (phase locked triggering)."""
         logger.debug("Processing frame in prospective optical gating mode.")
 
-        # Gets the phase (in frames) and sad of the current frame
-        current_phase, sad, self.pog_settings = pog.phase_matching(
+        # Gets the phase (in frames) and arrays of SADs between the current frame and the referencesequence
+        currentPhaseInFrames, sad, self.pog_settings = pog.phase_matching(
             frame, self.ref_frames, settings=self.pog_settings
         )
         logger.trace(sad)
@@ -306,7 +339,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         current_phase = (
             2
             * np.pi
-            * (current_phase - self.pog_settings["numExtraRefFrames"])
+            * (currentPhaseInFrames - self.pog_settings["numExtraRefFrames"])
             / self.pog_settings["referencePeriod"]
         )  # rad
 
@@ -336,6 +369,9 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             self.frame_history = np.roll(self.frame_history, -1, axis=0)
 
         # Gets the argmin of SAD and adds to frame_history array
+        # TODO: JT writes: I don't know what this history is used for, but I think it's pretty weird to have a preallocated buffer,
+        # and then just keep updating the final element if we overrun the buffer. I would have expected a FIFO buffer containing up to N recent frames...
+        # That would also simplify subsequent logic e.g. "Predicting with partial buffer" would not be needed
         if self.frame_num < self.settings["frame_buffer_length"]:
             self.frame_history[self.frame_num, :] = (
                 current_time,
@@ -357,22 +393,28 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             self.frame_history[-1, -1],
         )
 
-        # If at least one period has passed, have a go at predicting a trigger
+        # If at least one period has passed, have a go at predicting a future trigger time
         if self.frame_num - 1 > self.pog_settings["referencePeriod"]:
             logger.debug("Predicting trigger...")
 
+            # TODO: JT writes: this seems as good a place as any to highlight the general issue that the code is not doing a great job of precise timing.
+            # It determines a delay time before sending the trigger, but then executes a bunch more code.
+            # Oh and, more importantly, that delay time is then treated relative to “current_time”, which is set *after* doing the phase-matching.
+            # That is going to reduce accuracy and precision, and also makes me even more uncomfortable in terms of future-proofing.
+            # I think it would be much better to pass around absolute times, not deltas.
+            
             # Gets the trigger response
             if self.frame_num < self.settings["frame_buffer_length"]:
-                logger.trace("Triggering with partial buffer.")
-                trigger_response = pog.predict_trigger_wait(
+                logger.trace("Predicting with partial buffer.")
+                timeToWaitInSecs = pog.predict_trigger_wait(
                     self.frame_history[: self.frame_num :, :],
                     self.pog_settings,
                     fitBackToBarrier=True,
                     output="seconds",
                 )
             else:
-                logger.trace("Triggering with full buffer.")
-                trigger_response = pog.predict_trigger_wait(
+                logger.trace("Predicting with full buffer.")
+                timeToWaitInSecs = pog.predict_trigger_wait(
                     self.frame_history,
                     self.pog_settings,
                     fitBackToBarrier=True,
@@ -383,24 +425,20 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             # targetSyncPhase should be in [0,2pi]
 
             # Captures the image  and then moves the stage if triggered
-            if trigger_response > 0:
-                logger.info("Possible trigger: {0}", trigger_response)
+            if timeToWaitInSecs > 0:
+                logger.info("Possible trigger after: {0}s", timeToWaitInSecs)
 
-                (trigger_response, send, self.pog_settings,) = pog.decide_trigger(
-                    current_time, trigger_response, self.pog_settings
+                (timeToWaitInSecs, sendTriggerNow, self.pog_settings,) = pog.decide_trigger(
+                    current_time, timeToWaitInSecs, self.pog_settings
                 )
-                if send > 0:
-                    logger.success("Sending trigger {0} at {1} in {2} ms", send, current_time, trigger_response)
-                    if self.trigger_mode == 1:
-                        # Trigger only
-                        self.trigger_fluorescence_image_capture(
-                            current_time + trigger_response
-                        )
-                    else:
-                        # Trigger and move stage
-                        self.trigger_fluorescence_image_capture(
-                            current_time + trigger_response
-                        )
+                if sendTriggerNow != 0:
+                    # TODO: JT writes: predict_trigger_wait uses variable timeToWaitInSecs, but this log labels it in ms. Which is it? [note that I have changed the variable name here to timeToWaitInSecs, but...]
+                    logger.success("Sending trigger (reason: {0}) at time ({1} plus {2}) ms", sendTriggerNow, current_time, timeToWaitInSecs)
+                    # Trigger only
+                    self.trigger_fluorescence_image_capture(current_time + timeToWaitInSecs)
+                    if self.moveStagesAfterTrigger:
+                        # Move stage
+                        # TODO: JT writes: here again, why not pass the usb_stages settings, rather than passing these individual parameters and risking extra bugs?
                         stage_result = scf.move_stage(
                             self.usb_serial,
                             self.settings["usb_stages"]["plane_address"],
@@ -409,15 +447,15 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
                             self.settings["usb_stages"]["terminator"],
                         )
                         logger.info(stage_result)
-                        # Do something with the stage result:
+                        # TODO: Do something with the stage result:
                         # 	0 = Continue as normal
                         # 	1 or 2 = Pause capture
                     
                     # Store trigger time and update trigger number (for adaptive algorithm)
-                    self.trigger_times.append(current_time + trigger_response)
-                    self.trigger_num = (self.trigger_num + 1)
-                    # Returns the trigger response, phase and timestamp for emulated data
-                    return trigger_response, current_phase, current_time
+                    self.trigger_times.append(current_time + timeToWaitInSecs)
+                    self.trigger_num += 1
+                    # Returns the delay time, phase and timestamp (useful in the emulated scenario)
+                    return timeToWaitInSecs, current_phase, current_time
 
         return None, current_phase, current_time
 
@@ -434,6 +472,15 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             (self.settings["frame_buffer_length"], self.width, self.height),
             dtype=self.dtype,
         )
+        # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
+        # Also, update_after_n_triggers is one reason why we might want to reset the sync,
+        # but the user should have the ability to reset the sync through the GUI, or there might
+        # be other future reasons we might want to reset the sync (e.g. after each stack).
+        # I think this could partly be tidied by making self.state behave more like a proper finite state machine,
+        # A proper FSM would respond to the "reset" *input* slightly differently when in the "0" or "3" *state*.
+        # A simpler tweak that is more consistent with the current design would just involve having two different states,
+        # "reset for POG" and "reset for LTU". Both could call through to this same function, but then this function
+        # knows what it should be doing.
         if (
             self.settings["update_after_n_triggers"] > 0
             and self.trigger_num >= self.settings["update_after_n_triggers"]
@@ -447,13 +494,19 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
 
 
     def get_period_state(self, frame):
-        """ State 2 - get period mode (default requires user input).
-        In this mode we obtain a minimum number of frames
-        Determine a period and then return.
+        """ State 2 - get period mode (default behaviour requires user input).     
+        In this mode we obtain a minimum number of frames,
+        determine a period and then return.
         It is assumed that the user (or cli/flask app) then runs
         the select_period function (and updates the state)
         before running analyse again with the new state.
         """
+        # TODO: JT writes: what user input? Why!? I think this function header needs updating - I'm not convinced any of what it says is accurate!
+        # Or perhaps I am making too many assumptions, and this code is a bit less self-sufficient than I had imagined.
+        # TODO: JT writes: I think this is a very odd way to do things (fill the ref_buffer before attempting to determine the period).
+        # Why are you doing it like that? (the loop in establish_indices now makes more sense to me, at least...)
+        # This is not going to work well live, when we want to lock on to a period ASAP, rather than acquiring an unnecessarily long frame buffer first.
+        # (Is any of this due to concern about taking too much time to analyze one frame before the next one arrives...?)
         logger.debug("Processing frame in get period mode.")
 
         # Obtains a minimum amount of buffer frames
@@ -466,7 +519,7 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             # Increases frame number
             self.frame_num += 1
 
-        # Once a suitible reference size has been buffered
+        # Once a suitable reference size has been buffered
         # gets a period and ask the user to select the target frame
         else:
             logger.info("Determining new reference period")
@@ -485,26 +538,29 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
             # Note, passing the new period to the adaptive system is left to the user/app
             self.stop = True
 
-    def update_period_state(self, frame):
-        """State 3 - adaptive mode (update period but maintain phase lock).
-        In this mode we obtain a minimum number of frames
-        Determine a period and then align with previous
-        periods using an adaptive algorithm.
+    def update_reference_sequence(self, frame):
+        """ State 3 - adaptive mode (update reference sequence, while maintaining the same phase lock).
+            In this mode we obtain a minimum number of frames
+            Determine a period and then align with previous
+            periods using an adaptive algorithm.
         """
+        # TODO: JT writes: I really think this will need to be restructured so it processes "on the fly"
+        # rather than accumulating a long sequence of frames and then analysing them all in one big chunk.
+        # See my more extensive comments in separate document.
         logger.debug("Processing frame in update period mode.")
 
         # Obtains a minimum amount of buffer frames
         if self.frame_num < self.settings["frame_buffer_length"]:
             logger.debug("Not yet enough frames to determine a new period.")
 
-            # Adds current frame to buffer
+            # Inserts current frame into buffer
             self.ref_buffer[self.frame_num, :, :] = frame
 
-            # Increases frame number
+            # Increases frame number counter
             self.frame_num += 1
 
-        # Once a suitable number of frames has been buffered
-        # gets a period and align to the history
+        # Once a suitable number of frames has been buffered,
+        # gets a new period and aligns to the history
         else:
             # Obtains a reference period
             logger.debug("Determining new reference period")
@@ -549,8 +605,8 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
                 self.pog_settings,
                 referenceFrame=(
                     self.pog_settings["referencePeriod"] * self.target / 80
-                )  # TODO IS THIS CORRECT?
-                % self.pog_settings["referencePeriod"],
+                )  # TODO IS THIS CORRECT?    # TODO: JT writes: who wrote this comment? Happy to discuss, but would be nice to know who wrote this and why (and resolve it!)
+                % self.pog_settings["referencePeriod"],  # TODO: JT writes: what purpose does the modulo serve? I wouldn't have expected it to be needed... [makes me worry that there's a bug related to the extra frame padding!]
             )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",
@@ -613,21 +669,23 @@ class OpticalGater(picamera.array.PiYUVAnalysis):
         return 0
 
     def trigger_fluorescence_image_capture(self, delay):
-        """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default)
+        """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at a future time
 
         # Function inputs:
         # 		delay = delay time (in microseconds) before the image is captured
         # 		laser_trigger_pin = the pin number (int) of the laser trigger
         # 		fluorescence_camera_pins = an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
         #
-        # Optional inputs:
+        # Optional inputs:    # TODO: JT writes: this is not an optional input, it is a class variable (which should really be a 'settings' element)
         # 		edge_trigger:
         # 			True = the fluorescence camera captures the image once detecting the start of an increased signal
         # 			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
         # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
         # TODO: ABD add some logging here
         """
-
+        
+        # TODO: JT writes: needs better comment to explain what these modes are. What is "trigger mode" vs "edge mode"?
+        # TODO: JT writes: really important to clarify that these calls to fp are *blocking* calls, i.e. they only return after the trigger has been sent
         # Captures an image in edge mode
         if self.edge_trigger:
             fp.edge(

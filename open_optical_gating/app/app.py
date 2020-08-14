@@ -68,6 +68,10 @@ def gen(camera):
 
 @app.route("/video_feed")
 def video_feed():
+    # TODO: JT writes: I could really do with a comment explaining how this is working.
+    # The 'yield' stuff elsewhere could do with commenting, but I understand it.
+    # I don't understand what is going on here. gen() looks like it behaves as an iterator;
+    # what does Response do, is it somehow permanently streaming messages for each frame, or what...?
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen(Camera()), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -166,7 +170,7 @@ def trigger(duration=500):
 def parameters():
     """Setting editor page."""
 
-    # If POST cast types and save
+    # If POST, cast types and save
     if request.method == "POST":
         new_settings = request.form.to_dict(flat=False)
 
@@ -182,6 +186,7 @@ def parameters():
                     for nestkey in session['settings'][key].keys():
                         # assume only one level of nesting
                         # if additional levels are needed, make this a function and recurse
+                        # TODO: JT writes: should this have some assertion/exception etc to guard against that scenario?
                         if nestkey in new_settings.keys():
                             logger.success("Converting type of {0} from {1} to {2}", nestkey, type(new_settings[nestkey][0]), type(session['settings'][key][nestkey]))
                             new_settings[key][nestkey] = type(session['settings'][key][nestkey])(new_settings[nestkey][0])
@@ -217,7 +222,8 @@ def parameters():
 def emulate():
     """Emulated run page."""
     # Global variable for analyse_camera object
-    # Note: this means the developer has to manage the temporal nature of accesssin this!
+    # Note: this means the developer has to manage the temporal nature of accessing this!
+    # TODO: JT writes: what on earth do the above two lines of comments mean?
     global analyse_camera
     logger.debug('analyse_camera object: {0}',analyse_camera)
 
@@ -275,14 +281,18 @@ def emulate():
 def run():
     """Live run page."""
     # Global variable for analyse_camera object
-    # Note: this means the developer has to manage the temporal nature of accesssin this!
+    # Note: this means the developer has to manage the temporal nature of accessing this!
+    # TODO: JT writes: what on earth do the above two lines of comments mean?
     global analyse_camera
     logger.debug('analyse_camera object: {0}',analyse_camera)
 
     # TODO need to be able to set the stage z bounds for the glasgow set up, e.g. state=bounds?
+    # TODO: JT writes: so the "state" can be False, "get", "set" or "run"? That seems a bit weird to me. Are these states defined by the flask(?) API, or by you?
     if request.args.get("state", False) is False:
         logger.success("Initialising")
         init_hardware() # we re-do this in case somethings happened since doing so at index
+        # TODO: JT writes: I don't understand what is going on here. What is YUVLumaAnalysis and where is it
+        # in cli?
         analyse_camera = cli.YUVLumaAnalysis(
             trigger_mode=session['settings']["trigger_mode"],
             update_after_n_triggers=session['settings']["update_after_n_triggers"],
@@ -330,4 +340,18 @@ def run():
     return render_template("emulate.html")
 
 if __name__ == "__main__":
+    # TODO: JT writes: I am still uncertain whether we are talking about concurrent multithreading
+    # or just sequential here. I am actually now thinking that *flask* is (or at least could potentially)
+    # spawn multiple *processes* to serve these requests, i.e. genuine concurrent multiprocessing.
+    # My blunt question is: has anybody writing this thought through the implications of this?
+    # How does that work in terms of state, race conditions etc? I'm wondering now if the "global analyse_camera"
+    # line (and associated comment) was written by you guys or was in an example you have cloned.
+    # I think this needs some careful thought, understanding and documenting, because I think there's
+    # a risk of things getting very messy. At the very least, we need to be very clear about
+    # how the threading is behaving.
+    # This is where my earlier observation to Chas becomes very important, making the point that
+    # this code is not implementing true REST because this code is not *stateless*.
+    # That's no longer just pedantry when we are talking about concurrent multithreading,
+    # it's really important!
+    
     app.run(debug=True, host="192.168.0.13", threaded=True)

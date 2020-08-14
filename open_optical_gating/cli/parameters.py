@@ -1,5 +1,10 @@
 """Settings functions for open optical gating system."""
 
+# TODO: JT writes: Needs a more extensive comment on what “parameters” actually are. They are a mix of config parameters and current status (e.g. reference frames)...
+# What is the relationship between these and the other "settings" dictionary that gets passed around?
+# Might make sense to rename this "pog_settings.py" or similar, to be consistent with the variable name that is used for them, and to help avoid confusion
+# ... but I expect to tackle all of this in a refactor, so probably just leave this comment as a reminder for now.
+
 ## Imports
 import numpy as np
 
@@ -27,7 +32,7 @@ def initialise(
     referenceFrame=0.0,
     numExtraRefFrames=2,
 ):
-    """Function to intialise our custom settings dict with sensible pre-sets."""
+    """Function to initialise our custom settings dict with sensible pre-sets."""
     parameters = {}
     parameters.update({"drift": drift})  # starting drift corrections
     parameters.update({"framerate": framerate})  # starting est frame rate
@@ -46,7 +51,9 @@ def initialise(
     parameters.update({"extrapolationFactor": extrapolationFactor})
     parameters.update(
         {"maxReceivedFramesToStore": maxReceivedFramesToStore}
-    )  # maximum number of frames to stores, used to prevent memory filling
+    )  # maximum number of frames to store while establishing the period.
+       # Used to prevent over-use of memory (and CPU) in cases where we fail to lock on,
+       # where we would just keep processing a longer and longer frame history buffer.
     parameters.update(
         {"maxFramesForFit": maxFramesForFit}
     )  # frames to fit for prediction (max)
@@ -106,6 +113,8 @@ def update(
     Note: users should not use parameters.update(), i.e. a dictionary update
     as it will not automatically update certain keys.
     """
+    # TODO: JT writes: what is the *role* of this function? The “note” in the comment is not clear to me.
+    # Under what circumstances should this function used, by whom, and why? What is the alternative?
     if drift is not None:
         parameters["drift"] = drift
     if framerate is not None:
