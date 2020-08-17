@@ -5,20 +5,6 @@
 </div>
 
 <br />
-<p class="text-center">Stage Control</p>
-{% for key,val in session['positions'].items() %}
-<div class="btn-group btn-group-justified">
-    <a href="?stage={{ key }}&size=-100" class="btn btn-primary" value="Move {{ key }} Stage (100 -ve)">-100</a>
-    <a href="?stage={{ key }}&size=-10" class="btn btn-primary" value="Move {{ key }} Stage (10 -ve)">-10</a>
-    <a href="?stage={{ key }}&size=-1" class="btn btn-primary" value="Move {{ key }} Stage (1 -ve)">-1</a>
-    <a href="#" class="btn btn-primary" value="{{ key }} Stage">{{ key }} @ {{ val }}</a>
-    <a href="?stage={{ key }}&size=+1" class="btn btn-primary" value="Move {{ key }} Stage (1 +ve)">+1</a>
-    <a href="?stage={{ key }}&size=+10" class="btn btn-primary" value="Move {{ key }} Stage (10 +ve)">+10</a>
-    <a href="?stage={{ key }}&size=+100" class="btn btn-primary" value="Move {{ key }} Stage (100 +ve)">+100</a>
-</div>
-{% endfor %}
-
-<br />
 <p class="text-center">Trigger Fluorescence</p>
 <button type="button" class="btn btn-danger btn-block">Fire!</button>
 {% endblock %}

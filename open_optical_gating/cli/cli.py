@@ -30,7 +30,6 @@ import optical_gating_alignment.optical_gating_alignment as oga
 import open_optical_gating.cli.determine_reference_period as ref
 import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
-import open_optical_gating.cli.stage_control_functions as scf
 
 logger.remove()
 logger.add(sys.stderr, level="SUCCESS")
@@ -122,12 +121,6 @@ class OpticalGater(PiYUVAnalysis):
         self.shift_history = []
         self.drift_history = []
 
-        # Sets ouput mode for normal trigger or special Glasgow mode
-        if self.settings["trigger_mode"] == "5V_BNC_Only":
-            self.moveStagesAfterTrigger = False
-        else:
-            self.moveStagesAfterTrigger = True
-
         # TODO: JT writes: this seems as good a place as any to flag the fact that I don't think barrier frames are being implemented properly.
         # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
         # It certainly isn't when using existing reference frames. This seems like an important missing bit of code.
@@ -171,26 +164,19 @@ class OpticalGater(PiYUVAnalysis):
         self.stop = False
 
     def init_hardware(self):
-        """Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera, along with the USB for controlling the Newport stages)
+        """Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera)
         Function inputs:
             laser_trigger_pin = the GPIO pin number connected to fire the laser
             fluorescence_camera_pins = an array of 3 pins used to interact with the fluoresence camera
                                             (trigger, SYNC-A, SYNC-B)
-            self.settings["usb_stages"] = a list containing the information used to set up the usb for controlling the Newport stages
-                                    (USB address (str),timeout (flt), baud rate (int), byte size (int), parity (char), stop bits (int), xonxoff (bool))
-                                    TODO: JT writes: no, this seems to be a dictionary, not a list...
-        When this function return, self.usb_serial will be one of:
-            0 - if no failure and no usb stage
+        When this function return, self.hardware_state will be one of:
+            0 - if no failure
             1 - if fastpins fails
             2 - if laser pin fails
             3 - if camera pins fail
-            4 - if usb stages fail
-            serial object - if no failure and usb stages desired
         """
         # TODO update this docstring
-        self.usb_serial = (
-            None  # default - no stages but carry on as if everything else worked
-        )
+        self.hardware_state = None  # default - carry on as if everything else worked
 
         # Initialises fastpins module
         try:
@@ -225,55 +211,6 @@ class OpticalGater(PiYUVAnalysis):
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
 
-        # Sets up USB for Newport stages (Glasgow)
-        # self.settings["usb_stages"] will be either None (no stages) or a dict of:
-        # "name", "timeout", "baud_rate", "data_bits", "parity", "x_on_off"
-        # "current_position", "encoding", "increment", "negative_limit", "plane_address", "positive_limit", "terminators"
-        if self.settings["usb_stages"] is not None:
-            # init_stage function needs to a tuple of
-            # (address, timeout, baud_rate, data_bits, parity, x_on_off, True)
-            # TODO: ABD to work out what True is for!
-            # TODO: JT writes: this is just wrong. Check init_stage parameters, this code is passing x_on_off as the stopbits parameter!
-            #                  Why not just pass the settings dictionary, and have init_stage parse it? That will avoid bugs like this.
-            try:
-                logger.debug("Initialising USB stages...")
-                self.usb_serial = scf.init_stage(
-                    (
-                        self.settings["usb_stages"]["name"],
-                        self.settings["usb_stages"]["timeout"],
-                        self.settings["usb_stages"]["baud_rate"],
-                        self.settings["usb_stages"]["data_bits"],
-                        self.settings["usb_stages"]["parity"],
-                        self.settings["usb_stages"]["x_on_off"],
-                        True,
-                    )
-                )
-            except Exception as inst:
-                logger.critical("Error setting up stages. {0}", inst)
-        else:
-            logger.debug("No USB stage information provided.")
-
-        # Check that usb_serial was successfully set up
-        if self.usb_serial is not None:
-            logger.success("Serial stages found; getting z-stage stack bounds.")
-            # Defines variables for USB serial stage commands
-            self.settings["usb_stages"]["terminator"] = chr(
-                self.settings["usb_stages"]["terminators"][0]
-            ) + chr(self.settings["usb_stages"]["terminators"][1])
-
-            # Sets up stage to receive future input
-            # TODO integrate into web app
-            (
-                self.negative_limit,
-                self.positive_limit,
-                self.current_position,
-            ) = scf.set_user_stage_limits(
-                self.usb_serial,
-                self.settings["usb_stages"]["plane_address"],
-                self.settings["usb_stages"]["encoding"],
-                self.settings["usb_stages"]["terminator"],
-            )
-
     def analyze(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
             The documentation explains that this must be fast, since it is running within the encoder's callback,
@@ -294,48 +231,34 @@ class OpticalGater(PiYUVAnalysis):
             # As part of this reset, trigger_num will be reset
             self.state = 1
 
-        # Ensures stage is always within user defined limits (only needed for RPi-controlled stages)
-        stages_safe = (self.usb_serial is None) or (
-            self.current_position <= self.positive_limit
-            and self.current_position >= self.negative_limit
-        )
-        # TODO: JT writes: this test "if stages_safe" is pretty counter-intuitive at this point.
-        # Needs a comment to explain why the stages have anything at all to do with this!
-        # That said, after my proposed refactor this should not need to appear here,
-        # so let's just leave this comment in place as a reminder, for now.
-        # Related: pog_state() updates the stages, which would also be tackled in my refactor.
-        logger.debug("Stages safe? {0}", stages_safe)
-        if stages_safe:
-            if self.state == 0:
-                # Using previously-determined reference peiod, analyse brightfield frames
-                # to determine predicted trigger time for prospective optical gating
-                (trigger_response, current_phase, current_time) = self.pog_state(
-                    pixelArray
-                )
+        if self.state == 0:
+            # Using previously-determined reference peiod, analyse brightfield frames
+            # to determine predicted trigger time for prospective optical gating
+            (trigger_response, current_phase, current_time) = self.pog_state(pixelArray)
 
-                # Logs results and processing time
-                time_fin = time.time()
-                self.timestamp.append(current_time)
-                self.phase.append(current_phase)
-                self.process_time.append(time_fin - time_init)
+            # Logs results and processing time
+            time_fin = time.time()
+            self.timestamp.append(current_time)
+            self.phase.append(current_phase)
+            self.process_time.append(time_fin - time_init)
 
-                return trigger_response, current_phase, current_time
+            return trigger_response, current_phase, current_time
 
-            elif self.state == 1:
-                # Clears reference period and resets frame number
-                # Used when determining new period
-                self.clear_state()
+        elif self.state == 1:
+            # Clears reference period and resets frame number
+            # Used when determining new period
+            self.clear_state()
 
-            elif self.state == 2:
-                # Determine initial reference period and target frame
-                self.get_period_state(pixelArray)
+        elif self.state == 2:
+            # Determine initial reference period and target frame
+            self.get_period_state(pixelArray)
 
-            elif self.state == 3:
-                # Determine reference period syncing target frame with original user selection
-                self.update_reference_sequence(pixelArray)
+        elif self.state == 3:
+            # Determine reference period syncing target frame with original user selection
+            self.update_reference_sequence(pixelArray)
 
-            else:
-                logger.critical("Unknown state {0}.", self.state)
+        else:
+            logger.critical("Unknown state {0}.", self.state)
 
         # Default return - all None
         return (None, None, None)
@@ -439,7 +362,7 @@ class OpticalGater(PiYUVAnalysis):
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
-            # Captures the image  and then moves the stage if triggered
+            # Captures the image
             if timeToWaitInSecs > 0:
                 logger.info("Possible trigger after: {0}s", timeToWaitInSecs)
 
@@ -462,20 +385,6 @@ class OpticalGater(PiYUVAnalysis):
                     self.trigger_fluorescence_image_capture(
                         current_time + timeToWaitInSecs
                     )
-                    if self.moveStagesAfterTrigger:
-                        # Move stage
-                        # TODO: JT writes: here again, why not pass the usb_stages settings, rather than passing these individual parameters and risking extra bugs?
-                        stage_result = scf.move_stage(
-                            self.usb_serial,
-                            self.settings["usb_stages"]["plane_address"],
-                            self.settings["usb_stages"]["increment"],
-                            self.settings["usb_stages"]["encoding"],
-                            self.settings["usb_stages"]["terminator"],
-                        )
-                        logger.info(stage_result)
-                        # TODO: Do something with the stage result:
-                        # 	0 = Continue as normal
-                        # 	1 or 2 = Pause capture
 
                     # Store trigger time and update trigger number (for adaptive algorithm)
                     self.trigger_times.append(current_time + timeToWaitInSecs)

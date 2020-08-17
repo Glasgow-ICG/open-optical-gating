@@ -22,7 +22,7 @@ Our fully open-source system is able to perform prospective optical gating with 
 The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePius) and perform various tests. Prior to this please ensure that AsclePius has been set up correctly to control the microscope.
 
 Currently AsclePius can be operated in 5V BNC Only mode and Glasgow SPIM mode. Whilst in 5V BNC Only mode AsclePius sends a trigger signal through pin 22 when an image capture should be performed
-Whilst in Glasgow SPIM mode AsclePius controls the laser, fluorescence camera and movement stages separately.
+Whilst in Glasgow SPIM mode AsclePius controls the laser and fluorescence camera separately.
 
 For all programs, please ensure that you are using Python 3 as they have not been tested on Python 2.
 
@@ -41,7 +41,6 @@ The pin numbering system being used is the physical numbering system.
   - Trigger: pin 8
   - SYNC-A: pin 10
   - SYNC-B: pin 12
-- Connect the stage controls via USB.
 
 ## Tests
 
@@ -56,17 +55,6 @@ The test simply pulses pin 22 and pin 8 and returns an error if the software can
 If the microscope is not being triggered, please check the connections.
 If the microscope is connected properly check all the required modules have been installed.
 After this, it would be best to check if the signals are being fired by AsclePius's pins and proceed accordingly.
-
-### Stage test
-
-The stages only apply when operating in Glasgow SPIM mode.
-
-The stage testing can be run through the 'stage_test.py'.
-This operates by obtaining the addresses of all available stages and then enters an enviroment to control the stages.
-The stages can be tested by entering various commands.
-
-*Note: The stages are assumed to be  a **SMC100CC/PP** and both the testing enviroment and the stage functions will need to be altered for different stages.
-The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might also need to be updated if different.*
 
 ## Operating the timing box 
 
@@ -96,10 +84,6 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
    python3 cli.py
    ```
 
-   
-
-4. Manually set the stage limits of the over which to acquire an image (only in Glasgow SPIM mode) and ensure that the stage is at the on edge of the heart. The stage will move the length of the heart from one end to another.
-
 5. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
 6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
@@ -118,23 +102,10 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
  "image_denoise":0,
  "laser_trigger_pin":22,
  "fluorescence_camera_pins":[8,10,12],
- "usb_name":"/dev/tty/USB0",
- "usb_timeout":0.1,
- "usb_baud_rate":57600,
- "usb_data_bits":8,
- "usb_parity":"N",
- "usb_x_on_off":1,
- "plane_address":1,
- "encoding":"utf-8",
- "terminators":[13,10],
- "increment":0.0005,
- "negative_limit":0,
- "positive_limit":0.075,
  "current_position":0,
  "frame_buffer_length":100,
  "frame_num":0,
  "live":0,
- "trigger_mode":"5V_BNC_Only",
  "log":0,
  "prediction_latency":15
  }
