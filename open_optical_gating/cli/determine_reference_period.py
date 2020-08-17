@@ -155,12 +155,12 @@ def estimate_integer_period_length(diffs):
         1,
     ]  # list of values needed in the gotScoreForDelta function: minScore, maxScore, totalScore, meanScore, minSinceMax, deltaForMinSinceMax, stage, numScores
     # TODO WTF, can this be simplified?
-    # TODO: JT writes: I assume the above comment refers to the list of values. Ugh. I agree, this really needs tidying into a dictionary
-    # or, dare I say it, a class(!). This might be where your and my class philosophies do diverge a little; it's a borderline one for me even.
-    # But, I think it's a reasonable concept to have a class instance (lifetime could be while we are in the establish-period state...)
-    # whose job it is to determine the period. There is internal state to be maintained (as demonstrated by the passing-around of 'values'),
-    # and when running live (not just determining period in one go, from one big historical frame buffer) we might potentially want
-    # some of that state to persist from one received frame to the next. So there are benefits to maintaining, and encapsulating, that state in one object.
+    # TODO: JT writes: I assume the above comment refers to the list of values. Ugh. I agree, this really needs tidying.
+    # I presume it is written like this because it is replicating my ObjC code, which uses a "period estimator" class
+    # (which has various state variables associated with it). There are two solutions here.
+    # 1. Use a class (or at the very least a dictionary, although personally I'm less keen on that in this scenario)
+    # 2. Just fold gotScoreForDelta into this function, so we can just work with local variables! Nothing wrong with that,
+    #    and any modularity (substitution of different period-determining algorithms) can just be done at a higher level than this function.
     for d in range(2, diffs.size):
         logger.trace(d)
         score = diffs[diffs.size - d]
