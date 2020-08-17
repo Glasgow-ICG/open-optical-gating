@@ -9,6 +9,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from loguru import logger
+
 try:
     import picamera
     from picamera.array import PiYUVAnalysis
@@ -17,6 +18,7 @@ except:
     class PiYUVAnalysis:
         def __init__(self, camera):
             pass
+
 
 # Fastpins module
 import fastpins as fp
@@ -52,7 +54,9 @@ class OpticalGater(PiYUVAnalysis):
 
     """
 
-    def __init__(self, camera=None, settings=None, ref_frames=None, ref_frame_period=None):
+    def __init__(
+        self, camera=None, settings=None, ref_frames=None, ref_frame_period=None
+    ):
         """Function inputs:
             camera - the raspberry picam PiCamera object
             settings - a dictionary of settings (see default_settings.json)
@@ -92,8 +96,14 @@ class OpticalGater(PiYUVAnalysis):
         self.camera = camera
 
     def load_data(self, filename):
-        """Place holder function for loading data in emulator."""
-        # TODO: JT writes: What is the intention of this function (what would be loaded?), and what is there a clear idea of how an emulator would be structured?
+        """Place holder function for loading data in emulator.
+        In this instance this function is just a catch if the user passes a
+        string rather than a picamera instance when initialising the
+        OpticalGater object.
+        In the emulate module, a different definition of OpticalGater is
+        created, inheriting from this definition, and that definition uses
+        this function to read a whole file in to memory.
+        """
         logger.critical("No camera found in live mode ({0}).", filename)
 
     def initialise_internal_parameters(self):
@@ -122,7 +132,7 @@ class OpticalGater(PiYUVAnalysis):
         # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
         # It certainly isn't when using existing reference frames. This seems like an important missing bit of code.
         # I think it just defaults to 0 when the settings are initialised, and stays that way.
-        
+
         # Start by acquiring a sequence of reference frames, unless we have been provided with them
         if self.ref_frames is None:
             logger.info("No reference frames found, switching to 'get period' mode.")
@@ -134,7 +144,9 @@ class OpticalGater(PiYUVAnalysis):
             if self.ref_frame_period is None:
                 # Deduce an integer reference period from the reference frames we were provided with.
                 # This is just a legacy mode - caller who constructed this object should really have provided a reference period
-                rp = self.ref_frames.shape[0]   # TODO: JT writes: what about padding!? I think this does not take proper account of numExtraRefFrames, does it?
+                rp = self.ref_frames.shape[
+                    0
+                ]  # TODO: JT writes: what about padding!? I think this does not take proper account of numExtraRefFrames, does it?
             else:
                 # Use the reference period provided when this object was constructed.
                 rp = self.ref_frame_period
@@ -245,8 +257,9 @@ class OpticalGater(PiYUVAnalysis):
         if self.usb_serial is not None:
             logger.success("Serial stages found; getting z-stage stack bounds.")
             # Defines variables for USB serial stage commands
-            self.settings["usb_stages"]["terminator"] = chr(self.settings["usb_stages"]["terminators"][0])
-                                                        + chr(self.settings["usb_stages"]["terminators"][1])
+            self.settings["usb_stages"]["terminator"] = chr(
+                self.settings["usb_stages"]["terminators"][0]
+            ) + chr(self.settings["usb_stages"]["terminators"][1])
 
             # Sets up stage to receive future input
             # TODO integrate into web app
@@ -296,7 +309,9 @@ class OpticalGater(PiYUVAnalysis):
             if self.state == 0:
                 # Using previously-determined reference peiod, analyse brightfield frames
                 # to determine predicted trigger time for prospective optical gating
-                (trigger_response, current_phase, current_time) = self.pog_state(pixelArray)
+                (trigger_response, current_phase, current_time) = self.pog_state(
+                    pixelArray
+                )
 
                 # Logs results and processing time
                 time_fin = time.time()
@@ -369,7 +384,7 @@ class OpticalGater(PiYUVAnalysis):
             self.frame_history = np.roll(self.frame_history, -1, axis=0)
 
         # Gets the argmin of SAD and adds to frame_history array
-        # TODO: JT writes: I don't know what this history is used for, but I think it's pretty weird to have a preallocated buffer,
+        #  TODO: JT writes: I don't know what this history is used for, but I think it's pretty weird to have a preallocated buffer,
         # and then just keep updating the final element if we overrun the buffer. I would have expected a FIFO buffer containing up to N recent frames...
         # That would also simplify subsequent logic e.g. "Predicting with partial buffer" would not be needed
         if self.frame_num < self.settings["frame_buffer_length"]:
@@ -402,7 +417,7 @@ class OpticalGater(PiYUVAnalysis):
             # Oh and, more importantly, that delay time is then treated relative to “current_time”, which is set *after* doing the phase-matching.
             # That is going to reduce accuracy and precision, and also makes me even more uncomfortable in terms of future-proofing.
             # I think it would be much better to pass around absolute times, not deltas.
-            
+
             # Gets the trigger response
             if self.frame_num < self.settings["frame_buffer_length"]:
                 logger.trace("Predicting with partial buffer.")
@@ -428,14 +443,25 @@ class OpticalGater(PiYUVAnalysis):
             if timeToWaitInSecs > 0:
                 logger.info("Possible trigger after: {0}s", timeToWaitInSecs)
 
-                (timeToWaitInSecs, sendTriggerNow, self.pog_settings,) = pog.decide_trigger(
+                (
+                    timeToWaitInSecs,
+                    sendTriggerNow,
+                    self.pog_settings,
+                ) = pog.decide_trigger(
                     current_time, timeToWaitInSecs, self.pog_settings
                 )
                 if sendTriggerNow != 0:
                     # TODO: JT writes: predict_trigger_wait uses variable timeToWaitInSecs, but this log labels it in ms. Which is it? [note that I have changed the variable name here to timeToWaitInSecs, but...]
-                    logger.success("Sending trigger (reason: {0}) at time ({1} plus {2}) ms", sendTriggerNow, current_time, timeToWaitInSecs)
+                    logger.success(
+                        "Sending trigger (reason: {0}) at time ({1} plus {2}) ms",
+                        sendTriggerNow,
+                        current_time,
+                        timeToWaitInSecs,
+                    )
                     # Trigger only
-                    self.trigger_fluorescence_image_capture(current_time + timeToWaitInSecs)
+                    self.trigger_fluorescence_image_capture(
+                        current_time + timeToWaitInSecs
+                    )
                     if self.moveStagesAfterTrigger:
                         # Move stage
                         # TODO: JT writes: here again, why not pass the usb_stages settings, rather than passing these individual parameters and risking extra bugs?
@@ -450,7 +476,7 @@ class OpticalGater(PiYUVAnalysis):
                         # TODO: Do something with the stage result:
                         # 	0 = Continue as normal
                         # 	1 or 2 = Pause capture
-                    
+
                     # Store trigger time and update trigger number (for adaptive algorithm)
                     self.trigger_times.append(current_time + timeToWaitInSecs)
                     self.trigger_num += 1
@@ -491,7 +517,6 @@ class OpticalGater(PiYUVAnalysis):
             self.state = 3
         else:
             self.state = 2
-
 
     def get_period_state(self, frame):
         """ State 2 - get period mode (default behaviour requires user input).     
@@ -606,7 +631,9 @@ class OpticalGater(PiYUVAnalysis):
                 referenceFrame=(
                     self.pog_settings["referencePeriod"] * self.target / 80
                 )  # TODO IS THIS CORRECT?    # TODO: JT writes: who wrote this comment? Happy to discuss, but would be nice to know who wrote this and why (and resolve it!)
-                % self.pog_settings["referencePeriod"],  # TODO: JT writes: what purpose does the modulo serve? I wouldn't have expected it to be needed... [makes me worry that there's a bug related to the extra frame padding!]
+                % self.pog_settings[
+                    "referencePeriod"
+                ],  # TODO: JT writes: what purpose does the modulo serve? I wouldn't have expected it to be needed... [makes me worry that there's a bug related to the extra frame padding!]
             )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",
@@ -683,7 +710,7 @@ class OpticalGater(PiYUVAnalysis):
         # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
         # TODO: ABD add some logging here
         """
-        
+
         # TODO: JT writes: needs better comment to explain what these modes are. What is "trigger mode" vs "edge mode"?
         # TODO: JT writes: really important to clarify that these calls to fp are *blocking* calls, i.e. they only return after the trigger has been sent
         # Captures an image in edge mode
@@ -764,7 +791,7 @@ class OpticalGater(PiYUVAnalysis):
         plt.savefig(outfile)
         plt.show()
 
-    def plot_running(self, outfile='running.png'):
+    def plot_running(self, outfile="running.png"):
         self.timestamps = np.array(self.timestamp)
         self.process_time = np.array(self.process_time)
 
