@@ -13,6 +13,8 @@ pandas = "^1.0.3"
 scikit-image = "^0.16.2"
 serial = "^0.0.97"
 flask = "^1.1.2"
+# Numba for optical gating (not on Pi)
+numba = { version = "^0.50.1", optional = true}
 # RPi Specific
 picamera = { version = "^1.13", optional = true}
 fastpins = { git = "https://github.com/abdrysdale/fastpins" , optional = true}
@@ -22,6 +24,10 @@ pytest = "^5.2"
 black = "^19.10b0"
 pytest-cov = "^2.8.1"
 pylint = "^2.4.4"
+
+[tool.poetry.extras]
+numba = ["numba"]
+rpi = ["picamera", "fastpins"]
 
 [build-system]
 requires = ["poetry>=0.12"]
