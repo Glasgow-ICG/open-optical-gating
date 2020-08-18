@@ -115,6 +115,8 @@ def update(
     """
     # TODO: JT writes: what is the *role* of this function? The “note” in the comment is not clear to me.
     # Under what circumstances should this function used, by whom, and why? What is the alternative?
+    # JT reminder for self: Chas explains that it's because of the auto-updated variables targetSyncPhase and referenceFrameCount
+    # This should indeed all get cleaned up, once we have a proper refactor into a Sync Analyzer class.
     if drift is not None:
         parameters["drift"] = drift
     if framerate is not None:

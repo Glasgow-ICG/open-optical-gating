@@ -175,6 +175,7 @@ def emulate():
         if "period" in session.keys():
             logger.info("Clearing an existing period")
             session.pop("period")
+        # TODO: JT writes: emulate_get_period() does not appear to exist as a function any more?
         analyse_camera.emulate_get_period(session["settings"]["path"])
         # save period in jpg for webpage
         for (i, frame) in enumerate(analyse_camera.ref_frames):
@@ -222,7 +223,9 @@ def run():
     global analyse_camera
     logger.debug("analyse_camera object: {0}", analyse_camera)
 
-    # TODO: JT writes: so the "state" can be False, "get", "set" or "run"? That seems a bit weird to me. Are these states defined by the flask(?) API, or by you?
+    # TODO: JT writes: so the "state" can be False, "get", "set" or "run"? That seems a bit weirdly inconsistent to me.
+    # Is there any reason the False can't be a string such as "init" instead?
+    # [Same applies to emulate(), above]
     if request.args.get("state", False) is False:
         logger.success("Initialising")
         # result will be one of:
@@ -244,6 +247,7 @@ def run():
         if "period" in session.keys():
             logger.info("Clearing an existing period")
             session.pop("period")
+        # TODO: JT writes: emulate_get_period() does not appear to exist as a function any more?
         analyse_camera.emulate_get_period(session["settings"]["path"])
         # save period in jpg for webpage
         for (i, frame) in enumerate(analyse_camera.ref_frames):

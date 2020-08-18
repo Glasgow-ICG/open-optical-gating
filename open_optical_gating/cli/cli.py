@@ -69,6 +69,7 @@ class OpticalGater(PiYUVAnalysis):
         # TODO: JT writes: UGH! Who has responsibility for the settings object? What is the distinction between settings and pog_settings?
         #                  Surely settings["frame_buffer_length"] should be in pog_settings?
         #                  Maybe hold off doing anything about this until after the refactors I believe are needed - but we should make sure this is tidied and clarified eventually
+        # Update: Chas agrees no particular distinction between the two. Let's see how things look after the refactor.
 
         logger.success("Setting camera settings...")
         if camera is not None and not isinstance(camera, str):
@@ -302,14 +303,14 @@ class OpticalGater(PiYUVAnalysis):
                 phase = self.frame_history[-1, 1] + delta_phase
             self.last_phase = current_phase
 
-        # Clears last entry of framerateSummaryHistory if it exceeds the reference frame length
+        # Evicts the oldest entry in frame_history if it exceeds the history length that we are meant to be retaining
         if self.frame_num >= self.settings["frame_buffer_length"]:
             self.frame_history = np.roll(self.frame_history, -1, axis=0)
 
         # Gets the argmin of SAD and adds to frame_history array
-        #  TODO: JT writes: I don't know what this history is used for, but I think it's pretty weird to have a preallocated buffer,
-        # and then just keep updating the final element if we overrun the buffer. I would have expected a FIFO buffer containing up to N recent frames...
-        # That would also simplify subsequent logic e.g. "Predicting with partial buffer" would not be needed
+        # TODO: JT writes: I don't know what this history is used for, but I think it's pretty weird to have a preallocated buffer,
+        # rather than a buffer that grows (up to a limit). That avoids having to have the separate "Predicting with partial buffer" logic.
+        # But this is just a cosmetic preference - let's see how the code looks after the main refactor
         if self.frame_num < self.settings["frame_buffer_length"]:
             self.frame_history[self.frame_num, :] = (
                 current_time,
@@ -411,11 +412,11 @@ class OpticalGater(PiYUVAnalysis):
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,
         # but the user should have the ability to reset the sync through the GUI, or there might
         # be other future reasons we might want to reset the sync (e.g. after each stack).
-        # I think this could partly be tidied by making self.state behave more like a proper finite state machine,
-        # A proper FSM would respond to the "reset" *input* slightly differently when in the "0" or "3" *state*.
-        # A simpler tweak that is more consistent with the current design would just involve having two different states,
-        # "reset for POG" and "reset for LTU". Both could call through to this same function, but then this function
-        # knows what it should be doing.
+        # I think this could partly be tidied by making self.state behave more like a proper finite state machine.
+        # What I don't like is the fact that the "update_after_n_triggers" logic effectively appears twice.
+        # It appears in analyze(), where it may induce a reset, and then it appears again here as a
+        # sort of way of figuring out why this reset was initiated in the first place.
+        # Not sure yet what the best solution is, but I'm flagging it for a rethink.
         if (
             self.settings["update_after_n_triggers"] > 0
             and self.trigger_num >= self.settings["update_after_n_triggers"]

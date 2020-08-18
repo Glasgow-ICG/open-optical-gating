@@ -18,7 +18,7 @@ OpticalGater class that extends picamera.array.PiYUVAnalysis. It appears to main
 
 **For chas: IMPORTANT, approaching a BUG**: there is the general issue that the code is not doing a great job of precise timing. It determines a delay time before sending the trigger, but then executes a bunch more code. Oh, and that delay time is then treated relative to "current_time", which is set *after* doing the phase-matching. This is going to reduce accuracy and precision, and also makes me even more uncomfortable in terms of future-proofing. I think it would be much better to pass around absolute times, not deltas.
 
-**For chas**: more generally, I wish we were working with frame *objects* that have accompanying metadata (such as timestamp!). That would help solve the above issue about timings in a tidy manner, and also make it a lot easier to generalise to other timebases (such as camera timebase, rather than computer). Oh, and it would also help deal with gaps in the timebase (missing frames), which I think would be a useful thing to cope with, even if right now there might not be any concrete scenario in which frames would be dropped. I fear I may not win that argument about frame objects, since it would be quite a big structural change. But, do you have any alternative ideas about how best to cope with the fact that we may well want to work in terms of timebases other than the computer's own timebase?
+More generally, I wish we were working with frame *objects* that have accompanying metadata (such as timestamp!). That would help solve the above issue about timings in a tidy manner, and also make it a lot easier to generalise to other timebases (such as camera timebase, rather than computer). Oh, and it would also help deal with gaps in the timebase (missing frames), which I think would be a useful thing to cope with, even if right now there might not be any concrete scenario in which frames would be dropped. [JT: although we have not settled on a solution, we seem to be in agreement that we probably need some sort of a way of connecting metadata with the frame data]
 
 Remark **for chas:** currently when we schedule a trigger everything hangs, waiting for the appropriate time to arrive. This stalls camera and sync analysis. Don't you think we should really figure out a way of doing this asynchronously, without blocking (or come to a definite conclusion that blocking is the only reliable enough way to do it on the Pi).
 
@@ -53,8 +53,6 @@ app.gen() is a "video streaming generator function" which in turn "yield"s frame
 Basic questions **for chas**:
 
 - What is the overall function of app.py? Do I understand correctly that these decorated functions are called in response to messages from the client webpage? In response to those messages, they appear to both perform internal state-affecting actions (i.e. run the synchronization algorithms, in some cases), *and also* then return the actual HTTP source(*) that should now be displayed in the webpage. Am I understanding that correctly? What is the deal with the "session" object? Could really do with a comment at the top of the module to explain what's going on with all of this.                (*) Oh, or sometimes raw video images apparently, in video_feed()...
-
-- **IMPORTANT:** When app.run() refers to "live", is that what actually gets run for live sync with a microscope, fish and everything? Because, for instance, it calls through to **emulate**_get_period...!? I don't know if this is because, as you said, the app code needs updating, but I can't see how it is meaningfully interacting with cli in the case of **live** frames, and I can't quite picture how that even *should* work. It seems like the gen() function should be being used somehow, but that's not being used except in video_feed().
 
 - base_camera.py needs a similar comment at the top of the module explaining what's going on - and in particular what the relationship is between a "client" and a "thread", explanation of the role of "ident" (which is a unique identifier associated with each thread), etc. Are these concurrent threads or [I suspect] sequential threads? Really needs an explanation of the thread architecture here, and the role of "yield" in terms how of the threads interact.
 
@@ -112,16 +110,23 @@ determine_reference_period passes the "settings" object back and forth, *and mod
 
 **Architectural considerations**
 
-RPi camera object, remote camera via message-passing
+- RPi camera object, remote camera via message-passing
+- Separate analyzer object
+- Settings object [who owns?]
+- Pins
+- Status reporting via messages
+- Stages [currently they interact with stages in pog_state() and analyze() (!)]
+- Emulation
 
-Separate analyzer object
 
-Settings object [who owns?]
+**Chas writes**
 
-Pins
+My general rule of thumb for the different log levels is:
 
-Status reporting via messages
-
-Stages [currently they interact with stages in pog_state() and analyze() (!)]
-
-Emulation
+- trace for 'stuff that I may need to see but is impossibly to print cleanly,' e.g. large arrays that would just fill up my terminal
+- debug for 'stuff I will want to print out if something breaks`
+- info for 'expected breaks with no consequences`, in the sense that the code is working (so it's a success) but whats working is that something isn't working (so not a success), e.g. logger.info('No object found but I can carry on find so this is just info.')
+- success for 'this worked and most users will want to know about it', these are sort of things that non-devs will want to know, e.g. 'i connected to the stages fine'
+- warning for 'expected breaks with possible consequences', so like info except this could cause bad results or a later failure
+- error for unexpected breaks, so when something the user requests happen can't, e.g. the user says move the stage but the code can't
+- critical for failure, e.g. the user says 'get me a stage controller' and the code can't - this will break all future requests to do with the stage so it is critical and not just an error.

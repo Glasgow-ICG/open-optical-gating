@@ -14,7 +14,7 @@ from . import parameters
 from . import prospective_optical_gating as pog
 
 
-def establish(sequence, settings, padding=True):
+def establish(sequence, settings):
     # TODO: JT writes: here and elsewhere, why does this return settings back again?
     # I’m 99% sure the original settings object will be modified, so returning a new object seems confusing to me.
     # I can see that returning it could be a reminder that it is changed by the function, but equally it implies to me that
@@ -22,26 +22,25 @@ def establish(sequence, settings, padding=True):
     # (We can't resolve this by doing a deep copy(), because the object is a large one that contains frame data.
     #  I would be wary of a shallow copy, because that's just storing up confusion for the future).
     # I will have a think and try and come up with a solution I like for this general issue.
-    # -> UPDATE: actually, this is bonkers. As far as I can see, all that is updated is the reference period
+    # -> UPDATE: actually, this is bonkers. As far as I can see, all that is updated is the reference period.
+    # We should just return that value from this function, and the caller can do something with it.
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
             sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
             settings    dict             Parameters controlling the sync algorithms
-            padding     bool             Should we pad the returned sequence with extra frames
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
     """
-    referenceFrameIdx, settings = establish_indices(sequence, settings, padding)
+    referenceFrameIdx, settings = establish_indices(sequence, settings)
     logger.trace("Idx: {0}", sequence[referenceFrameIdx].shape)
     return sequence[referenceFrameIdx], settings
 
 
-def establish_indices(sequence, settings, padding=True):
+def establish_indices(sequence, settings):
     """ Establish the list indices representing a reference period, from a given input sequence.
         Parameters:
             sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
             settings    dict             Parameters controlling the sync algorithms
-            padding     bool             Should we pad the returned sequence with extra frames
         Returns:
             List of indices that form the reference sequence (or None).
     """
@@ -83,20 +82,9 @@ def establish_indices(sequence, settings, padding=True):
             settings = parameters.update(
                 settings, referencePeriod=periodToUse
             )  # automatically does referenceFrameCount an targetSyncPhase
-            if padding:
-                # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
-                numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
-                return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
-            else:
-                # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
-                numRefs = int(periodToUse + 1) + settings["numExtraRefFrames"]
-                return (
-                    np.arange(
-                        len(pastFrames) - numRefs,
-                        len(pastFrames) - settings["numExtraRefFrames"],
-                    ),
-                    settings,
-                )
+            # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
+            numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
+            return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
 
     logger.critical("I didn't find a period I'm happy with!")
     return None, settings
@@ -154,13 +142,11 @@ def estimate_integer_period_length(diffs):
         1,
         1,
     ]  # list of values needed in the gotScoreForDelta function: minScore, maxScore, totalScore, meanScore, minSinceMax, deltaForMinSinceMax, stage, numScores
-    # TODO WTF, can this be simplified?
-    # TODO: JT writes: I assume the above comment refers to the list of values. Ugh. I agree, this really needs tidying.
+    # TODO: JT writes: Ugh, this really needs tidying.
     # I presume it is written like this because it is replicating my ObjC code, which uses a "period estimator" class
-    # (which has various state variables associated with it). There are two solutions here.
-    # 1. Use a class (or at the very least a dictionary, although personally I'm less keen on that in this scenario)
-    # 2. Just fold gotScoreForDelta into this function, so we can just work with local variables! Nothing wrong with that,
-    #    and any modularity (substitution of different period-determining algorithms) can just be done at a higher level than this function.
+    # (which has various state variables associated with it). In this case the solution is just to fold gotScoreForDelta into this function,
+    # so we can just work with local variables! Nothing wrong with that, and any modularity (substitution of different period-determining algorithms)
+    # can just be done at a higher level than this function.
     for d in range(2, diffs.size):
         logger.trace(d)
         score = diffs[diffs.size - d]
@@ -224,13 +210,11 @@ def gotScoreForDelta(score, d, values):
 
 
 def save_period(reference_period, period_dir="~/"):
-    # TODO: JT writes: Needs an explanation of parameters and purpose, and what the isinstance test is about
-    # (which I find a bit weird - are we expecting that reference_period might be an int, or is that just misuse of the function?)
+    # TODO: JT writes: Needs an explanation of parameters and purpose
     '''Function to save a reference period in a time-stamped folder.'''
     dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
     os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
 
     # Saves the period
-    if isinstance(reference_period, int) == False:
-        for i, frame in enumerate(reference_period):
-            io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),frame)
+    for i, frame in enumerate(reference_period):
+        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),frame)

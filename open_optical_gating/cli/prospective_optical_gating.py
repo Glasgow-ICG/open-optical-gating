@@ -134,7 +134,7 @@ def v_fitting(y_1, y_2, y_3):
 def phase_matching(frame0, referenceFrames0, settings=None):
     # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
     # TODO: JT writes: check the above description of referenceFrames -  I have no idea what this means, and I don’t think it is correct either. referenceFrames0 seems to just behave like a 3D array?
-    # TODO: JT writes: Supply a proper function header. That should also explain what xxx0 represents [i.e. uncropped], vs xxx [cropped].
+    # TODO: JT writes: Supply a proper function header [CJN: and better variable names]. That should also explain what xxx0 represents [i.e. uncropped], vs xxx [cropped].
 
     logger.debug(
         "Reference frame types: {0} and {1}", type(frame0), type(referenceFrames0)
@@ -224,7 +224,7 @@ def phase_matching(frame0, referenceFrames0, settings=None):
 
 
 def predict_trigger_wait(
-    frame_history, settings, fitBackToBarrier=True, output="seconds"
+    frame_history, settings, fitBackToBarrier=True
 ):
     """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
         
@@ -234,7 +234,6 @@ def predict_trigger_wait(
             settings                dict        Parameters controlling the sync algorithms
                                                  targetSyncPhase should is expected to be in [0,2pi]
             fitBackToBarrier        bool        Should we use the "barrier frame" logic? (see determine_barrier_frames)
-            output                  str         "seconds" or "phases" - units for the return value
         Returns:
             Time delay (or phase delay) before trigger would need to be sent.
         """
@@ -333,18 +332,11 @@ def predict_trigger_wait(
             logger.info("Increasing number of frames to use")
             # Recurse, using a larger number of frames, to obtain an improved predicted time
             timeToWaitInSecs = predict_trigger_wait(       # TODO: JT writes: this function call is passing completely the wrong parameters!!
-                pastPhases, settings["targetSyncPhase"]    # This parent function is also going to do the wrong thing if output=="phases".
-            )                                              # If "phases" is not used anywhere, it is probably best just to remove that option entirely.
+                pastPhases, settings["targetSyncPhase"]
         settings["minFramesForFit"] = settings["minFramesForFit"] // 2
 
     # Return our prediction
-    if output == "seconds":
-        return timeToWaitInSecs
-    elif output == "phases":
-        return phaseToWait
-    else:
-        logger.critical("What are ye on mate!")   # TODO: JT writes: can you be more helpful here!?
-        return 0.0
+    return timeToWaitInSecs
 
 
 def determine_barrier_frames(settings):
