@@ -20,5 +20,5 @@
     "period_dir": "period-data/",
     "prediction_latency": 15,
     "shutter_speed": 2500,
-    "update_after_n_triggers": 500,
+    "update_after_n_triggers": 500
 }

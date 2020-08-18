@@ -24,10 +24,10 @@ def update_drift(frame0, bestMatch0, settings):
             updated settings dictionary
         """
     # frame0 and bestMatch0 must be numpy arrays of the same size
-    assert(frame0.shape == bestMatch0.shape)
+    assert frame0.shape == bestMatch0.shape
 
     # Start with the existing drift parameters in the settings dictionary
-    dx,dy = settings["drift"]
+    dx, dy = settings["drift"]
 
     # Identify region within bestMatch that we will use for comparison.
     # The logic here basically follows that in phase_matching, but allows for extra slop space
@@ -43,7 +43,10 @@ def update_drift(frame0, bestMatch0, settings):
     candidateShifts = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
 
     # Build up a set of frames each representing a window into frame0 with slightly different drift offsets
-    frames = np.zeros([len(candidateShifts), bestMatch.shape[0], bestMatch.shape[1]], dtype=frame0.dtype)
+    frames = np.zeros(
+        [len(candidateShifts), bestMatch.shape[0], bestMatch.shape[1]],
+        dtype=frame0.dtype,
+    )
     counter = 0
     for shft in candidateShifts:
         dxp = dx + shft[0]
@@ -112,7 +115,9 @@ def subframe_fitting(diffs, settings):
         logger.warning("No minimum found - defaulting to phase=0")
     else:
         # A minimum exists - do sub-frame interpolation on it
-        interpolatedCorrection,_ = v_fitting(diffs[bestScorePos - 1], diffs[bestScorePos], diffs[bestScorePos + 1])
+        interpolatedCorrection, _ = v_fitting(
+            diffs[bestScorePos - 1], diffs[bestScorePos], diffs[bestScorePos + 1]
+        )
         thisFrameReferencePos = bestScorePos + interpolatedCorrection
 
     return thisFrameReferencePos
@@ -149,7 +154,7 @@ def phase_matching(frame0, referenceFrames0, settings=None):
         logger.warning("No settings provided. Using sensible deafults.")
         settings = parameters.initialise()
 
-    dx,dy = settings["drift"]
+    dx, dy = settings["drift"]
 
     # Apply drift correction, identifying a crop rect for the frame and/or reference frames,
     # representing the area intersection between them once drift is accounted for.
@@ -272,14 +277,18 @@ def predict_trigger_wait(
         )
 
     # === Turn our linear fit into a future prediction ===
-    thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec  # Use the *fitted* phase for this current frame
+    thisFramePhase = (
+        alpha + frame_history[-1, 0] * radsPerSec
+    )  # Use the *fitted* phase for this current frame
     multiPhaseCounter = thisFramePhase // (2 * np.pi)
     phaseToWait = (
         settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
     )
     # c.f. function triggerAnticipationProcessing in SyncAnalyzer.mm
     # essentially this fixes for small backtracks in phase due to SAD imperfections
-    while phaseToWait < 0:  # this used to be -np.pi       # TODO: JT writes: who added this comment? Does it serve any purpose? <0 seems like the right test to me (and is what I used)
+    while (
+        phaseToWait < 0
+    ):  # this used to be -np.pi       # TODO: JT writes: who added this comment? Does it serve any purpose? <0 seems like the right test to me (and is what I used)
         phaseToWait += 2 * np.pi
 
     timeToWaitInSecs = phaseToWait / radsPerSec
@@ -309,7 +318,13 @@ def predict_trigger_wait(
         - multiPhaseCounter * 2 * np.pi
         > 0.1
     ):
-        logger.warning("Phase discrepency, trigger aborted. At {0} with wait {1} for target {2} [{3}]", thisFramePhase%(2*np.pi), phaseToWait, settings["targetSyncPhase"], thisFramePhase - (multiPhaseCounter*2*np.pi))
+        logger.warning(
+            "Phase discrepency, trigger aborted. At {0} with wait {1} for target {2} [{3}]",
+            thisFramePhase % (2 * np.pi),
+            phaseToWait,
+            settings["targetSyncPhase"],
+            thisFramePhase - (multiPhaseCounter * 2 * np.pi),
+        )
         timeToWaitInSecs = 0.0
 
     # This logic catches cases where we are predicting a long way into the future using only a small number of datapoints.
@@ -330,9 +345,11 @@ def predict_trigger_wait(
             and settings["minFramesForFit"] <= settings["maxFramesForFit"]
         ):
             logger.info("Increasing number of frames to use")
-            # Recurse, using a larger number of frames, to obtain an improved predicted time
-            timeToWaitInSecs = predict_trigger_wait(       # TODO: JT writes: this function call is passing completely the wrong parameters!!
-                pastPhases, settings["targetSyncPhase"]
+            #  Recurse, using a larger number of frames, to obtain an improved predicted time
+            timeToWaitInSecs = predict_trigger_wait(  # TODO: JT writes: this function call is passing completely the wrong parameters!!
+                pastPhases,
+                settings["targetSyncPhase"]
+            )
         settings["minFramesForFit"] = settings["minFramesForFit"] // 2
 
     # Return our prediction
@@ -421,7 +438,9 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     # between scheduling a trigger and actually being able to send it.
     # That influences whether we commit to this trigger time, or wait for an updated prediction based on the next brightfield frame due to arrive soon
     if timeToWaitInSeconds < settings["prediction_latency"]:
-        logger.info("Trigger due very soon, but if haven't already sent one this period then we may as well give it a shot...")
+        logger.info(
+            "Trigger due very soon, but if haven't already sent one this period then we may as well give it a shot..."
+        )
         if settings["lastSent"] < timestamp - (
             settings["referencePeriod"] / settings["framerate"]
         ):
@@ -434,20 +453,24 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             # that the heart rate is the same as with the reference sequence). However, this prediction is not crucial because
             # clearly we will get much better estimates nearer the time. Really we are just returning this as something vaguely sensible,
             # for cosmetic reasons.
-            logger.info("Trigger already sent recently. Will not send another - extending the prediction to the next cycle.")
+            logger.info(
+                "Trigger already sent recently. Will not send another - extending the prediction to the next cycle."
+            )
             timeToWaitInSeconds += settings["referencePeriod"] / settings["framerate"]
     elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
         "prediction_latency"
     ]:
         # We don't expect to have time to wait for an updated prediction... so schuedule the trigger now!
-        logger.success("We don't expect to have time to wait for an updated prediction... so trigger scheduled now!")
+        logger.success(
+            "We don't expect to have time to wait for an updated prediction... so trigger scheduled now!"
+        )
         sendIt = 2
     else:
         # We expect to have time to wait for an updated prediction, so we do nothing for now.
         pass
 
-    if sendIt > 0 and
-       settings["lastSent"] > (timestamp - ((settings["referencePeriod"] / settings["framerate"]) / 2)
+    if sendIt > 0 and settings["lastSent"] > (
+        timestamp - ((settings["referencePeriod"] / settings["framerate"]) / 2)
     ):
         # If we've done any triggering in the last half a cycle, don't trigger again.
         # This is quite different from JTs approach,
