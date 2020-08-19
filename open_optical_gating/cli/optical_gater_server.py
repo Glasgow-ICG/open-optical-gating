@@ -56,9 +56,6 @@ class OpticalGater:
         # that's not ideal but works for now
         self.settings = settings
         # NOTE: there is also self.pog_settings, be careful of this
-        # TODO: JT writes: UGH! Who has responsibility for the settings object? What is the distinction between settings and pog_settings?
-        #                  Surely settings["frame_buffer_length"] should be in pog_settings?
-        #                  Maybe hold off doing anything about this until after the refactors I believe are needed - but we should make sure this is tidied and clarified eventually
 
         logger.success("Setting camera settings...")
         if source is not None and not isinstance(source, str):
@@ -132,9 +129,7 @@ class OpticalGater:
             if self.ref_frame_period is None:
                 # Deduce an integer reference period from the reference frames we were provided with.
                 # This is just a legacy mode - caller who constructed this object should really have provided a reference period
-                rp = self.ref_frames.shape[
-                    0
-                ]  # TODO: JT writes: what about padding!? I think this does not take proper account of numExtraRefFrames, does it?
+                rp = self.ref_frames.shape[0] - 2 * self.settings["NumExtraRefFrames"]
             else:
                 # Use the reference period provided when this object was constructed.
                 rp = self.ref_frame_period
@@ -326,7 +321,6 @@ class OpticalGater:
                     current_time, timeToWaitInSecs, self.pog_settings
                 )
                 if sendTriggerNow != 0:
-                    # TODO: JT writes: predict_trigger_wait uses variable timeToWaitInSecs, but this log labels it in ms. Which is it? [note that I have changed the variable name here to timeToWaitInSecs, but...]
                     logger.success(
                         "Sending trigger (reason: {0}) at time ({1} plus {2}) ms",
                         sendTriggerNow,
@@ -483,10 +477,8 @@ class OpticalGater:
                 self.pog_settings,
                 referenceFrame=(
                     self.pog_settings["referencePeriod"] * self.target / 80
-                )  # TODO IS THIS CORRECT?    # TODO: JT writes: who wrote this comment? Happy to discuss, but would be nice to know who wrote this and why (and resolve it!)
-                % self.pog_settings[
-                    "referencePeriod"
-                ],  # TODO: JT writes: what purpose does the modulo serve? I wouldn't have expected it to be needed... [makes me worry that there's a bug related to the extra frame padding!]
+                )  # TODO 80 here should be a user-defined variable; we tend not to change it but let's give them the option
+                % self.pog_settings["referencePeriod"],
             )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",

@@ -70,7 +70,8 @@ def establish_indices(sequence, settings):
         #  That logic could definitely be improved and tidied up - we should probably just
         #  look for a period starting numExtraRefFrames from the end of the sequence...
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
-        if (period != -1
+        if (
+            period != -1
             and len(periods) >= (5 + (2 * settings["numExtraRefFrames"]))
             and period > 6
             and (len(periods) - 1 - settings["numExtraRefFrames"]) > 0
@@ -96,22 +97,90 @@ def calculate_period_length(diffs):
             diffs    ndarray    Diffs between latest frame and previously-received frames
         Returns:
             Period, or -1 if no period found
-        """
-    
-    # TODO: JT writes: the comment below can probably be removed now I have written the above function header. BUT, can somebody confirm or deny
-    # the bit about "the list is in reverse order"? That does not seem consistent with e.g. "bestMatchEntry = diffs.size - bestMatchPeriod", "score = diffs[diffs.size - d]" etc.
-    # Note that I have added comments about "chronological order" to earlier functions, above, based on my code-reading (which matches my expectations),
-    # but I started to doubt myself here when I found an explicit comment saying "reverse order"...
-    
-    # Calculate the heart period (with sub-frame interpolation) based on a provided list of comparisons between the current frame and previous frames. The list is in reverse order (i.e. difference with most recent frame comes first)
-    bestMatchPeriod = estimate_integer_period_length(diffs)
-    bestMatchEntry = diffs.size - bestMatchPeriod
+    """
 
-    if bestMatchPeriod == -1:
+    # Calculate the heart period (with sub-frame interpolation) based on a provided list of comparisons between the current frame and previous frames.
+    bestMatchPeriod = None
+
+    # Unlike JTs codes, the following currently only supports determining the period for a *one* beat sequence.
+    # It therefore also only supports determining a period which ends with the final frame in the diffs sequence.
+    if diffs.size < 2:
+        logger.debug("Not enough diffs, returning -1")
         return -1
 
-    # TODO: JT writes: isn't it slightly weird that the v_fitting function lives in the POG module?
-    # Feel free just to delete this comment if you don't have any better ideas, though!
+    # initialise search parameters for last diff
+    score = diffs[diffs.size - 1]
+    minScore = score
+    maxScore = score
+    totalScore = score
+    meanScore = score
+    minSinceMax = score
+    deltaForMinSinceMax = 0
+    stage = 1
+    numScores = 1
+    got = False
+
+    for d in range(2, diffs.size):
+        logger.trace(d)
+        score = diffs[diffs.size - d]
+        # got, values = gotScoreForDelta(score, d, values)
+
+        totalScore += score
+        numScores += 1
+
+        lowerThresholdScore = minScore + (maxScore - minScore) / 2
+        upperThresholdScore = minScore + (maxScore - minScore) * 3 / 4
+        logger.debug(
+            "Lower Threshold:\t{0:.4f};\tUpper Threshold:\t{1:.4f}",
+            lowerThresholdScore,
+            upperThresholdScore,
+        )
+
+        if score < lowerThresholdScore and stage == 1:
+            logger.info("Stage 1: Under lower threshold; Moving to stage 2")
+            stage = 2
+
+        if score > upperThresholdScore and stage == 2:
+            # TODO: speak to JT about the 'final condition'
+            logger.info(
+                "Stage 2: Above upper threshold; Returning period of {0}",
+                deltaForMinSinceMax,
+            )
+            stage = 3
+            got = True
+            break
+
+        if score > maxScore:
+            logger.info(
+                "New max score: {0} > {1}. Resetting to stage 1.", score, maxScore
+            )
+            maxScore = score
+            minSinceMax = score
+            deltaForMinSinceMax = d
+            stage = 1
+        elif score != 0 and (minScore == 0 or score < minScore):
+            logger.debug("New minimum score of {0}", score)
+            minScore = score
+
+        if score < minSinceMax:
+            logger.debug(
+                "New minimum score ({0}) since maximum of {1}", score, maxScore
+            )
+            minSinceMax = score
+            deltaForMinSinceMax = d
+
+        # Note this is only updated AFTER we have done the other processing (i.e. the mean score used does NOT include the current delta)
+        meanScore = totalScore / numScores
+
+    if got:
+        bestMatchPeriod = deltaForMinSinceMax
+
+    if bestMatchPeriod is None:
+        logger.debug("I didn't find a whole period, returning -1")
+        return -1
+
+    bestMatchEntry = diffs.size - bestMatchPeriod
+
     interpolatedMatchEntry = (
         bestMatchEntry
         + pog.v_fitting(
@@ -122,99 +191,13 @@ def calculate_period_length(diffs):
     return diffs.size - interpolatedMatchEntry
 
 
-def estimate_integer_period_length(diffs):
-    # Unlike JTs codes, this function currently only supports determining the period for a *one* beat sequence.
-    # It therefore also only supports determining a period which ends with the final frame in the diffs sequence.
-    # TODO: JT writes: this function needs a proper function header comment, but first we need to think about whether there's any point having
-    # this as a separate function. Is there any purpose to separating this out from calculate_period_length?
-    if diffs.size < 2:
-        logger.debug("Not enough diffs, returning -1")
-        return -1
-
-    score = diffs[diffs.size - 1]
-    values = [
-        score,
-        score,
-        score,
-        score,
-        score,
-        0,
-        1,
-        1,
-    ]  # list of values needed in the gotScoreForDelta function: minScore, maxScore, totalScore, meanScore, minSinceMax, deltaForMinSinceMax, stage, numScores
-    # TODO: JT writes: Ugh, this really needs tidying.
-    # I presume it is written like this because it is replicating my ObjC code, which uses a "period estimator" class
-    # (which has various state variables associated with it). In this case the solution is just to fold gotScoreForDelta into this function,
-    # so we can just work with local variables! Nothing wrong with that, and any modularity (substitution of different period-determining algorithms)
-    # can just be done at a higher level than this function.
-    for d in range(2, diffs.size):
-        logger.trace(d)
-        score = diffs[diffs.size - d]
-        got, values = gotScoreForDelta(score, d, values)
-        if got:
-            return values[5]
-
-    logger.debug("I didn't find a whole period, returning -1")
-    return -1  # catch if doesn't find a period
-
-
-def gotScoreForDelta(score, d, values):
-    # TODO: JT writes: this function needs a proper function header comment, but let's wait until the "WTF"/"Ugh" comments above has been addressed, because that will require a refactor I think.
-    # values = (minScore, maxScore, totalScore, meanScore, minSinceMax, deltaForMinSinceMax, stage, numScores)
-
-    values[2] += score  # totalScore
-    values[7] += 1  # numScores
-
-    lowerThresholdScore = values[0] + (values[1] - values[0]) / 2  # minScore,maxScore
-    upperThresholdScore = (
-        values[0] + (values[1] - values[0]) * 3 / 4
-    )  # minScore,maxScore
-    logger.debug(
-        "Lower Threshold:\t{0:.4f};\tUpper Threshold:\t{1:.4f}",
-        lowerThresholdScore,
-        upperThresholdScore,
-    )
-
-    if score < lowerThresholdScore and values[6] == 1:  # stage
-        logger.info("Stage 1: Under lower threshold; Moving to stage 2")
-        values[6] = 2  # stage
-
-    if score > upperThresholdScore and values[6] == 2:  # stage
-        # TODO: speak to JT about the 'final condition'
-        logger.info(
-            "Stage 2: Above upper threshold; Returning period of {0}", values[5]
-        )
-        values[6] = 3  # stage
-        return True, values
-
-    if score > values[1]:  # maxScore
-        logger.info("New max score: {0} > {1}. Resetting to stage 1.", score, values[1])
-        values[1] = score  # maxScore
-        values[4] = score  # minSinceMax
-        values[5] = d  # deltaForMinSinceMax
-        values[6] = 1  # stage
-    elif score != 0 and (values[0] == 0 or score < values[0]):  # minScore
-        logger.debug("New minimum score of {0}", score)
-        values[0] = score  # minScore
-
-    if score < values[4]:  # minSinceMax
-        logger.debug("New minimum score ({0}) since maximum of {1}", score, values[1])
-        values[4] = score  # minSinceMax
-        values[5] = d  # deltaForMinSinceMax
-
-    # Note this is only updated AFTER we have done the other processing (i.e. the mean score used does NOT include the current delta)
-    values[3] = values[2] / values[7]
-    # meanScore,totalScore,numeScores
-
-    return False, values
-
-
 def save_period(reference_period, period_dir="~/"):
     # TODO: JT writes: Needs an explanation of parameters and purpose
-    '''Function to save a reference period in a time-stamped folder.'''
+    """Function to save a reference period in a time-stamped folder."""
     dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
     os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),frame)
+        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)), frame)
+

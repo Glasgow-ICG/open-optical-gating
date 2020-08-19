@@ -23,10 +23,6 @@ logger.remove()
 logger.add(sys.stderr, level="SUCCESS")
 logger.enable("open_optical_gating")
 
-# TODO there are one or two places where settings should be updated, e.g. user-bound limits
-# TODO create a time-stamped copy of the settings file after this
-# TODO create a time-stamped log somewhere
-
 
 class PiOpticalGater(server.OpticalGater):
     """Extends the optical gater server for a picam stream.
@@ -164,13 +160,13 @@ def run(settings):
     analyser = PiOpticalGater(source=camera, settings=settings,)
 
     logger.success("Determining reference period...")
-    while analyser.state > 0:
+    while analyser.state != "sync":
         camera.start_recording(analyser, format="yuv")
         while not analyser.stop:
             camera.wait_recording(0.001)  # s
         camera.stop_recording()
         logger.info("Requesting user input...")
-        analyser.state = analyser.select_period(10)
+        analyser.select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
         analyser.pog_settings["referencePeriod"],
