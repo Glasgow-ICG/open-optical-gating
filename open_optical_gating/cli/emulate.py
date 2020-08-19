@@ -3,6 +3,7 @@
 # Python imports
 import sys
 import json
+import time
 
 # Module imports
 from loguru import logger
@@ -83,6 +84,8 @@ def run(settings):
 
 
 if __name__ == "__main__":
+    t = time.time()
+
     # Reads data from settings json file
     if len(sys.argv) > 1:
         settings_file = sys.argv[1]
@@ -94,3 +97,5 @@ if __name__ == "__main__":
 
     # Performs an emulated data capture
     run(settings)
+
+    print(time.time() - t)

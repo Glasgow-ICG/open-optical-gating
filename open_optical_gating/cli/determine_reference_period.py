@@ -26,27 +26,33 @@ def establish(sequence, settings):
     # We should just return that value from this function, and the caller can do something with it.
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
+            sequence    ndarray         Sequence of recently-received frame pixel arrays (in chronological order)
             settings    dict             Parameters controlling the sync algorithms
         Returns:
-            List of frame pixel arrays that form the reference sequence (or None).
+            ndarray of frame pixel arrays that form the reference sequence (or None).
     """
     referenceFrameIdx, settings = establish_indices(sequence, settings)
     logger.trace("Idx: {0}", sequence[referenceFrameIdx].shape)
-    return sequence[referenceFrameIdx], settings
+
+    if referenceFrameIdx is not None:
+        referenceFrames = sequence[referenceFrameIdx]
+    else:
+        referenceFrames = None
+
+    return referenceFrames, settings
 
 
 def establish_indices(sequence, settings):
     """ Establish the list indices representing a reference period, from a given input sequence.
         Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
+            sequence    ndarray          Sequence of recently-received frame pixel arrays (in chronological order)
             settings    dict             Parameters controlling the sync algorithms
         Returns:
             List of indices that form the reference sequence (or None).
     """
 
     periods = []
-    for i in range(1, len(sequence)):
+    for i in range(1, sequence.shape[0]):
         frame = sequence[i, :, :]
         pastFrames = sequence[: (i - 1), :, :]
         logger.trace("Running for frame {0}", i)
@@ -70,7 +76,8 @@ def establish_indices(sequence, settings):
         #  That logic could definitely be improved and tidied up - we should probably just
         #  look for a period starting numExtraRefFrames from the end of the sequence...
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
-        if (period != -1
+        if (
+            period != -1
             and len(periods) >= (5 + (2 * settings["numExtraRefFrames"]))
             and period > 6
             and (len(periods) - 1 - settings["numExtraRefFrames"]) > 0
@@ -86,7 +93,7 @@ def establish_indices(sequence, settings):
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
             return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
 
-    logger.critical("I didn't find a period I'm happy with!")
+    logger.info("I didn't find a period I'm happy with!")
     return None, settings
 
 
@@ -97,12 +104,12 @@ def calculate_period_length(diffs):
         Returns:
             Period, or -1 if no period found
         """
-    
+
     # TODO: JT writes: the comment below can probably be removed now I have written the above function header. BUT, can somebody confirm or deny
     # the bit about "the list is in reverse order"? That does not seem consistent with e.g. "bestMatchEntry = diffs.size - bestMatchPeriod", "score = diffs[diffs.size - d]" etc.
     # Note that I have added comments about "chronological order" to earlier functions, above, based on my code-reading (which matches my expectations),
     # but I started to doubt myself here when I found an explicit comment saying "reverse order"...
-    
+
     # Calculate the heart period (with sub-frame interpolation) based on a provided list of comparisons between the current frame and previous frames. The list is in reverse order (i.e. difference with most recent frame comes first)
     bestMatchPeriod = estimate_integer_period_length(diffs)
     bestMatchEntry = diffs.size - bestMatchPeriod
@@ -211,10 +218,11 @@ def gotScoreForDelta(score, d, values):
 
 def save_period(reference_period, period_dir="~/"):
     # TODO: JT writes: Needs an explanation of parameters and purpose
-    '''Function to save a reference period in a time-stamped folder.'''
+    """Function to save a reference period in a time-stamped folder."""
     dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
     os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)),frame)
+        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)), frame)
+

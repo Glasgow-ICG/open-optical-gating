@@ -297,15 +297,11 @@ class OpticalGater:
                     self.frame_history[: self.frame_num :, :],
                     self.pog_settings,
                     fitBackToBarrier=True,
-                    output="seconds",
                 )
             else:
                 logger.trace("Predicting with full buffer.")
                 timeToWaitInSecs = pog.predict_trigger_wait(
-                    self.frame_history,
-                    self.pog_settings,
-                    fitBackToBarrier=True,
-                    output="seconds",
+                    self.frame_history, self.pog_settings, fitBackToBarrier=True
                 )
             # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
@@ -352,10 +348,7 @@ class OpticalGater:
         logger.info("Resetting for new period determination.")
         self.frame_num = 0
         self.ref_frames = None
-        self.ref_buffer = np.empty(
-            (self.settings["frame_buffer_length"], self.width, self.height),
-            dtype=self.dtype,
-        )
+        self.ref_buffer = None
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,
         # but the user should have the ability to reset the sync through the GUI, or there might
@@ -386,31 +379,28 @@ class OpticalGater:
         """
         # TODO: JT writes: what user input? Why!? I think this function header needs updating - I'm not convinced any of what it says is accurate!
         # Or perhaps I am making too many assumptions, and this code is a bit less self-sufficient than I had imagined.
-        # TODO: JT writes: I think this is a very odd way to do things (fill the ref_buffer before attempting to determine the period).
-        # Why are you doing it like that? (the loop in establish_indices now makes more sense to me, at least...)
-        # This is not going to work well live, when we want to lock on to a period ASAP, rather than acquiring an unnecessarily long frame buffer first.
-        # (Is any of this due to concern about taking too much time to analyze one frame before the next one arrives...?)
         logger.debug("Processing frame in get period mode.")
 
-        # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            logger.debug("Not yet enough frames to determine a new period.")
-
-            # Adds current frame to buffer
-            self.ref_buffer[self.frame_num, :, :] = frame
-
-            # Increases frame number
-            self.frame_num += 1
-
-        # Once a suitable reference size has been buffered
-        # gets a period and ask the user to select the target frame
+        # Adds current frame to buffer
+        self.frame_num += 1  # increase counter
+        if self.ref_buffer is None:
+            # Store first frame as a 3D array
+            self.ref_buffer = frame[np.newaxis, :, :]
         else:
-            logger.info("Determining new reference period")
-            # Calculate period from determine_reference_period.py
-            self.ref_frames, self.pog_settings = ref.establish(
-                self.ref_buffer, self.pog_settings
+            # Append subsequent arrays
+            # Dev Note: I don't think that I should have toi use np.newaxis with append
+            # but if I don't I get a dimensions based ValueError
+            self.ref_buffer = np.append(
+                self.ref_buffer, frame[np.newaxis, :, :], axis=0
             )
 
+        # Attempt to calculate period from determine_reference_period.py
+        logger.info("Attempting to determine new reference period")
+        self.ref_frames, self.pog_settings = ref.establish(
+            self.ref_buffer, self.pog_settings
+        )
+
+        if self.ref_frames is not None:
             # Determine barrier frames
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
@@ -432,26 +422,26 @@ class OpticalGater:
         # See my more extensive comments in separate document.
         logger.debug("Processing frame in update period mode.")
 
-        # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            logger.debug("Not yet enough frames to determine a new period.")
-
-            # Inserts current frame into buffer
-            self.ref_buffer[self.frame_num, :, :] = frame
-
-            # Increases frame number counter
-            self.frame_num += 1
-
-        # Once a suitable number of frames has been buffered,
-        # gets a new period and aligns to the history
+        # Adds current frame to buffer
+        self.frame_num += 1  # increase counter
+        if self.ref_buffer is None:
+            # Store first frame as a 3D array
+            self.ref_buffer = frame[np.newaxis, :, :]
         else:
-            # Obtains a reference period
-            logger.debug("Determining new reference period")
-            # Calculate period from determine_reference_period.py
-            self.ref_frames, self.pog_settings = ref.establish(
-                self.ref_buffer, self.pog_settings
+            # Append subsequent arrays
+            # Dev Note: I don't think that I should have toi use np.newaxis with append
+            # but if I don't I get a dimensions based ValueError
+            self.ref_buffer = np.append(
+                self.ref_buffer, frame[np.newaxis, :, :], axis=0
             )
 
+        # Attempt to calculate period from determine_reference_period.py
+        logger.info("Attempting to determine new reference period")
+        self.ref_frames, self.pog_settings = ref.establish(
+            self.ref_buffer, self.pog_settings
+        )
+
+        if self.ref_frames is not None:
             # Determine barrier frames
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
