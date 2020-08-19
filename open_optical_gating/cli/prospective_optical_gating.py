@@ -412,7 +412,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
         based on the next incoming frame from the brightfield camera.
         
         Parameters:
-            timestamp               float   Time associated with current frame
+            timestamp               float   Time associated with current frame (seconds)
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
             settings                dict    Parameters controlling the sync algorithms
         Returns:

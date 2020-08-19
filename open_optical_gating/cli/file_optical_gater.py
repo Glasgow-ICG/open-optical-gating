@@ -18,28 +18,26 @@ class FileOpticalGater(server.OpticalGater):
     """
 
     def __init__(
-        self, source=None, settings=None, ref_frames=None, ref_frame_period=None
+        self, file_source_path=None, settings=None, ref_frames=None, ref_frame_period=None
     ):
         """Function inputs:
-            source - the raspberry picam PiCamera object
-            settings - a dictionary of settings (see default_settings.json)
+            file_source_path   str   Path to file we will read as our input
+            settings           dict  Parameters affecting operation (see default_settings.json)
         """
 
         # initialise parent
         super(FileOpticalGater, self).__init__(
-            source=source,
             settings=settings,
             ref_frames=ref_frames,
             ref_frame_period=ref_frame_period,
         )
-        self.emulate_frame = (
-            -1
-        )  # we start at -1 to avoid an extra variable in next_frame()
-
+        self.load_data(file_source_path)
+        self.next_frame_index = 0
+    
     def load_data(self, filename):
         """Apply data source-related settings."""
         # Data-source settings
-        logger.success("Loading data instead...")
+        logger.success("Loading image data...")
         self.frame_num = self.settings["frame_num"]
         self.data = io.imread(filename)
         self.width, self.height = self.data[0].shape
@@ -47,12 +45,12 @@ class FileOpticalGater(server.OpticalGater):
 
     def next_frame(self):
         """This function gets the next frame from the data source, which can be passed to analyze()"""
-        self.emulate_frame = self.emulate_frame + 1
-        if self.emulate_frame + 1 == self.data.shape[0]:
+        if self.next_frame_index == self.data.shape[0]:
             ## if this is our last frame we set the stop flag for the user/app to know
             self.stop = True
-        return self.data[self.emulate_frame, :, :]
-
+        next = self.data[self.next_frame_index, :, :]
+        self.next_frame_index += 1
+        return next
 
 def run(settings):
     """Emulated data capture for a set of sample brightfield frames."""
@@ -64,7 +62,7 @@ def run(settings):
         while not analyser.stop:
             analyser.analyze(analyser.next_frame())
         logger.info("Requesting user input...")
-        analyser.select_period(10)
+        analyser.user_select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
         analyser.pog_settings["referencePeriod"],

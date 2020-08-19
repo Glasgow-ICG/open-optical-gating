@@ -29,45 +29,34 @@ class PiOpticalGater(server.OpticalGater):
     """
 
     def __init__(
-        self, source=None, settings=None, ref_frames=None, ref_frame_period=None
+        self, camera=None, settings=None, ref_frames=None, ref_frame_period=None
     ):
         """Function inputs:
-            source - the raspberry picam PiCamera object
+            camera - the raspberry picam PiCamera object
             settings - a dictionary of settings (see default_settings.json)
         """
 
         # initialise parent
         super(PiOpticalGater, self).__init__(
-            source=source,
             settings=settings,
             ref_frames=ref_frames,
             ref_frame_period=ref_frame_period,
         )
-        self.emulate_frame = (
-            -1
-        )  # we start at -1 to avoid an extra variable in next_frame()
+        self.setup_camera(camera)
+        self.init_hardware()
+    
 
     def setup_camera(self, camera):
         """Initialise and apply camera-related settings."""
+        logger.success("Configuring RPi camera...")
         self.frame_num = self.settings["frame_num"]
         self.width, self.height = camera.resolution
         self.framerate = camera.framerate
         self.camera = camera
 
     def init_hardware(self):
-        """Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera)
-        Function inputs:
-            laser_trigger_pin = the GPIO pin number connected to fire the laser
-            fluorescence_camera_pins = an array of 3 pins used to interact with the fluoresence camera
-                                            (trigger, SYNC-A, SYNC-B)
-        When this function return, self.hardware_state will be one of:
-            0 - if no failure
-            1 - if fastpins fails
-            2 - if laser pin fails
-            3 - if camera pins fail
-        """
-        # TODO update this docstring
-        self.hardware_state = None  # default - carry on as if everything else worked
+        """ Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera) """
+        logger.success("Initialising triggering hardware...")
 
         # Initialises fastpins module
         try:
@@ -97,45 +86,49 @@ class PiOpticalGater(server.OpticalGater):
                 fp.setpin(fluorescence_camera_pins[0], 1, 0)  # Trigger
                 fp.setpin(fluorescence_camera_pins[1], 0, 0)  # SYNC-A
                 fp.setpin(fluorescence_camera_pins[2], 0, 0)  # SYNC-B
-                self.duration = 1e3  # TODO relate to settings
-                self.edge_trigger = True  #  TODO relate to settings     # TODO: JT writes: flagging this again as definitely belonging in settings!
+                self.trigger_mode = 'edge'  #  # TODO: JT writes: flagging this again as definitely belonging in settings!
+                self.duration_us = 1e3  # TODO relate to settings
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
 
-    def trigger_fluorescence_image_capture(self, delay):
-        """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at a future time
+    def trigger_fluorescence_image_capture(self, delay_us):
+        """ Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
+            IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
+            and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware
+            that this means everything will hang until the trigger is sent. It also means that camera frames may be dropped
+            in the meantime. If all is going well, though, the delay should only be a for a couple of frames.
 
-        # Function inputs:
-        # 		delay = delay time (in microseconds) before the image is captured
-        # 		laser_trigger_pin = the pin number (int) of the laser trigger
-        # 		fluorescence_camera_pins = an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
-        #
-        # Optional inputs:    # TODO: JT writes: this is not an optional input, it is a class variable (which should really be a 'settings' element)
-        # 		edge_trigger:
-        # 			True = the fluorescence camera captures the image once detecting the start of an increased signal
-        # 			False = the fluorescence camera captures for the duration of the signal pulse (pulse mode)
-        # 		duration = (only applies to pulse mode [edge_trigger=False]) the duration (in microseconds) of the pulse
-        # TODO: ABD add some logging here
+            Function inputs:
+         		delay_us = delay time (in microseconds) before the image is captured
+        
+            Relevant class variables:
+              # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
+              # and the different dictionary entries should be documented somewhere suitable
+          		laser_trigger_pin         the GPIO pin number (int) of the laser trigger
+          		fluorescence_camera_pins  an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
+          		edge_trigger              [see inline comments below at point of use]
+          		duration_us               the duration (in microseconds) of the pulse (only applies to pulse mode [edge_trigger=False])
         """
 
-        # TODO: JT writes: needs better comment to explain what these modes are. What is "trigger mode" vs "edge mode"?
-        # TODO: JT writes: really important to clarify that these calls to fp are *blocking* calls, i.e. they only return after the trigger has been sent
-        # Captures an image in edge mode
-        if self.edge_trigger:
+        logger.success("Sending RPi camera trigger after delay of {0:.1f}us".format(delay_us))
+        if self.trigger_mode == 'edge':
+            # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
-                delay,
+                delay_us,
                 self.settings["laser_trigger_pin"],
                 self.settings["fluorescence_camera_pins"][0],
                 self.settings["fluorescence_camera_pins"][2],
             )
-        # Captures in trigger mode
-        else:
+        elif self.trigger_mode != 'expose':
+            # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
-                delay,
-                self.duration,
+                delay_us,
+                self.duration_us,
                 self.settings["laser_trigger_pin"],
                 self.settings["fluorescence_camera_pins"][0],
             )
+        else:
+            logger.critical("Ignoring unknown trigger mode {0}".format(self.trigger_mode))
 
 
 def run(settings):
@@ -157,7 +150,7 @@ def run(settings):
 
     # Initialise Gater
     logger.success("Initialising gater...")
-    analyser = PiOpticalGater(source=camera, settings=settings,)
+    analyser = PiOpticalGater(camera=camera, settings=settings,)
 
     logger.success("Determining reference period...")
     while analyser.state != "sync":
@@ -166,7 +159,7 @@ def run(settings):
             camera.wait_recording(0.001)  # s
         camera.stop_recording()
         logger.info("Requesting user input...")
-        analyser.select_period(10)
+        analyser.user_select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
         analyser.pog_settings["referencePeriod"],

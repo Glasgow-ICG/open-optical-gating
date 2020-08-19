@@ -202,7 +202,7 @@ def emulate():
         logger.success(
             "Setting target frame as {0}", int(request.args.get("target", 1)) - 1
         )
-        analyse_camera.select_period(int(request.args.get("target", 1)) - 1)
+        analyse_camera.user_select_period(int(request.args.get("target", 1)) - 1)
         print(type(analyse_camera.ref_frames))
     elif request.args.get("state", False) == "run":
         print(type(analyse_camera.ref_frames))
@@ -272,7 +272,7 @@ def run():
         logger.success(
             "Setting target frame as {0}", int(request.args.get("target", 1)) - 1
         )
-        analyse_camera.select_period(int(request.args.get("target", 1)) - 1)
+        analyse_camera.user_select_period(int(request.args.get("target", 1)) - 1)
         print(type(analyse_camera.ref_frames))
     elif request.args.get("state", False) == "run":
         print(type(analyse_camera.ref_frames))
