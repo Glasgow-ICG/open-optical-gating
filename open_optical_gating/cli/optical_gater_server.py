@@ -19,7 +19,7 @@ import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
 
 logger.remove()
-logger.add(sys.stderr, level="SUCCESS")
+logger.add(sys.stderr, level="CRITICAL")
 logger.enable("open_optical_gating")
 
 # TODO there are one or two places where settings should be updated, e.g. user-bound limits
@@ -297,15 +297,11 @@ class OpticalGater:
                     self.frame_history[: self.frame_num :, :],
                     self.pog_settings,
                     fitBackToBarrier=True,
-                    output="seconds",
                 )
             else:
                 logger.trace("Predicting with full buffer.")
                 timeToWaitInSecs = pog.predict_trigger_wait(
-                    self.frame_history,
-                    self.pog_settings,
-                    fitBackToBarrier=True,
-                    output="seconds",
+                    self.frame_history, self.pog_settings, fitBackToBarrier=True
                 )
             # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase

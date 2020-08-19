@@ -3,6 +3,7 @@
 # Python imports
 import sys
 import json
+import time
 
 # Module imports
 from loguru import logger
@@ -75,14 +76,15 @@ def run(settings):
         analyser.analyze(analyser.next_frame())
 
     logger.success("Plotting summaries...")
-    analyser.plot_triggers()
-    analyser.plot_accuracy()
-    analyser.plot_running()
+    # analyser.plot_triggers()
+    # analyser.plot_accuracy()
+    # analyser.plot_running()
 
     logger.success("Fin.")
 
 
 if __name__ == "__main__":
+    t = time.time()
     # Reads data from settings json file
     if len(sys.argv) > 1:
         settings_file = sys.argv[1]
@@ -94,3 +96,4 @@ if __name__ == "__main__":
 
     # Performs an emulated data capture
     run(settings)
+    print(time.time() - t)
