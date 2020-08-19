@@ -115,7 +115,7 @@ determine_reference_period passes the "settings" object back and forth, *and mod
 - Settings object [who owns?]
 - Pins
 - Status reporting via messages
-- Stages [currently they interact with stages in pog_state() and analyze() (!)]
+- Stages [currently they interact with stages in sync_state() and analyze() (!)]
 - Emulation
 
 

@@ -60,11 +60,11 @@ def run(settings):
     analyser = FileOpticalGater(source=settings["path"], settings=settings,)
 
     logger.success("Determining reference period...")
-    while analyser.state > 0:
+    while analyser.state != "sync":
         while not analyser.stop:
             analyser.analyze(analyser.next_frame())
         logger.info("Requesting user input...")
-        analyser.state = analyser.select_period(10)
+        analyser.select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
         analyser.pog_settings["referencePeriod"],
@@ -76,7 +76,7 @@ def run(settings):
         analyser.analyze(analyser.next_frame())
 
     logger.success("Plotting summaries...")
-    # analyser.plot_triggers()
+    analyser.plot_triggers()
     # analyser.plot_accuracy()
     # analyser.plot_running()
 

@@ -31,13 +31,16 @@ class OpticalGater:
     """Base optical gating class - includes no hardware features beyond
     placeholder functions for incoming brightfield source.
 
-    # TODO: JT writes: I think these should be short strings instead of numbers, to be suitably descriptive of what the mode is, rather than just magic numbers:
-    self.state has several modes:
-       0 - run prospective gating mode (phase locked triggering)
-       1 - re-initialise (clears for mode 2)
-       2 - get period mode (requires user input)
-       3 - adaptive mode (update period but maintain phase lock)
+    This function carries out the logic required for adaptive prospective
+    optical gating using an incoming data source and resulting in the
+    determination of phase-locked trigger times.
 
+    The OpticalGater depends on an internal state (self.state), which
+    has the following modes:
+       "reset" - re-initialise (clears for "determine" mode)
+       "determine" - get period mode (requires user input; needed for "sync")
+       "sync" - run prospective gating mode (phase-locked triggering)
+       "adapt" - adaptive mode (update period but maintain phase-lock with previous period)
     """
 
     def __init__(
@@ -121,11 +124,11 @@ class OpticalGater:
         # Start by acquiring a sequence of reference frames, unless we have been provided with them
         if self.ref_frames is None:
             logger.info("No reference frames found, switching to 'get period' mode.")
-            self.state = 1
+            self.state = "reset"
             self.pog_settings = parameters.initialise(framerate=self.framerate)
         else:
             logger.info("Using existing reference frames with integer period.")
-            self.state = 0
+            self.state = "sync"
             if self.ref_frame_period is None:
                 # Deduce an integer reference period from the reference frames we were provided with.
                 # This is just a legacy mode - caller who constructed this object should really have provided a reference period
@@ -176,14 +179,16 @@ class OpticalGater:
 
         if self.trigger_num >= self.settings["update_after_n_triggers"]:
             # It is time to update the reference period (whilst maintaining phase lock)
-            # Set state to 1 (so we clear things for a new reference period)
+            # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num will be reset
-            self.state = 1
+            self.state = "reset"
 
-        if self.state == 0:
+        if self.state == "sync":
             # Using previously-determined reference peiod, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
-            (trigger_response, current_phase, current_time) = self.pog_state(pixelArray)
+            (trigger_response, current_phase, current_time) = self.sync_state(
+                pixelArray
+            )
 
             # Logs results and processing time
             time_fin = time.time()
@@ -193,16 +198,16 @@ class OpticalGater:
 
             return trigger_response, current_phase, current_time
 
-        elif self.state == 1:
+        elif self.state == "reset":
             # Clears reference period and resets frame number
             # Used when determining new period
-            self.clear_state()
+            self.reset_state()
 
-        elif self.state == 2:
+        elif self.state == "determine":
             # Determine initial reference period and target frame
-            self.get_period_state(pixelArray)
+            self.determine_state(pixelArray)
 
-        elif self.state == 3:
+        elif self.state == "adapt":
             # Determine reference period syncing target frame with original user selection
             self.update_reference_sequence(pixelArray)
 
@@ -212,8 +217,10 @@ class OpticalGater:
         # Default return - all None
         return (None, None, None)
 
-    def pog_state(self, frame):
-        """State 0 - run prospective optical gating mode (phase locked triggering)."""
+    def sync_state(self, frame):
+        """State "sync" - synchronising with prospective optical gating
+        for phase-locked triggering.
+        """
         logger.debug("Processing frame in prospective optical gating mode.")
 
         # Gets the phase (in frames) and arrays of SADs between the current frame and the referencesequence
@@ -339,9 +346,9 @@ class OpticalGater:
 
         return None, current_phase, current_time
 
-    def clear_state(self):
-        """State 1 - re-initialise (clears for mode 2).
-        Clears everything required to get a new period.debug
+    def reset_state(self):
+        """State "reset" - resetting for a new period determination.
+        Clears everything required to get a new period.
         Used if the user is not happy with a period choice
         Or before getting a new reference period in the adaptive mode.
         """
@@ -368,25 +375,20 @@ class OpticalGater:
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
             self.trigger_num = 0
-            self.state = 3
+            self.state = "adapt"
         else:
-            self.state = 2
+            self.state = "determine"
 
-    def get_period_state(self, frame):
-        """ State 2 - get period mode (default behaviour requires user input).     
-        In this mode we obtain a minimum number of frames,
-        determine a period and then return.
-        It is assumed that the user (or cli/flask app) then runs
-        the select_period function (and updates the state)
-        before running analyse again with the new state.
+    def determine_state(self, frame):
+        """State "determine" - determine period mode (default behaviour
+        requires user input).
+        In this mode we obtain a minimum number of frames, determine a
+        period and then return.
+        It is assumed that the user (or cli/flask app) then runs the
+        select_period function (and updates the state) before running
+        analyse again with the new state.
         """
-        # TODO: JT writes: what user input? Why!? I think this function header needs updating - I'm not convinced any of what it says is accurate!
-        # Or perhaps I am making too many assumptions, and this code is a bit less self-sufficient than I had imagined.
-        # TODO: JT writes: I think this is a very odd way to do things (fill the ref_buffer before attempting to determine the period).
-        # Why are you doing it like that? (the loop in establish_indices now makes more sense to me, at least...)
-        # This is not going to work well live, when we want to lock on to a period ASAP, rather than acquiring an unnecessarily long frame buffer first.
-        # (Is any of this due to concern about taking too much time to analyze one frame before the next one arrives...?)
-        logger.debug("Processing frame in get period mode.")
+        logger.debug("Processing frame in determine period mode.")
 
         # Obtains a minimum amount of buffer frames
         if self.frame_num < self.settings["frame_buffer_length"]:
@@ -417,16 +419,13 @@ class OpticalGater:
             # Note, passing the new period to the adaptive system is left to the user/app
             self.stop = True
 
-    def update_reference_sequence(self, frame):
-        """ State 3 - adaptive mode (update reference sequence, while maintaining the same phase lock).
-            In this mode we obtain a minimum number of frames
-            Determine a period and then align with previous
-            periods using an adaptive algorithm.
+    def adapt_state(self, frame):
+        """State "adapt" - adaptive prospective optical gating mode
+        i.e. update reference sequence, while maintaining the same phase-lock.
+        In this mode we determine a new period and then align with
+        previous periods using an adaptive algorithm.
         """
-        # TODO: JT writes: I really think this will need to be restructured so it processes "on the fly"
-        # rather than accumulating a long sequence of frames and then analysing them all in one big chunk.
-        # See my more extensive comments in separate document.
-        logger.debug("Processing frame in update period mode.")
+        logger.debug("Processing frame in adaptive optical gating mode.")
 
         # Obtains a minimum amount of buffer frames
         if self.frame_num < self.settings["frame_buffer_length"]:
@@ -455,7 +454,7 @@ class OpticalGater:
             ref.save_period(self.ref_frames, self.settings["period_dir"])
             logger.success("Period determined.")
 
-            self.state = 0
+            self.state = "sync"
 
             self.frame_num = 0
 
@@ -521,8 +520,7 @@ class OpticalGater:
         # Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
         if frame < 0:
             logger.success("User has asked for a new period to be determined.")
-            self.state = 1
-            return 1
+            self.state = "reset"
 
         # Otherwise, if user is happy with period
         self.pog_settings = parameters.update(self.pog_settings, referenceFrame=frame)
@@ -547,7 +545,7 @@ class OpticalGater:
         # turn recording back on for rest of run
         self.stop = False
 
-        return 0
+        self.state = "sync"
 
     def trigger_fluorescence_image_capture(self, delay):
         """As this is the baser server, this function just outputs a log that a trigger would have been sent."""
