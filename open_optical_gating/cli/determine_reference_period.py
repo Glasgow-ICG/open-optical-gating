@@ -191,13 +191,16 @@ def calculate_period_length(diffs):
     return diffs.size - interpolatedMatchEntry
 
 
-def save_period(reference_period, period_dir="~/"):
-    # TODO: JT writes: Needs an explanation of parameters and purpose
-    """Function to save a reference period in a time-stamped folder."""
+def save_period(reference_period, parent_dir="~/"):
+    """Function to save a reference period in am ISO format time-stamped folder with a parent_dir.
+        Parameters:
+            reference_period    ndarray     t by x by y 3d array of reference frames
+            parent_dir          string      parent directory within which to store the period
+    """
     dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
-    os.makedirs(os.path.join(period_dir, dt), exist_ok=True)
+    os.makedirs(os.path.join(parent_dir, dt), exist_ok=True)
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        io.imsave(os.path.join(period_dir, dt, "{0:03d}.tiff".format(i)), frame)
+        io.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
 
