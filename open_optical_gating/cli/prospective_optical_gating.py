@@ -82,23 +82,12 @@ def subframe_fitting(diffs, settings):
             settings    dict             Parameters controlling the sync algorithms
         Returns:
             float coordinate for location of minimum in 'diffs' (including padding frames)
-        """
-    bestScore = diffs[settings["numExtraRefFrames"]]
-    bestScorePos = settings["numExtraRefFrames"]
-
+    """
     # Search for lowest value within the "main" frames.
-    # TODO: not a real performance issue, but this can easily be rewritten loop-free using np.argmax etc.
-    for i in range(
-        settings["numExtraRefFrames"] + 1, len(diffs) - settings["numExtraRefFrames"]
-    ):
-        # If new lower V
-        if (
-            diffs[i] < bestScore
-            and diffs[i - 1] >= diffs[i]
-            and diffs[i + 1] >= diffs[i]
-        ):
-            bestScore = diffs[i]
-            bestScorePos = i
+    bestScorePos = np.argmin(
+        diffs[settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]]
+    )
+    bestScorePos = bestScorePos + settings["numExtraRefFrames"]
 
     # Sub-pixel fitting
     if diffs[bestScorePos - 1] < diffs[bestScorePos]:  # If no V is found
