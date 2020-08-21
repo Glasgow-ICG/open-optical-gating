@@ -109,7 +109,7 @@ class OpticalGater:
         self.phase = []
         self.processing_rate_fps = []
         self.trigger_times = []
-        self.timeToWaitInSecs = []
+        self.predicted_trigger_time_s = []
 
         # Flag for interrupting the program at key points
         # E.g. when user-input is needed
@@ -148,7 +148,7 @@ class OpticalGater:
             self.timestamp.append(current_time_s)
             self.phase.append(current_phase)
             self.processing_rate_fps.append(1 / (time_fin - time_init))
-            self.timeToWaitInSecs.append(
+            self.predicted_trigger_time_s.append(
                 None
             )  # placeholder - updated inside sync_state
 
@@ -165,7 +165,7 @@ class OpticalGater:
 
         elif self.state == "adapt":
             # Determine reference period syncing target frame with original user selection
-            self.update_reference_sequence(pixelArray)
+            self.adapt_state(pixelArray)
 
         else:
             logger.critical("Unknown state {0}.", self.state)
@@ -267,7 +267,6 @@ class OpticalGater:
             # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
-            self.timeToWaitInSecs[-1] = self.timestamp[-1] + timeToWaitInSecs
 
             # Captures the image
             if timeToWaitInSecs > 0:
@@ -297,6 +296,9 @@ class OpticalGater:
                     self.trigger_num += 1
                     # Returns the delay time, phase and timestamp (useful in the emulated scenario)
                     return timeToWaitInSecs, current_phase, current_time_s
+
+            # for prediction plotting
+            self.predicted_trigger_time_s[-1] = self.timestamp[-1] + timeToWaitInSecs
 
         return None, current_phase, current_time_s
 
@@ -570,11 +572,11 @@ class OpticalGater:
 
     def plot_prediction(self, outfile="prediction.png"):
         self.timestamps = np.array(self.timestamp)
-        self.timeToWaitInSecs = np.array(self.timeToWaitInSecs)
+        self.predicted_trigger_time_s = np.array(self.predicted_trigger_time_s)
 
         plt.figure()
         plt.title("Predicted Trigger Times")
-        plt.plot(np.array(self.timestamp), np.array(self.timeToWaitInSecs))
+        plt.plot(np.array(self.timestamp), np.array(self.predicted_trigger_time_s))
         # Add labels etc
         plt.xlabel("Time (s)")
         plt.ylabel("Prediction (s)")

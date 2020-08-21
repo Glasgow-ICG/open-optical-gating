@@ -19,5 +19,5 @@
     "path": "./examples/example_data.tif",
     "period_dir": "period-data/",
     "prediction_latency_s": 0.015,
-    "update_after_n_triggers": 500
+    "update_after_n_triggers": 10
 }
