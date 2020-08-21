@@ -228,26 +228,25 @@ def phase_matching(frame0, referenceFrames0, settings=None):
     return (phase, SADs, settings)
 
 
-def predict_trigger_wait(
-    frame_history, settings, fitBackToBarrier=True
-):
+def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
         
         Parameters:
-            frame_history           array-like  Nx3 array of [timestamp, phase, argmin(SAD)]
+            frame_history           array-like  Nx3 array of [timestamp in seconds, phase, argmin(SAD)]
                                                  Phase (i.e. frame_history[:,1]) should be cumulative (i.e. phase-UNwrapped) phase in radians
             settings                dict        Parameters controlling the sync algorithms
-                                                 targetSyncPhase should is expected to be in [0,2pi]
+                                                 targetSyncPhase is expected to be in [0,2pi]
             fitBackToBarrier        bool        Should we use the "barrier frame" logic? (see determine_barrier_frames)
         Returns:
-            Time delay (or phase delay) before trigger would need to be sent.
+            Time delay (or phase delay) before trigger would need to be sent in seconds.
         """
 
-    # TODO: JT writes: I removed the +1 from the following "if" test because I can’t see any logical purpose for it. Does that seem correct to you?
     if frame_history.shape[0] < settings["minFramesForFit"]:
         logger.debug("Fit failed due to too few frames...")
         return -1
 
+    # Deal with the barrier frame logic (if fitBackToBarrier is True):
+    # Rather than fitting to a number of frames that depends on how far forward we are predicting, fit to a number that depends on where in the cycle we are. We try not to fit to the refractory period unless there really is no other data. The intention of this is to fit to as much data as possible but only in the parts of the cycle where the phase progression is highly predictable and linear with time.
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(
@@ -258,9 +257,9 @@ def predict_trigger_wait(
     else:
         framesForFit = settings["minFramesForFit"]
         allowedToExtendNumberOfFittedPoints = True
-
     pastPhases = frame_history[-int(framesForFit) : :, :]
-    # === Perform a linear fit to the past phases. We will use this for our forward-prediction ===
+
+    # Perform a linear fit to the past phases. We will use this for our forward-prediction
     radsPerSec, alpha = np.polyfit(pastPhases[:, 0], pastPhases[:, 1], 1)
 
     logger.trace(pastPhases[:, 0])
@@ -276,19 +275,19 @@ def predict_trigger_wait(
             "Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero)."
         )
 
-    # === Turn our linear fit into a future prediction ===
-    thisFramePhase = (
-        alpha + frame_history[-1, 0] * radsPerSec
-    )  # Use the *fitted* phase for this current frame
+    # Use our linear fit to get a 'fitted' unwraped phase for the latest frame
+    # This should not rescue cases where, for some reason, the image-based
+    # phase matching is erroneous.
+    thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec
+    # Count how many total periods we have seen
     multiPhaseCounter = thisFramePhase // (2 * np.pi)
+    # Determine how much of a cardiac cycle we have to wait till our target phase
     phaseToWait = (
         settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
     )
     # c.f. function triggerAnticipationProcessing in SyncAnalyzer.mm
     # essentially this fixes for small backtracks in phase due to SAD imperfections
-    while (
-        phaseToWait < 0
-    ):  # this used to be -np.pi       # TODO: JT writes: who added this comment? Does it serve any purpose? <0 seems like the right test to me (and is what I used)
+    while phaseToWait < 0:
         phaseToWait += 2 * np.pi
 
     timeToWaitInSecs = phaseToWait / radsPerSec
@@ -308,22 +307,23 @@ def predict_trigger_wait(
         thisFramePhase + phaseToWait,
     )
 
-    # Fixes sync error due to targetSyncPhase being 2pi greater than target phase
-    # TODO check with JTs system
-    # TODO: JT writes: I have no idea what the above comment is about. Can this be clarified, or investigated?
+    # Fixes sync error due to targetSyncPhase being 2pi greater than target phase (1e-3 is for floating point errors)
     if (
         thisFramePhase
         + phaseToWait
         - settings["targetSyncPhase"]
-        - multiPhaseCounter * 2 * np.pi
-        > 0.1
+        - (multiPhaseCounter * 2 * np.pi)
+        > 2 * np.pi + 1e-3
     ):
         logger.warning(
             "Phase discrepency, trigger aborted. At {0} with wait {1} for target {2} [{3}]",
             thisFramePhase % (2 * np.pi),
             phaseToWait,
             settings["targetSyncPhase"],
-            thisFramePhase - (multiPhaseCounter * 2 * np.pi),
+            thisFramePhase
+            + phaseToWait
+            - settings["targetSyncPhase"]
+            - (multiPhaseCounter * 2 * np.pi),
         )
         timeToWaitInSecs = 0.0
 
@@ -337,8 +337,6 @@ def predict_trigger_wait(
         # TODO: JT writes: this approach of editing settings[minFramesForFit] and then changing it back again feels really messy to me.
         # We should hold off changing it for now, though, because I think we may want to refactor how settings is used
         # Once that is complete, a better solution here may present itself naturally.
-        # TODO: JT writes: BUG: The recursive function call is also using completely the wrong parameters!!
-        # (This may not have been hit in testing because you are probably using barrier frames, which prevent this code branch from running)
         settings["minFramesForFit"] *= 2
         if (
             settings["minFramesForFit"] <= pastPhases.shape[0]
@@ -346,9 +344,8 @@ def predict_trigger_wait(
         ):
             logger.info("Increasing number of frames to use")
             #  Recurse, using a larger number of frames, to obtain an improved predicted time
-            timeToWaitInSecs = predict_trigger_wait(  # TODO: JT writes: this function call is passing completely the wrong parameters!!
-                pastPhases,
-                settings["targetSyncPhase"]
+            timeToWaitInSecs = predict_trigger_wait(
+                frame_history, settings, fitBackToBarrier=False
             )
         settings["minFramesForFit"] = settings["minFramesForFit"] // 2
 
@@ -431,13 +428,13 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     logger.debug(
         "Time to wait: {0} s; with latency: {1} s;",
         timeToWaitInSeconds,
-        settings["prediction_latency"],
+        settings["prediction_latency_s"],
     )
 
-    # The settings parameter 'prediction_latency' represents how much time we *expect* to need
+    # The settings parameter 'prediction_latency_s' represents how much time we *expect* to need
     # between scheduling a trigger and actually being able to send it.
     # That influences whether we commit to this trigger time, or wait for an updated prediction based on the next brightfield frame due to arrive soon
-    if timeToWaitInSeconds < settings["prediction_latency"]:
+    if timeToWaitInSeconds < settings["prediction_latency_s"]:
         logger.info(
             "Trigger due very soon, but if haven't already sent one this period then we may as well give it a shot..."
         )
@@ -458,7 +455,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             )
             timeToWaitInSeconds += settings["referencePeriod"] / settings["framerate"]
     elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
-        "prediction_latency"
+        "prediction_latency_s"
     ]:
         # We don't expect to have time to wait for an updated prediction... so schuedule the trigger now!
         logger.success(

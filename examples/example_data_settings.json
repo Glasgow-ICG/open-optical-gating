@@ -1,5 +1,5 @@
 {
-    "analyse_time": 1000,
+    "analyse_time_s": 1000,
     "awb_mode": "off",
     "brightfield_framerate": 80,
     "brightfield_resolution": 115,
@@ -9,7 +9,7 @@
         10,
         12
     ],
-    "fluorescence_exposure": 1000.0,
+    "fluorescence_exposure_us": 1000.0,
     "frame_buffer_length": 100,
     "frame_num": 0,
     "image_denoise": 0,
@@ -18,7 +18,6 @@
     "log": 0,
     "path": "./examples/example_data.tif",
     "period_dir": "period-data/",
-    "prediction_latency": 15,
-    "shutter_speed": 2500,
+    "prediction_latency_s": 0.015,
     "update_after_n_triggers": 500
 }

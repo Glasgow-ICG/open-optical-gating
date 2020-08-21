@@ -28,7 +28,7 @@ def initialise(
     maxReceivedFramesToStore=260,
     maxFramesForFit=32,
     minFramesForFit=3,
-    prediction_latency=15,
+    prediction_latency_s=0.015,
     referenceFrame=0.0,
     numExtraRefFrames=2,
 ):
@@ -52,8 +52,8 @@ def initialise(
     parameters.update(
         {"maxReceivedFramesToStore": maxReceivedFramesToStore}
     )  # maximum number of frames to store while establishing the period.
-       # Used to prevent over-use of memory (and CPU) in cases where we fail to lock on,
-       # where we would just keep processing a longer and longer frame history buffer.
+    # Used to prevent over-use of memory (and CPU) in cases where we fail to lock on,
+    # where we would just keep processing a longer and longer frame history buffer.
     parameters.update(
         {"maxFramesForFit": maxFramesForFit}
     )  # frames to fit for prediction (max)
@@ -61,8 +61,8 @@ def initialise(
         {"minFramesForFit": minFramesForFit}
     )  # frames to fit for prediction (min)
     parameters.update(
-        {"prediction_latency": prediction_latency}
-    )  # prediction latency in milliseconds
+        {"prediction_latency_s": prediction_latency_s}
+    )  # prediction latency in seconds
     if referenceFrame > 0.0:
         parameters.update(
             {"referenceFrame": referenceFrame % referencePeriod}
@@ -105,7 +105,7 @@ def update(
     maxReceivedFramesToStore=None,
     maxFramesForFit=None,
     minFramesForFit=None,
-    prediction_latency=None,
+    prediction_latency_s=None,
     referenceFrame=None,
     numExtraRefFrames=None,
 ):
@@ -138,8 +138,8 @@ def update(
         parameters["maxFramesForFit"] = maxFramesForFit
     if minFramesForFit is not None:
         parameters["minFramesForFit"] = minFramesForFit
-    if prediction_latency is not None:
-        parameters["prediction_latency"] = prediction_latency
+    if prediction_latency_s is not None:
+        parameters["prediction_latency_s"] = prediction_latency_s
     if referenceFrame is not None:
         parameters["referenceFrame"] = referenceFrame % parameters["referencePeriod"]
 

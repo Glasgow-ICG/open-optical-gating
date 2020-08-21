@@ -18,7 +18,11 @@ class FileOpticalGater(server.OpticalGater):
     """
 
     def __init__(
-        self, file_source_path=None, settings=None, ref_frames=None, ref_frame_period=None
+        self,
+        file_source_path=None,
+        settings=None,
+        ref_frames=None,
+        ref_frame_period=None,
     ):
         """Function inputs:
             file_source_path   str   Path to file we will read as our input
@@ -27,35 +31,44 @@ class FileOpticalGater(server.OpticalGater):
 
         # initialise parent
         super(FileOpticalGater, self).__init__(
-            settings=settings,
-            ref_frames=ref_frames,
-            ref_frame_period=ref_frame_period,
+            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
         )
         self.load_data(file_source_path)
         self.next_frame_index = 0
-    
+
     def load_data(self, filename):
         """Apply data source-related settings."""
         # Data-source settings
         logger.success("Loading image data...")
         self.frame_num = self.settings["frame_num"]
         self.data = io.imread(filename)
+        print(self.data.shape)
         self.width, self.height = self.data[0].shape
         self.framerate = self.settings["brightfield_framerate"]
 
-    def next_frame(self):
+    def next_frame(self, force_framerate=True):
         """This function gets the next frame from the data source, which can be passed to analyze()"""
-        if self.next_frame_index == self.data.shape[0]:
+        # Force framerate to match the brightfield_framerate in the settings
+        # This gives accurate timings and plots
+        # TODO when timestamp moves into a frame object this can probably be defaulted to False
+        if force_framerate and (len(self.timestamp) > 0):  # only do once we have frames
+            while (time.time() - self.initial_process_time_s - self.timestamp[-1]) < (
+                1 / self.settings["brightfield_framerate"]
+            ):
+                time.sleep(1e-5)
+                continue
+        if self.next_frame_index == self.data.shape[0] - 1:
             ## if this is our last frame we set the stop flag for the user/app to know
             self.stop = True
         next = self.data[self.next_frame_index, :, :]
         self.next_frame_index += 1
         return next
 
+
 def run(settings):
     """Emulated data capture for a set of sample brightfield frames."""
     logger.success("Initialising gater...")
-    analyser = FileOpticalGater(source=settings["path"], settings=settings,)
+    analyser = FileOpticalGater(file_source_path=settings["path"], settings=settings,)
 
     logger.success("Determining reference period...")
     while analyser.state != "sync":
@@ -75,8 +88,9 @@ def run(settings):
 
     logger.success("Plotting summaries...")
     analyser.plot_triggers()
-    # analyser.plot_accuracy()
-    # analyser.plot_running()
+    analyser.plot_prediction()
+    analyser.plot_accuracy()
+    analyser.plot_running()
 
     logger.success("Fin.")
 

@@ -19,10 +19,9 @@ import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
 
 logger.remove()
-logger.add(sys.stderr, level="CRITICAL")
+logger.add(sys.stderr, level="WARNING")
 logger.enable("open_optical_gating")
 
-# TODO there are one or two places where settings should be updated, e.g. user-bound limits
 # TODO create a time-stamped copy of the settings file after this
 # TODO create a time-stamped log somewhere
 
@@ -43,9 +42,7 @@ class OpticalGater:
             "adapt" - adaptive mode (update period but maintain phase-lock with previous period)
     """
 
-    def __init__(
-        self, settings=None, ref_frames=None, ref_frame_period=None
-    ):
+    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
             settings - a dictionary of settings (see default_settings.json)
         """
@@ -70,14 +67,11 @@ class OpticalGater:
         self.pixel_dtype = "uint8"
 
         # Variables for adaptive algorithm
-        # Should be compatible with standard adaptive algorithm
-        #  (Nat Comms paper) and dynamic algorithm (unpublished, yet)
-        # if update_after_n_triggers is 0, turns adaptive mode off   # TODO: JT writes: what does this comment have to do with the surrounding code? Does it belong somewhere else, perhaps?
         self.trigger_num = 0
-        self.sequence_history = []
-        self.period_history = []
-        self.shift_history = []
-        self.drift_history = []
+        self.sequence_history = None
+        self.period_history = None
+        self.shift_history = None
+        self.drift_history = None
 
         # TODO: JT writes: this seems as good a place as any to flag the fact that I don't think barrier frames are being implemented properly.
         # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
@@ -88,7 +82,9 @@ class OpticalGater:
         if self.ref_frames is None:
             logger.info("No reference frames found, switching to 'get period' mode.")
             self.state = "reset"
-            self.pog_settings = parameters.initialise(framerate=self.framerate)
+            self.pog_settings = parameters.initialise(
+                framerate=self.settings["brightfield_framerate"]
+            )
         else:
             logger.info("Using existing reference frames with integer period.")
             self.state = "sync"
@@ -101,18 +97,19 @@ class OpticalGater:
                 rp = self.ref_frame_period
 
             self.pog_settings = parameters.initialise(
-                framerate=self.framerate, referencePeriod=rp
+                framerate=self.settings["brightfield_framerate"], referencePeriod=rp,
             )
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
         # Start experiment timer
-        self.initial_process_time = time.time()
+        self.initial_process_time_s = time.time()
 
         # Defines variables and objects used for plotting
         self.timestamp = []
         self.phase = []
-        self.process_time = []
+        self.processing_rate_fps = []
         self.trigger_times = []
+        self.timeToWaitInSecs = []
 
         # Flag for interrupting the program at key points
         # E.g. when user-input is needed
@@ -150,7 +147,10 @@ class OpticalGater:
             time_fin = time.time()
             self.timestamp.append(current_time_s)
             self.phase.append(current_phase)
-            self.process_time.append(time_fin - time_init)
+            self.processing_rate_fps.append(1 / (time_fin - time_init))
+            self.timeToWaitInSecs.append(
+                None
+            )  # placeholder - updated inside sync_state
 
             return trigger_response, current_phase, current_time_s
 
@@ -187,7 +187,8 @@ class OpticalGater:
 
         # Convert phase to 2pi base
         current_phase = (
-            2 * np.pi
+            2
+            * np.pi
             * (currentPhaseInFrames - self.pog_settings["numExtraRefFrames"])
             / self.pog_settings["referencePeriod"]
         )  # rad
@@ -266,6 +267,7 @@ class OpticalGater:
             # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
+            self.timeToWaitInSecs[-1] = self.timestamp[-1] + timeToWaitInSecs
 
             # Captures the image
             if timeToWaitInSecs > 0:
@@ -511,15 +513,11 @@ class OpticalGater:
 
     def plot_triggers(self, outfile="triggers.png"):
         """Plot the phase vs. time sawtooth line with trigger events."""
-        self.timestamp = np.array(self.timestamp)
-        self.phase = np.array(self.phase)
-        self.trigger_times = np.array(self.trigger_times)
-
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
-        plt.plot(self.timestamp, self.phase, label="Heart phase")
+        plt.plot(np.array(self.timestamp), np.array(self.phase), label="Heart phase")
         plt.scatter(
-            self.trigger_times,
+            np.array(self.trigger_times),
             np.full(
                 max(len(self.trigger_times), 0), self.pog_settings["targetSyncPhase"]
             ),
@@ -527,10 +525,10 @@ class OpticalGater:
             label="Trigger fire",
         )
         # Add labels etc
-        x_1, x_2, _, y_2 = plt.axis()
-        plt.axis((x_1, x_2, 0, y_2 * 1.1))
+        # x_1, x_2, _, y_2 = plt.axis()
+        # plt.axis((x_1, x_2, 0, y_2 * 1.1))
         plt.legend()
-        plt.xlabel("Time (ms)")
+        plt.xlabel("Time (s)")
         plt.ylabel("Phase (rad)")
 
         # Saves the figure
@@ -570,16 +568,31 @@ class OpticalGater:
         plt.savefig(outfile)
         plt.show()
 
-    def plot_running(self, outfile="running.png"):
+    def plot_prediction(self, outfile="prediction.png"):
         self.timestamps = np.array(self.timestamp)
-        self.process_time = np.array(self.process_time)
+        self.timeToWaitInSecs = np.array(self.timeToWaitInSecs)
 
         plt.figure()
-        plt.title("Frame processing times")
-        plt.plot(self.timestamp, self.process_time, label="Processing time")
+        plt.title("Predicted Trigger Times")
+        plt.plot(np.array(self.timestamp), np.array(self.timeToWaitInSecs))
         # Add labels etc
-        plt.xlabel("Time (ms)")
-        plt.ylabel("Processing time (ms)")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Prediction (s)")
+
+        # Saves the figure
+        plt.savefig(outfile)
+        plt.show()
+
+    def plot_running(self, outfile="running.png"):
+        self.timestamps = np.array(self.timestamp)
+        self.processing_rate_fps = np.array(self.processing_rate_fps)
+
+        plt.figure()
+        plt.title("Frame processing rate")
+        plt.plot(self.timestamp, self.processing_rate_fps)
+        # Add labels etc
+        plt.xlabel("Time (s)")
+        plt.ylabel("Processing rate (fps)")
 
         # Saves the figure
         plt.savefig(outfile)
