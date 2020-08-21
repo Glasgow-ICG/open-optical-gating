@@ -300,6 +300,8 @@ class OpticalGater:
             # for prediction plotting
             self.predicted_trigger_time_s[-1] = self.timestamp[-1] + timeToWaitInSecs
 
+        # JT TODO: for WebSockets clients in particular, I think it would be nice to report the prediction time even when we are not requesting a trigger.
+        # I will adjust this as part of the upcoming refactors
         return None, current_phase, current_time_s
 
     def reset_state(self):
