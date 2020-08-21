@@ -11,6 +11,9 @@ import j_py_sad_correlation as jps
 # Local imports
 import open_optical_gating.cli.parameters as parameters
 
+# TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
+# Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
+# In the C code it is declared as a const int.
 
 def update_drift(frame0, bestMatch0, settings):
     """ Updates the 'settings' dictionary to reflect our latest estimate of the sample drift.
@@ -84,6 +87,7 @@ def subframe_fitting(diffs, settings):
             float coordinate for location of minimum in 'diffs' (including padding frames)
     """
     # Search for lowest value within the "main" frames.
+    # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     bestScorePos = np.argmin(
         diffs[settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]]
     )
@@ -412,6 +416,7 @@ def pick_target_and_barrier_frames(reference_frames, settings):
     """
 
     # First compare each frame in our list with the previous one
+    # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     deltas_without_padding = np.diff(
         reference_frames[
             settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]
@@ -465,6 +470,7 @@ def pick_target_and_barrier_frames(reference_frames, settings):
                 settings["reference_period"],
                 settings["numExtraRefFrames"],
             )
+            break
 
     # Update settings with new target_phase and barrier_frame
     logger.success(
