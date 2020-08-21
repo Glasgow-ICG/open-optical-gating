@@ -13,6 +13,7 @@ output.log
 
 # Packages
 **/dist/**
+**/open_optical_gating.egg-info/**
 
 # Unit test / coverage reports
 .coverage
