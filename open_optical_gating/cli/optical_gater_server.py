@@ -387,12 +387,6 @@ class OpticalGater:
 
         # Obtains a minimum amount of buffer frames
         if self.frame_num < self.settings["frame_buffer_length"]:
-            # TODO: JT writes: I don't know what the intention of this loop was originally,
-            # but right now it is just going to put lots of identical copies of 'frame' into the buffer.
-            # I don't think that is what the writer intended!
-            # I expect this to disappear as an issue once I restructure the state machine.
-            # I am imagining that the 'adapt' state will *follow on* from the 'determine' state,
-            # rather than being an alternative to it.
             logger.debug("Not yet enough frames to determine a new period.")
 
             # Inserts current frame into buffer
