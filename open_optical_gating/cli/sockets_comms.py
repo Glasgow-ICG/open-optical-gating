@@ -1,7 +1,8 @@
 """Functions for working with messages to be exchanged over WebSockets using our protocol.
 
-    All messages consist of a dictionary of key/value pairs, as follows.
+    All messages consist of a dictionary of key/value pairs, as described below.
     Messages are CBOR-encoded for transmission over WebSockets.
+    Invalid messages will be dropped without a response, although an error will be logged by the Python code
     (The Python code in this module can also be switched to use JSON encoding, for ease of debugging)
     
     Messages:
@@ -21,7 +22,7 @@
                 [3]    dict  Frame metadata (see below)
                 
         "Sync response"
-        Sent from server->client in response to a "frame" message.
+        Sent from server->client in response to a "frame" message (after sync analysis is complete)
         Dictionary containing:
             "type"     ="sync"
             "sync"     dict  Synchronization metadata (see below)

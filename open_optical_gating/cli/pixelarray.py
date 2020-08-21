@@ -7,7 +7,7 @@ from pybase64 import b64encode, b64decode
 
 class PixelArray(np.ndarray):
     # See explanations at https://numpy.org/doc/stable/user/basics.subclassing.html
-    def __new__(cls, input_array, metadata=None):
+    def __new__(cls, input_array, metadata=dict()):
         # Input array is an already formed ndarray instance
         # We first cast to be our class type
         obj = np.asarray(input_array).view(cls)
