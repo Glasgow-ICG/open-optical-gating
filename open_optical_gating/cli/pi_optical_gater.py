@@ -156,11 +156,11 @@ def run(settings):
         while not analyser.stop:
             camera.wait_recording(0.001)  # s
         camera.stop_recording()
-        logger.info("Requesting user input...")
-        analyser.user_select_period(10)
+        # logger.info("Requesting user input...")
+        # analyser.user_select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
-        analyser.pog_settings["referencePeriod"],
+        analyser.pog_settings["reference_period"],
         analyser.pog_settings["referenceFrame"],
     )
 

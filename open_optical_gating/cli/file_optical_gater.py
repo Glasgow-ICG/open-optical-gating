@@ -77,7 +77,7 @@ def run(settings):
         analyser.user_select_period(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
-        analyser.pog_settings["referencePeriod"],
+        analyser.pog_settings["reference_period"],
         analyser.pog_settings["referenceFrame"],
     )
 

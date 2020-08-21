@@ -97,7 +97,7 @@ class OpticalGater:
                 rp = self.ref_frame_period
 
             self.pog_settings = parameters.initialise(
-                framerate=self.settings["brightfield_framerate"], referencePeriod=rp,
+                framerate=self.settings["brightfield_framerate"], reference_period=rp,
             )
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
@@ -190,7 +190,7 @@ class OpticalGater:
             2
             * np.pi
             * (currentPhaseInFrames - self.pog_settings["numExtraRefFrames"])
-            / self.pog_settings["referencePeriod"]
+            / self.pog_settings["reference_period"]
         )  # rad
 
         # Gets the current timestamp in seconds
@@ -242,7 +242,7 @@ class OpticalGater:
         )
 
         # If at least one period has passed, have a go at predicting a future trigger time
-        if self.frame_num - 1 > self.pog_settings["referencePeriod"]:
+        if self.frame_num - 1 > self.pog_settings["reference_period"]:
             logger.debug("Predicting trigger...")
 
             # TODO: JT writes: this seems as good a place as any to highlight the general issue that the code is not doing a great job of precise timing.
@@ -366,6 +366,12 @@ class OpticalGater:
                 self.ref_buffer, self.pog_settings
             )
 
+            # Automatically select a target frame and barrier
+            # This can be overriden by the user/controller later
+            self.pog_settings = pog.pick_target_and_barrier_frames(
+                self.ref_frames, self.pog_settings
+            )
+
             # Determine barrier frames
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
@@ -426,7 +432,7 @@ class OpticalGater:
                 self.target,
             ) = oga.process_sequence(
                 self.ref_frames,
-                self.pog_settings["referencePeriod"],
+                self.pog_settings["reference_period"],
                 self.pog_settings["drift"],
                 sequence_history=self.sequence_history,
                 period_history=self.period_history,
@@ -440,13 +446,13 @@ class OpticalGater:
             self.pog_settings = parameters.update(
                 self.pog_settings,
                 referenceFrame=(
-                    self.pog_settings["referencePeriod"] * self.target / 80
+                    self.pog_settings["reference_period"] * self.target / 80
                 )  # TODO 80 here should be a user-defined variable; we tend not to change it but let's give them the option
-                % self.pog_settings["referencePeriod"],
+                % self.pog_settings["reference_period"],
             )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",
-                self.pog_settings["referencePeriod"],
+                self.pog_settings["reference_period"],
                 self.pog_settings["referenceFrame"],
             )
 
@@ -491,7 +497,7 @@ class OpticalGater:
             self.target,
         ) = oga.process_sequence(
             self.ref_frames,
-            self.pog_settings["referencePeriod"],
+            self.pog_settings["reference_period"],
             self.pog_settings["drift"],
             max_offset=3,
             ref_seq_id=0,
