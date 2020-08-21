@@ -13,9 +13,7 @@ def run(settings="settings.json", delay=500e3, number=10):
     dict_data = json.load(data_file)
 
     laser_trigger_pin = dict_data["laser_trigger_pin"]
-    fluorescence_camera_pins = dict_data[
-        "fluorescence_camera_pins"
-    ]  # Trigger, SYNC-A, SYNC-B
+    fluorescence_camera_pins = dict_data["fluorescence_camera_pins"]
 
     duration = dict_data[
         "fluorescence_exposure_us"

@@ -73,18 +73,15 @@ class PiOpticalGater(server.OpticalGater):
                 logger.critical("Error setting up laser pin. {0}", inst)
 
         # Sets up fluorescence camera pins
-        # TODO: JT writes: why not make these a [sub-]dictionary, so we don't have to keep track of what [0], [1], and [2] represent?
-        fluorescence_camera_pins = self.settings[
-            "fluorescence_camera_pins"
-        ]  # Trigger, SYNC-A, SYNC-B
+        fluorescence_camera_pins = self.settings["fluorescence_camera_pins"]
         if fluorescence_camera_pins is not None:
             try:
                 logger.debug("Initialising fluorescence camera pins...")
-                fp.setpin(fluorescence_camera_pins[0], 1, 0)  # Trigger
-                fp.setpin(fluorescence_camera_pins[1], 0, 0)  # SYNC-A
-                fp.setpin(fluorescence_camera_pins[2], 0, 0)  # SYNC-B
-                self.trigger_mode = "edge"  #  # TODO: JT writes: flagging this again as definitely belonging in settings!
-                self.duration_us = 1e3  # TODO relate to settings
+                fp.setpin(fluorescence_camera_pins["trigger"], 1, 0)
+                fp.setpin(fluorescence_camera_pins["SYNC-A"], 0, 0)
+                fp.setpin(fluorescence_camera_pins["SYNC-B"], 0, 0)
+                self.trigger_mode = self.settings["fluorescence_trigger_mode"]
+                self.duration_us = self.settings["fluorescence_exposure_us"]
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
 
@@ -102,7 +99,7 @@ class PiOpticalGater(server.OpticalGater):
               # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
               # and the different dictionary entries should be documented somewhere suitable
           		laser_trigger_pin         the GPIO pin number (int) of the laser trigger
-          		fluorescence_camera_pins  an int array containg the triggering, SYNC-A and SYNC-B pin numbers for the fluorescence camera
+          		fluorescence_camera_pins  a dict containg the "trigger", "SYNC-A" and "SYNC-B" pin numbers for the fluorescence camera
           		edge_trigger              [see inline comments below at point of use]
           		duration_us               the duration (in microseconds) of the pulse (only applies to pulse mode [edge_trigger=False])
         """
@@ -115,8 +112,8 @@ class PiOpticalGater(server.OpticalGater):
             fp.edge(
                 delay_us,
                 self.settings["laser_trigger_pin"],
-                self.settings["fluorescence_camera_pins"][0],
-                self.settings["fluorescence_camera_pins"][2],
+                self.settings["fluorescence_camera_pins"]["trigger"],
+                self.settings["fluorescence_camera_pins"]["SYNC-B"],
             )
         elif self.trigger_mode != "expose":
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
@@ -124,7 +121,7 @@ class PiOpticalGater(server.OpticalGater):
                 delay_us,
                 self.duration_us,
                 self.settings["laser_trigger_pin"],
-                self.settings["fluorescence_camera_pins"][0],
+                self.settings["fluorescence_camera_pins"]["trigger"],
             )
         else:
             logger.critical(

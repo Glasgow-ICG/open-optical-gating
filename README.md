@@ -101,7 +101,13 @@ After this, it would be best to check if the signals are being fired by AsclePiu
  "shutter_speed":2500,
  "image_denoise":0,
  "laser_trigger_pin":22,
- "fluorescence_camera_pins":[8,10,12],
+ "fluorescence_camera_pins": {
+  "trigger": 8,
+  "SYNC-A": 10,
+  "SYNC-B": 12
+ },
+ "fluorescence_trigger_mode": "edge",
+ "fluorescence_exposure_us": "1000.0",
  "current_position":0,
  "frame_buffer_length":100,
  "frame_num":0,

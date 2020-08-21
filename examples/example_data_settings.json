@@ -4,11 +4,12 @@
     "brightfield_framerate": 80,
     "brightfield_resolution": 115,
     "exposure_mode": "off",
-    "fluorescence_camera_pins": [
-        8,
-        10,
-        12
-    ],
+    "fluorescence_camera_pins": {
+        "trigger": 8,
+        "SYNC-A": 10,
+        "SYNC-B": 12
+    },
+    "fluorescence_trigger_mode": "edge",
     "fluorescence_exposure_us": 1000.0,
     "frame_buffer_length": 100,
     "frame_num": 0,
