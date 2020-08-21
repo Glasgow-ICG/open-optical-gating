@@ -125,22 +125,20 @@ def v_fitting(y_1, y_2, y_3):
     return x, y
 
 
-def phase_matching(frame0, referenceFrames0, settings=None):
-    # assumes frame is a numpy array and referenceFrames is a dictionary of {phase value: numpy array}
-    # TODO: JT writes: check the above description of referenceFrames -  I have no idea what this means, and I don’t think it is correct either. referenceFrames0 seems to just behave like a 3D array?
-    # TODO: JT writes: Supply a proper function header [CJN: and better variable names]. That should also explain what xxx0 represents [i.e. uncropped], vs xxx [cropped].
-
-    logger.debug(
-        "Reference frame types: {0} and {1}", type(frame0), type(referenceFrames0)
-    )
-    logger.debug(
-        "Reference frame dtypes: {0} and {1}", frame0.dtype, referenceFrames0.dtype
-    )
-    logger.debug(
-        "Reference frame shapes: {0} and {1}", frame0.shape, referenceFrames0.shape
-    )
+def phase_matching(frame, reference_frames, settings=None):
+    """Phase match a new frame based on a reference period.
+        
+        Parameters:
+            frame               array-like      2D frame pixel data for our most recently-received frame
+            reference_frames    array-like      3D (t by x by y) frame pixel data for our reference period
+            settings            dict            Parameters controlling the sync algorithms
+        Returns:
+            phase               float           phase matching results
+            SADs                ndarray         1D sum of absolute differences between frame and each reference_frames[t,...]
+            settings            dict            updated parameters controlling the sync algorithms
+    """
     if settings == None:
-        logger.warning("No settings provided. Using sensible deafults.")
+        logger.warning("No settings provided. Using sensible defaults.")
         settings = parameters.initialise()
 
     dx, dy = settings["drift"]
@@ -148,12 +146,12 @@ def phase_matching(frame0, referenceFrames0, settings=None):
     # Apply drift correction, identifying a crop rect for the frame and/or reference frames,
     # representing the area intersection between them once drift is accounted for.
     logger.info("Applying drift correction of ({0},{1})", dx, dy)
-    rectF = [0, frame0.shape[0], 0, frame0.shape[1]]  # X1,X2,Y1,Y2
+    rectF = [0, frame.shape[0], 0, frame.shape[1]]  # X1,X2,Y1,Y2
     rect = [
         0,
-        referenceFrames0[0].shape[0],
+        reference_frames[0].shape[0],
         0,
-        referenceFrames0[0].shape[1],
+        reference_frames[0].shape[1],
     ]  # X1,X2,Y1,Y2
 
     if dx <= 0:
@@ -169,44 +167,37 @@ def phase_matching(frame0, referenceFrames0, settings=None):
         rectF[3] = rectF[3] - dy
         rect[2] = +dy
 
-    frame = frame0[rectF[0] : rectF[1], rectF[2] : rectF[3]]
-    referenceFrames = referenceFrames0[:, rect[0] : rect[1], rect[2] : rect[3]]
-    # if plot:
-    #    a12 = f1.add_subplot(122)
-    #    a12.imshow(frame)
-    #    plt.show()
+    frame_cropped = frame[rectF[0] : rectF[1], rectF[2] : rectF[3]]
+    reference_frames_cropped = reference_frames[:, rect[0] : rect[1], rect[2] : rect[3]]
 
     # Calculate SADs
     logger.trace(
-        "Reference frame dtypes: {0} and {1}", frame0.dtype, referenceFrames0.dtype
+        "Reference frame dtypes: {0} and {1}", frame.dtype, reference_frames.dtype
     )
     logger.trace(
-        "Reference frame shapes: {0} and {1}", frame0.shape, referenceFrames0.shape
+        "Reference frame shapes: {0} and {1}", frame.shape, reference_frames.shape
     )
     logger.trace(
         "Reference frames range over {0} to {1} and {2} to {3}.",
-        frame.min(),
-        frame.max(),
-        referenceFrames.min(),
-        referenceFrames.max(),
+        frame_cropped.min(),
+        frame_cropped.max(),
+        reference_frames_cropped.min(),
+        reference_frames_cropped.max(),
     )
+    # DEV NOTE: these two .astypes aren't ideal (especially as the data is already 8-bit)
+    # However they were needed when running the picam live to stop jps falling down on types
+    # This is also why the above three traces seem a bit overkill
     SADs = jps.sad_with_references(
-        frame.astype("uint8"), referenceFrames.astype("uint8")
+        frame_cropped.astype("uint8"), reference_frames_cropped.astype("uint8")
     )
-
     logger.trace(SADs)
-    # if plot:
-    #    f2 = plt.figure()
-    #    a21 = f2.add_axes([0, 0, 1, 1])
-    #    a21.plot(range(len(SADs)), SADs)
-    #    plt.show()
 
     # Identify best match between 'frame' and the reference frame sequence
     phase = subframe_fitting(SADs, settings)
     logger.debug("Found frame phase to be {0}", phase)
 
     # Update current drift estimate in the settings dictionary
-    settings = update_drift(frame0, referenceFrames0[np.argmin(SADs)], settings)
+    settings = update_drift(frame, reference_frames[np.argmin(SADs)], settings)
     logger.info(
         "Drift correction updated to ({0},{1})",
         settings["drift"][0],
