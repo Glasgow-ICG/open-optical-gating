@@ -315,7 +315,7 @@ class OpticalGater:
         self.frame_num = 0
         self.ref_frames = None
         self.ref_buffer = np.empty(
-            (self.settings["frame_buffer_length"], self.width, self.height),
+            (self.settings["frame_buffer_length"], self.height, self.width),
             dtype=self.pixel_dtype,
         )
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.

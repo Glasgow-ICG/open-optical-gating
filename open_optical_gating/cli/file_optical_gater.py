@@ -42,7 +42,7 @@ class FileOpticalGater(server.OpticalGater):
         logger.success("Loading image data...")
         self.frame_num = self.settings["frame_num"]
         self.data = io.imread(filename)
-        self.width, self.height = self.data[0].shape
+        self.height, self.width = self.data[0].shape
         self.framerate = self.settings["brightfield_framerate"]
 
     def next_frame(self, force_framerate=True):

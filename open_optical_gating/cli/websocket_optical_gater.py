@@ -62,8 +62,7 @@ class WebSocketOpticalGater(server.OpticalGater):
                 pixelArrayObject.metadata["sync"] = dict()
                 
                 # JT TODO: for now I just hack self.width and self.height, but this should get fixed as part of the PixelArray refactor
-                # And yes, they are the wrong way round here. That's because (for now) they are the wrong way round elsewhere in the code!!
-                self.width, self.height = pixelArrayObject.shape
+                self.height, self.width = pixelArrayObject.shape
                 (trigger_response, current_phase, current_time_s) = self.analyze(pixelArrayObject)
                 
                 # JT TODO: this should be done in the base class, as part of the PixelArray refactor

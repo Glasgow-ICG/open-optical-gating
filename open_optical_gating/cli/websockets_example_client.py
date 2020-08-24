@@ -79,4 +79,3 @@ if __name__ == "__main__":
         asyncio.get_event_loop().run_until_complete(send_from_file(uri, settings))
     else:
         asyncio.get_event_loop().run_until_complete(send_test_frame(uri))
-
