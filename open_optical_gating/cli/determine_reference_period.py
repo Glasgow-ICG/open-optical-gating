@@ -81,7 +81,7 @@ def establish_indices(sequence, settings):
             logger.success("Found a period I'm happy with: {0}".format(periodToUse))
 
             settings = parameters.update(
-                settings, referencePeriod=periodToUse
+                settings, reference_period=periodToUse
             )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])

@@ -11,6 +11,10 @@ import j_py_sad_correlation as jps
 # Local imports
 import open_optical_gating.cli.parameters as parameters
 
+# TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
+# Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
+# In the C code it is declared as a const int.
+
 
 def update_drift(frame0, bestMatch0, settings):
     """ Updates the 'settings' dictionary to reflect our latest estimate of the sample drift.
@@ -84,6 +88,7 @@ def subframe_fitting(diffs, settings):
             float coordinate for location of minimum in 'diffs' (including padding frames)
     """
     # Search for lowest value within the "main" frames.
+    # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     bestScorePos = np.argmin(
         diffs[settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]]
     )
@@ -382,6 +387,110 @@ def determine_barrier_frames(settings):
     return settings
 
 
+def pick_target_and_barrier_frames(reference_frames, settings):
+    """Function to automatically identify a stable target phase and barrier frame.
+        Looks through 'reference_frames' to identify a consistent point in the
+        heart cycle (i.e. attempt to identify approximately the same absolute
+        phase every time we establish sync, rather than just picking a random
+        point in the cycle as our initial target sync phase).
+     
+        NOTE: this is not used when using the adaptive algorithms. Rather,
+        this is implemented for our convenience when first setting up the sync.
+        Most of the time, we find that the phase selected by this function is a
+        reasonable one to synchronize to (whereas some phases such as the
+        refractory phases between beats) may be less reliable if they are
+        chosen as the target sync phase.
+     
+        The function uses various heuristics in the hope of identifying a
+        consistent point in the cycle. For side-on orientations (as seen by
+        the brightfield camera) of the fish, this does a reasonable job of
+        identifying a point in the cycle that gives a fairly good sync.
+        For belly-on orientations (as seen by the brightfield camera), it
+        does not always work so well, and manual intervention is more likely
+        to be needed to pick an appropriate target sync phase.
+
+        Parameters:
+            reference_frames    array-like  3D (t by x by y) frame pixel data for our reference period
+            settings            dict        parameters controlling the sync algorithms
+        Returns:
+            settings            dict        updated settings
+    """
+
+    # First compare each frame in our list with the previous one
+    # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
+    deltas_without_padding = np.zeros(
+        (reference_frames.shape[0] - 2 * settings["numExtraRefFrames"]), dtype=np.int64,
+    )
+    for i in np.arange(reference_frames.shape[0] - 2 * settings["numExtraRefFrames"],):
+        deltas_without_padding[i] = jps.sad_correlation(
+            reference_frames[i + settings["numExtraRefFrames"], :, :],
+            reference_frames[i + settings["numExtraRefFrames"] + 1, :, :],
+        )
+
+    min_pos_without_padding = np.argmin(deltas_without_padding)
+    max_pos_without_padding = np.argmax(deltas_without_padding)
+    min_delta = deltas_without_padding.min()
+    max_delta = deltas_without_padding.max()
+    target_frame_without_padding = 0
+
+    # The greatest diff (most rapid change) tends to come soon after the region of minimum change. The greatest diff tends to be a sharp peak (whereas, almost by definition, the minimum change is broader) We use the greatest diff as our "universal"(ish) reference point, but default to a phase 1/3 of a period after it, so that we get a good clear run-up to it with well-defined phases in our history.
+
+    # Use v-fitting to find a sub-frame estimate of the maximum
+    if max_pos_without_padding <= 0:
+        # It looks as if the best position is right at the start of the dataset. Presumably due to a slightly glitch it's possible that the true minimum lies just outside the dataset. However, in pathological datasets there could be no minimum in easy reach at all, so we've got to give up at some point. Therefore, if we hit this condition, we just decide the best offset is 0.0. In sensible cases, that will be very close to optimum. In messy cases, this entire function is going to do unpredictable things anyway, so who cares!
+        target_frame_without_padding = 0
+    else:
+        target_frame_without_padding = max_pos_without_padding + v_fitting(
+            -deltas_without_padding[max_pos_without_padding - 1],
+            -deltas_without_padding[max_pos_without_padding],
+            -deltas_without_padding[max_pos_without_padding + 1],
+        )
+
+    # Now shift that forwards by 1/3 of a period but wrap if this is in the next beat
+    target_frame_without_padding = (
+        target_frame_without_padding + (settings["reference_period"] / 3.0)
+    ) % settings["reference_period"]
+
+    # We also identify a point soon after the region of minimum change ends. We look for the diffs to rise past their midpoint between min and max (which is expected to happen soon). We should try not to fit our history back beyond that, in order to avoid trying to fit to the (unpredictable) refractory period of the heart
+    barrier_frame_without_padding = min_pos_without_padding
+    while (
+        deltas_without_padding[barrier_frame_without_padding]
+        < (min_delta + max_delta) / 2
+    ):
+        barrier_frame_without_padding = (barrier_frame_without_padding + 1) % int(
+            settings["reference_period"]
+        )
+        if barrier_frame_without_padding == min_pos_without_padding:
+            # This means I have done a complete loop and found no delta less than the average of the min and max deltas
+            # Probably means my frames are all empty so my diffs are all zeros
+            logger.warning(
+                "Search for a barrier frame has failed: {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}",
+                min_pos_without_padding,
+                min_delta,
+                max_pos_without_padding,
+                max_delta,
+                target_frame_without_padding,
+                barrier_frame_without_padding,
+                settings["reference_period"],
+                settings["numExtraRefFrames"],
+            )
+            break
+
+    # Update settings with new target_phase and barrier_frame
+    logger.success(
+        "Updating parameters with new target frame of {0} and barrier frame of {1} (both without padding).",
+        target_frame_without_padding,
+        barrier_frame_without_padding,
+    )
+    settings = parameters.update(
+        settings,
+        referenceFrame=target_frame_without_padding,
+        barrierFrame=barrier_frame_without_padding,
+    )
+
+    return settings
+
+
 def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     """ Potentially schedules a synchronization trigger for the fluorescence camera.
         We will do this if the trigger is due fairly soon in the future,
@@ -419,7 +528,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             "Trigger due very soon, but if haven't already sent one this period then we may as well give it a shot..."
         )
         if settings["lastSent"] < timestamp - (
-            settings["referencePeriod"] / settings["framerate"]
+            settings["reference_period"] / settings["framerate"]
         ):
             # Haven't sent a trigger on this heartbeat. Give it a go and cross our fingers we schedule it in time
             logger.success("Trigger will be sent")
@@ -433,7 +542,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             logger.info(
                 "Trigger already sent recently. Will not send another - extending the prediction to the next cycle."
             )
-            timeToWaitInSeconds += settings["referencePeriod"] / settings["framerate"]
+            timeToWaitInSeconds += settings["reference_period"] / settings["framerate"]
     elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
         "prediction_latency_s"
     ]:
@@ -447,7 +556,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
         pass
 
     if sendIt > 0 and settings["lastSent"] > (
-        timestamp - ((settings["referencePeriod"] / settings["framerate"]) / 2)
+        timestamp - ((settings["reference_period"] / settings["framerate"]) / 2)
     ):
         # If we've done any triggering in the last half a cycle, don't trigger again.
         # This is quite different from JTs approach,
