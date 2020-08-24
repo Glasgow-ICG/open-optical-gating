@@ -29,7 +29,6 @@ class PixelArray(np.ndarray):
         arrayData = b64encode(self.tobytes()).decode()
         return [self.shape, str(self.dtype), arrayData, self.metadata]
 
-
 def ArrayCBORDecode(jsonEncoded):
     arr = np.frombuffer(jsonEncoded[2], dtype=jsonEncoded[1]).reshape(jsonEncoded[0])
     result = PixelArray(arr)
@@ -42,3 +41,16 @@ def ArrayJSONDecode(jsonEncoded):
     result = PixelArray(arr)
     result.metadata = jsonEncoded[3]
     return result
+
+def MetadataArrayFromPixelArrayList(pixelArrayList, metadataKey):
+    """ Given a list of PixelArray objects, returns a numpy array containing the
+        value associated with the metadata entry for 'metadataKey' (e.g. 'timestamp')
+        for each of the objects in the list. i.e. return an array containing the
+        timestamp for each array object.
+        
+        Function inputs:
+         pixelArrayList   list     List of PixelArray objects
+         metadataKey      str      Metadata key to extract.
+                                    Must be present for all objects in pixelArrayList.
+        """
+    return np.array([i.metadata[metadataKey] for i in pixelArrayList])
