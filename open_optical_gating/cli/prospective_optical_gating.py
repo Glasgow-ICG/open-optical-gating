@@ -15,6 +15,7 @@ import open_optical_gating.cli.parameters as parameters
 # Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
 # In the C code it is declared as a const int.
 
+
 def update_drift(frame0, bestMatch0, settings):
     """ Updates the 'settings' dictionary to reflect our latest estimate of the sample drift.
         We do this by trying variations on the relative shift between frame0 and the best-matching frame in the reference sequence.
@@ -417,12 +418,15 @@ def pick_target_and_barrier_frames(reference_frames, settings):
 
     # First compare each frame in our list with the previous one
     # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
-    deltas_without_padding = np.diff(
-        reference_frames[
-            settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]
-        ],
-        axis=0,
-    ).sum(axis=(1, 2))
+    deltas_without_padding = np.zeros(
+        (reference_frames.shape[0] - 2 * settings["numExtraRefFrames"]), dtype=np.int64,
+    )
+    for i in np.arange(reference_frames.shape[0] - 2 * settings["numExtraRefFrames"],):
+        deltas_without_padding[i] = jps.sad_correlation(
+            reference_frames[i + settings["numExtraRefFrames"], :, :],
+            reference_frames[i + settings["numExtraRefFrames"] + 1, :, :],
+        )
+
     min_pos_without_padding = np.argmin(deltas_without_padding)
     max_pos_without_padding = np.argmax(deltas_without_padding)
     min_delta = deltas_without_padding.min()
