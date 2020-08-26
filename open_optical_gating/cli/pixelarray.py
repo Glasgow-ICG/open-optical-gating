@@ -71,6 +71,8 @@ def get_metadata_from_list(pixelArrayList, metadataKey):
     if isinstance(metadataKey, str):
         return np.array([i.metadata[metadataKey] for i in pixelArrayList])
     elif isinstance(metadataKey, list):
-        return np.array([[i.metadata[m] for i in pixelArrayList] for m in metadataKey])
+        return np.array(
+            [[i.metadata[m] for i in pixelArrayList] for m in metadataKey]
+        ).T
     else:
         return None

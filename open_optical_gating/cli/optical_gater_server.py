@@ -20,8 +20,8 @@ import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
 
 logger.remove()
-logger.add(sys.stderr, level="SUCCESS")
-logger.add("oog_{time}.log", level="DEBUG")
+logger.add(sys.stderr, level="WARNING")
+# logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
 # TODO create a time-stamped copy of the settings file after this
@@ -152,22 +152,11 @@ class OpticalGater:
         if self.state == "sync":
             # Using previously-determined reference peiod, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
-            (trigger_response, current_phase) = self.sync_state(pixelArray)
-
-            # Logs results and processing time
             self.predicted_trigger_time_s.append(
                 None
             )  # placeholder - updated inside sync_state
 
-            # take a note of our processing rate (useful for decided what framerate to set)
-            time_fin = time.time()
-            self.processing_rate_fps.append(1 / (time_fin - time_init))
-
-            return (
-                trigger_response,
-                current_phase,
-                self.frame_history[-1].metadata["timestamp"],
-            )
+            self.sync_state(pixelArray)
 
         elif self.state == "reset":
             # Clears reference period and resets frame number
@@ -185,8 +174,9 @@ class OpticalGater:
         else:
             logger.critical("Unknown state {0}.", self.state)
 
-        # Default return - all None
-        return (None, None, None)
+        # take a note of our processing rate (useful for decided what framerate to set)
+        time_fin = time.time()
+        self.processing_rate_fps.append(1 / (time_fin - time_init))
 
     def sync_state(self, pixelArray):
         """ Code to run when in "sync" state
@@ -304,12 +294,6 @@ class OpticalGater:
                 self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
             )
 
-        # Returns the predicted delay time, phase and timestamp
-        return (
-            time_to_wait_seconds,
-            self.frame_history[-1].metadata["unwrapped_phase"] % (2 * np.pi),
-        )
-
     def reset_state(self):
         """ Code to run when in "reset" state
             Resetting for a new period determination.
@@ -390,24 +374,23 @@ class OpticalGater:
         """
         logger.debug("Processing frame in adaptive optical gating mode.")
 
-        # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            logger.debug("Not yet enough frames to determine a new period.")
+        # Adds new frame to buffer
+        self.ref_buffer.append(pixelArray)
 
-            # Inserts current frame into buffer
-            self.ref_buffer[self.frame_num, :, :] = pixelArray
+        # Increases frame number
+        self.frame_num = self.frame_num + 1
 
-            # Increases frame number counter
-            self.frame_num += 1
+        # Calculate period from determine_reference_period.py
+        logger.info("Attempting to determine new reference period.")
+        self.ref_frames, self.pog_settings = ref.establish(
+            self.ref_buffer, self.pog_settings
+        )
 
-        # Once a suitable number of frames has been buffered,
-        # gets a new period and aligns to the history
-        else:
-            # Obtains a reference period
-            logger.debug("Determining new reference period")
-            # Calculate period from determine_reference_period.py
-            self.ref_frames, self.pog_settings = ref.establish(
-                self.ref_buffer, self.pog_settings
+        if self.ref_frames is not None:
+            # Automatically select a target frame and barrier
+            # This can be overriden by the user/controller later
+            self.pog_settings = pog.pick_target_and_barrier_frames(
+                self.ref_frames, self.pog_settings
             )
 
             # Determine barrier frames
@@ -556,8 +539,8 @@ class OpticalGater:
                 wrapped_phase[
                     (
                         np.abs(
-                            pa.get_metadata_from_list(self.frame_history, "timestamp"),
-                            -self.sent_trigger_times[i],
+                            pa.get_metadata_from_list(self.frame_history, "timestamp")
+                            - self.sent_trigger_times[i]
                         )
                     ).argmin()
                 ]
@@ -604,11 +587,11 @@ class OpticalGater:
         plt.figure()
         plt.title("Frame processing rate")
         plt.plot(
-            pa.get_metadata_from_list(self.frame_history, "timestamp"),
+            np.arange(len(self.processing_rate_fps)),
             np.array(self.processing_rate_fps),
         )
         # Add labels etc
-        plt.xlabel("Time (s)")
+        plt.xlabel("Frame")
         plt.ylabel("Processing rate (fps)")
 
         # Saves the figure
