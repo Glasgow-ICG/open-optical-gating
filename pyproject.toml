@@ -21,6 +21,7 @@ numba = { version = "^0.50.1", optional = true}
 # RPi Specific
 picamera = { version = "^1.13", optional = true}
 fastpins = { git = "https://github.com/abdrysdale/fastpins",  optional = true}
+pybase64 = "^1.0.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

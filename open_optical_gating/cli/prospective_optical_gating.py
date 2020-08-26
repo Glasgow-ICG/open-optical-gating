@@ -173,27 +173,29 @@ def phase_matching(frame, reference_frames, settings=None):
         rect[2] = +dy
 
     frame_cropped = frame[rectF[0] : rectF[1], rectF[2] : rectF[3]]
-    reference_frames_cropped = reference_frames[:, rect[0] : rect[1], rect[2] : rect[3]]
+    reference_frames_cropped = [
+        f[rect[0] : rect[1], rect[2] : rect[3]] for f in reference_frames
+    ]
 
     # Calculate SADs
     logger.trace(
-        "Reference frame dtypes: {0} and {1}", frame.dtype, reference_frames.dtype
+        "Reference frame dtypes: {0} and {1}", frame.dtype, reference_frames[0].dtype
     )
     logger.trace(
-        "Reference frame shapes: {0} and {1}", frame.shape, reference_frames.shape
+        "Reference frame shapes: {0} and {1}", frame.shape, reference_frames[0].shape
     )
     logger.trace(
         "Reference frames range over {0} to {1} and {2} to {3}.",
         frame_cropped.min(),
         frame_cropped.max(),
-        reference_frames_cropped.min(),
-        reference_frames_cropped.max(),
+        np.amin(reference_frames_cropped),
+        np.amax(reference_frames_cropped),
     )
     # DEV NOTE: these two .astypes aren't ideal (especially as the data is already 8-bit)
     # However they were needed when running the picam live to stop jps falling down on types
     # This is also why the above three traces seem a bit overkill
     SADs = jps.sad_with_references(
-        frame_cropped.astype("uint8"), reference_frames_cropped.astype("uint8")
+        frame_cropped.astype("uint8"), np.array(reference_frames_cropped, dtype="uint8")
     )
     logger.trace(SADs)
 
@@ -275,13 +277,13 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     while phaseToWait < 0:
         phaseToWait += 2 * np.pi
 
-    timeToWaitInSecs = phaseToWait / radsPerSec
-    timeToWaitInSecs = max(timeToWaitInSecs, 0.0)
+    time_to_wait_seconds = phaseToWait / radsPerSec
+    time_to_wait_seconds = max(time_to_wait_seconds, 0.0)
 
     logger.info(
         "Current time: {0};\tTime to wait: {1};",
         frame_history[-1, 0],
-        timeToWaitInSecs,
+        time_to_wait_seconds,
     )
     logger.debug(
         "Current phase: {0};\tPhase to wait: {1};", thisFramePhase, phaseToWait,
@@ -310,13 +312,13 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
             - settings["targetSyncPhase"]
             - (multiPhaseCounter * 2 * np.pi),
         )
-        timeToWaitInSecs = 0.0
+        time_to_wait_seconds = 0.0
 
     # This logic catches cases where we are predicting a long way into the future using only a small number of datapoints.
     # That is likely to be error-prone, so (unless using the "barrier frame" logic) we may increase
     # the number of frames we use for prediction.
     frameInterval = 1.0 / settings["framerate"]
-    if allowedToExtendNumberOfFittedPoints and timeToWaitInSecs > (
+    if allowedToExtendNumberOfFittedPoints and time_to_wait_seconds > (
         settings["extrapolationFactor"] * settings["minFramesForFit"] * frameInterval
     ):
         # TODO: JT writes: this approach of editing settings[minFramesForFit] and then changing it back again feels really messy to me.
@@ -329,13 +331,13 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
         ):
             logger.info("Increasing number of frames to use")
             #  Recurse, using a larger number of frames, to obtain an improved predicted time
-            timeToWaitInSecs = predict_trigger_wait(
+            time_to_wait_seconds = predict_trigger_wait(
                 frame_history, settings, fitBackToBarrier=False
             )
         settings["minFramesForFit"] = settings["minFramesForFit"] // 2
 
     # Return our prediction
-    return timeToWaitInSecs
+    return time_to_wait_seconds
 
 
 def determine_barrier_frames(settings):
@@ -419,12 +421,12 @@ def pick_target_and_barrier_frames(reference_frames, settings):
     # First compare each frame in our list with the previous one
     # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     deltas_without_padding = np.zeros(
-        (reference_frames.shape[0] - 2 * settings["numExtraRefFrames"]), dtype=np.int64,
+        (len(reference_frames) - 2 * settings["numExtraRefFrames"]), dtype=np.int64,
     )
-    for i in np.arange(reference_frames.shape[0] - 2 * settings["numExtraRefFrames"],):
+    for i in np.arange(len(reference_frames) - 2 * settings["numExtraRefFrames"],):
         deltas_without_padding[i] = jps.sad_correlation(
-            reference_frames[i + settings["numExtraRefFrames"], :, :],
-            reference_frames[i + settings["numExtraRefFrames"] + 1, :, :],
+            reference_frames[i + settings["numExtraRefFrames"]],
+            reference_frames[i + settings["numExtraRefFrames"] + 1],
         )
 
     min_pos_without_padding = np.argmin(deltas_without_padding)
@@ -440,10 +442,13 @@ def pick_target_and_barrier_frames(reference_frames, settings):
         # It looks as if the best position is right at the start of the dataset. Presumably due to a slightly glitch it's possible that the true minimum lies just outside the dataset. However, in pathological datasets there could be no minimum in easy reach at all, so we've got to give up at some point. Therefore, if we hit this condition, we just decide the best offset is 0.0. In sensible cases, that will be very close to optimum. In messy cases, this entire function is going to do unpredictable things anyway, so who cares!
         target_frame_without_padding = 0
     else:
-        target_frame_without_padding = max_pos_without_padding + v_fitting(
-            -deltas_without_padding[max_pos_without_padding - 1],
-            -deltas_without_padding[max_pos_without_padding],
-            -deltas_without_padding[max_pos_without_padding + 1],
+        target_frame_without_padding = (
+            max_pos_without_padding
+            + v_fitting(
+                -deltas_without_padding[max_pos_without_padding - 1],
+                -deltas_without_padding[max_pos_without_padding],
+                -deltas_without_padding[max_pos_without_padding + 1],
+            )[0]
         )
 
     # Now shift that forwards by 1/3 of a period but wrap if this is in the next beat

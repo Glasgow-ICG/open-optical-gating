@@ -26,14 +26,18 @@ def establish(sequence, settings):
     # We should just return that value from this function, and the caller can do something with it.
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict             Parameters controlling the sync algorithms
+            sequence    list of PixelArray objects  Sequence of recently-received frame pixel arrays (in chronological order)
+            settings    dict                        Parameters controlling the sync algorithms
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
     """
     referenceFrameIdx, settings = establish_indices(sequence, settings)
-    logger.trace("Idx: {0}", sequence[referenceFrameIdx].shape)
-    return sequence[referenceFrameIdx], settings
+    if referenceFrameIdx is not None:
+        referenceFrames = sequence[referenceFrameIdx[0] : referenceFrameIdx[-1]]
+    else:
+        referenceFrames = None
+
+    return referenceFrames, settings
 
 
 def establish_indices(sequence, settings):
@@ -47,12 +51,15 @@ def establish_indices(sequence, settings):
 
     periods = []
     for i in range(1, len(sequence)):
-        frame = sequence[i, :, :]
-        pastFrames = sequence[: (i - 1), :, :]
+        frame = sequence[i]
+        pastFrames = sequence[:i]
         logger.trace("Running for frame {0}", i)
 
         # Calculate Diffs between this frame and previous frames in the sequence
-        diffs = jps.sad_with_references(frame, pastFrames)
+        # TODO we should be able to remove these np.array and dtypes
+        diffs = jps.sad_with_references(
+            np.array(frame, dtype=np.uint8), np.array(pastFrames, dtype=np.uint8)
+        )
 
         # Calculate Period based on these Diffs
         period = calculate_period_length(diffs)
@@ -85,9 +92,12 @@ def establish_indices(sequence, settings):
             )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
-            return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
+            return (
+                np.arange(len(pastFrames) - numRefs, len(pastFrames), dtype=int),
+                settings,
+            )
 
-    logger.critical("I didn't find a period I'm happy with!")
+    logger.info("I didn't find a period I'm happy with!")
     return None, settings
 
 

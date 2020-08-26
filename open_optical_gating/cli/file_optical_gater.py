@@ -10,6 +10,7 @@ from loguru import logger
 from skimage import io
 
 # Local imports
+import open_optical_gating.cli.pixelarray as pa
 import open_optical_gating.cli.optical_gater_server as server
 
 
@@ -44,22 +45,29 @@ class FileOpticalGater(server.OpticalGater):
         self.data = io.imread(filename)
         self.height, self.width = self.data[0].shape
         self.framerate = self.settings["brightfield_framerate"]
+        self.start_time = time.time()
 
-    def next_frame(self, force_framerate=True):
+    def next_frame(self, force_framerate=False):
         """This function gets the next frame from the data source, which can be passed to analyze()"""
         # Force framerate to match the brightfield_framerate in the settings
         # This gives accurate timings and plots
-        # TODO when timestamp moves into a frame object this can probably be defaulted to False
-        if force_framerate and (len(self.timestamp) > 0):  # only do once we have frames
-            while (time.time() - self.initial_process_time_s - self.timestamp[-1]) < (
-                1 / self.settings["brightfield_framerate"]
-            ):
+        if force_framerate and (
+            len(self.frame_history) > 0
+        ):  # only do once we have frames
+            while (
+                time.time()
+                - self.start_time
+                - self.frame_history[-1].metadata["timestamp"]
+            ) < (1 / self.settings["brightfield_framerate"]):
                 time.sleep(1e-5)
                 continue
         if self.next_frame_index == self.data.shape[0] - 1:
             ## if this is our last frame we set the stop flag for the user/app to know
             self.stop = True
-        next = self.data[self.next_frame_index, :, :]
+        next = pa.PixelArray(
+            self.data[self.next_frame_index, :, :],
+            metadata={"timestamp": time.time() - self.start_time},
+        )
         self.next_frame_index += 1
         return next
 
@@ -72,7 +80,7 @@ def run(settings):
     logger.success("Determining reference period...")
     while analyser.state != "sync":
         while not analyser.stop:
-            analyser.analyze(analyser.next_frame())
+            analyser.analyze_pixelarray(analyser.next_frame(force_framerate=True))
         logger.info("Requesting user input...")
         analyser.user_select_period(10)
     logger.success(
@@ -83,7 +91,7 @@ def run(settings):
 
     logger.success("Emulating...")
     while not analyser.stop:
-        analyser.analyze(analyser.next_frame())
+        analyser.analyze_pixelarray(analyser.next_frame(force_framerate=True))
 
     logger.success("Plotting summaries...")
     analyser.plot_triggers()

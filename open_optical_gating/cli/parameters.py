@@ -25,7 +25,7 @@ def initialise(
     reference_period=0.0,
     barrierFrame=0.0,
     extrapolationFactor=1.5,
-    maxReceivedFramesToStore=260,
+    maxReceivedFramesToStore=1000,
     maxFramesForFit=32,
     minFramesForFit=3,
     prediction_latency_s=0.015,
