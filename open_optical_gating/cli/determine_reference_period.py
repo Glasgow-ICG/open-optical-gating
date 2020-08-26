@@ -14,7 +14,7 @@ from . import parameters
 from . import prospective_optical_gating as pog
 
 
-def establish(sequence, settings):
+def establish(sequence, period_history, settings):
     # TODO: JT writes: here and elsewhere, why does this return settings back again?
     # I’m 99% sure the original settings object will be modified, so returning a new object seems confusing to me.
     # I can see that returning it could be a reminder that it is changed by the function, but equally it implies to me that
@@ -26,12 +26,13 @@ def establish(sequence, settings):
     # We should just return that value from this function, and the caller can do something with it.
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
-            sequence    list of PixelArray objects  Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict                        Parameters controlling the sync algorithms
+            sequence        list of PixelArray objects  Sequence of recently-received frame pixel arrays (in chronological order)
+            period_history  list of float               Values of period calculated for previous frames (which we will append to)
+            settings        dict                        Parameters controlling the sync algorithms
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
     """
-    referenceFrameIdx, settings = establish_indices(sequence, settings)
+    referenceFrameIdx, settings = establish_indices(sequence, period_history, settings)
     if referenceFrameIdx is not None:
         referenceFrames = sequence[referenceFrameIdx[0] : referenceFrameIdx[-1]]
     else:
@@ -40,20 +41,19 @@ def establish(sequence, settings):
     return referenceFrames, settings
 
 
-def establish_indices(sequence, settings):
+def establish_indices(sequence, period_history, settings):
     """ Establish the list indices representing a reference period, from a given input sequence.
         Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict             Parameters controlling the sync algorithms
+            sequence        list of ndarrays   Sequence of recently-received frame pixel arrays (in chronological order)
+            period_history  list of float      Values of period calculated for previous frames (which we will append to)
+            settings        dict               Parameters controlling the sync algorithms
         Returns:
             List of indices that form the reference sequence (or None).
     """
 
-    periods = []
-    for i in range(1, len(sequence)):
-        frame = sequence[i]
-        pastFrames = sequence[:i]
-        logger.trace("Running for frame {0}", i)
+    if len(sequence) > 1:
+        frame = sequence[-1]
+        pastFrames = sequence[:-1]
 
         # Calculate Diffs between this frame and previous frames in the sequence
         # TODO we should be able to remove these np.array and dtypes
@@ -64,7 +64,7 @@ def establish_indices(sequence, settings):
         # Calculate Period based on these Diffs
         period = calculate_period_length(diffs)
         if period != -1:
-            periods.append(period)
+            period_history.append(period)
 
         # If we have a valid period, extract the frame indices associated with this period, and return them
         # The conditions here are empirical ones to protect against glitches where the heuristic
@@ -79,12 +79,12 @@ def establish_indices(sequence, settings):
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
         if (
             period != -1
-            and len(periods) >= (5 + (2 * settings["numExtraRefFrames"]))
+            and len(period_history) >= (5 + (2 * settings["numExtraRefFrames"]))
             and period > 6
-            and (len(periods) - 1 - settings["numExtraRefFrames"]) > 0
-            and (periods[len(periods) - 1 - settings["numExtraRefFrames"]]) > 6
+            and (len(period_history) - 1 - settings["numExtraRefFrames"]) > 0
+            and (period_history[-1 - settings["numExtraRefFrames"]]) > 6
         ):
-            periodToUse = periods[len(periods) - 1 - settings["numExtraRefFrames"]]
+            periodToUse = period_history[-1 - settings["numExtraRefFrames"]]
             logger.success("Found a period I'm happy with: {0}".format(periodToUse))
 
             settings = parameters.update(

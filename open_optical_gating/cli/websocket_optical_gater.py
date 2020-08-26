@@ -28,19 +28,21 @@ class WebSocketOpticalGater(server.OpticalGater):
             settings      dict  Parameters affecting operation (see default_settings.json)
         """
         
-        # JT TODO: this is very temporary - for now the superclass requires this to be defined.
-        # We either need to get the client tell us the framerate or remove the need
-        # for this attribute entirely, and deduce the framerate from individual frame timestamps.
-        # The latter would be better, as long as the timestamps on individual frames are reliable.
-        # We need to make sure they are, though, or our predictions will be off anyway!
-        self.framerate = 80
-
         # Initialise parent
         super(WebSocketOpticalGater, self).__init__(
             settings=settings,
             ref_frames=ref_frames,
             ref_frame_period=ref_frame_period,
         )
+
+        # JT TODO: this is very temporary - for now the superclass requires this to be defined.
+        # We either need to get the client tell us the framerate, or remove the need
+        # for this attribute entirely and deduce the framerate from individual frame timestamps.
+        # The latter would be better, as long as the timestamps on individual frames are reliable.
+        # We need to make sure they are, though, or our predictions will be off anyway!
+        self.framerate = 80
+
+        self.userInteractionPermitted = False
     
     
     async def message_handler(self, websocket):
@@ -63,17 +65,21 @@ class WebSocketOpticalGater(server.OpticalGater):
                 
                 # JT TODO: for now I just hack self.width and self.height, but this should get fixed as part of the PixelArray refactor
                 self.height, self.width = pixelArrayObject.shape
-                (trigger_response, current_phase, current_time_s) = self.analyze(pixelArrayObject)
+                prediction = self.analyze_pixelarray(pixelArrayObject)
                 
                 # JT TODO: this should be done in the base class, as part of the PixelArray refactor
-                if (trigger_response is not None):
-                    pixelArrayObject.metadata["sync"]["send_trigger"] = 1
-                    pixelArrayObject.metadata["sync"]["trigger_time"] = current_time_s + trigger_response
-                else:
-                    pixelArrayObject.metadata["sync"]["send_trigger"] = 0
-                    pixelArrayObject.metadata["sync"]["trigger_time"] = 0
-                pixelArrayObject.metadata["sync"]["phase"] = current_phase
-                
+                if True:
+                    if (prediction is not None):
+                        pixelArrayObject.metadata["sync"]["send_trigger"] = 1
+                        pixelArrayObject.metadata["sync"]["trigger_time"] = prediction
+                    else:
+                        pixelArrayObject.metadata["sync"]["send_trigger"] = 0
+                        pixelArrayObject.metadata["sync"]["trigger_time"] = 0
+                    try:
+                        pixelArrayObject.metadata["sync"]["phase"] = self.last_phase
+                    except:
+                        pass
+                    pixelArrayObject.metadata["sync"]["state"] = self.state
                 # Send back to the client whatever metadata we have added to the frame as part of the sync analysis.
                 # This will include whether or not a trigger is predicted, and when.
                 returnMessage = comms.EncodeFrameResponseMessage(pixelArrayObject.metadata["sync"])

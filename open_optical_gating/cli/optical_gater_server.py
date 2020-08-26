@@ -55,6 +55,8 @@ class OpticalGater:
         self.settings = settings
         # NOTE: there is also self.pog_settings, be careful of this
 
+        self.userInteractionPermitted = True
+
         if ref_frames is not None:
             logger.success("Using existing reference frames...")
         self.ref_frames = ref_frames
@@ -149,6 +151,7 @@ class OpticalGater:
             # As part of this reset, trigger_num will be reset
             self.state = "reset"
 
+        prediction = None
         if self.state == "sync":
             # Using previously-determined reference peiod, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
@@ -157,6 +160,7 @@ class OpticalGater:
             )  # placeholder - updated inside sync_state
 
             self.sync_state(pixelArray)
+            prediction = self.predicted_trigger_time_s[-1]
 
         elif self.state == "reset":
             # Clears reference period and resets frame number
@@ -177,6 +181,7 @@ class OpticalGater:
         # take a note of our processing rate (useful for decided what framerate to set)
         time_fin = time.time()
         self.processing_rate_fps.append(1 / (time_fin - time_init))
+        return prediction
 
     def sync_state(self, pixelArray):
         """ Code to run when in "sync" state
@@ -256,7 +261,7 @@ class OpticalGater:
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
-            this_predicted_trigger_time_s = self.frame_history[-1].metadata["timestamp"]
+            this_predicted_trigger_time_s = self.frame_history[-1].metadata["timestamp"] \
                                             + time_to_wait_seconds
             
             # Captures the image
@@ -300,6 +305,8 @@ class OpticalGater:
         self.frame_num = 0
         self.ref_frames = None
         self.ref_buffer = []
+        self.period_history = []
+
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,
         # but the user should have the ability to reset the sync through the GUI, or there might
@@ -320,7 +327,7 @@ class OpticalGater:
         else:
             self.state = "determine"
 
-    def determine_state(self, pixelArray):
+    def determine_state(self, pixelArray, modeString="determine period"):
         """ Code to run when in "determine" state
             Determine period mode (default behaviour requires user input).
             In this mode we obtain a minimum number of frames, determine a
@@ -329,7 +336,7 @@ class OpticalGater:
             user_select_period function (and updates the state) before running
             analyse again with the new state.
         """
-        logger.debug("Processing frame in determine period mode.")
+        logger.debug("Processing frame in {0} mode.".format(modeString))
 
         # Adds new frame to buffer
         self.ref_buffer.append(pixelArray)
@@ -340,10 +347,17 @@ class OpticalGater:
         # Calculate period from determine_reference_period.py
         logger.info("Attempting to determine new reference period.")
         self.ref_frames, self.pog_settings = ref.establish(
-            self.ref_buffer, self.pog_settings
+            self.ref_buffer, self.period_history, self.pog_settings
         )
 
         if self.ref_frames is not None:
+            # We were provided with ref_frames as a list, and this is helpful because it means we could still access
+            # the PixelArray metadata at this point if we wished.
+
+            # However, long-term we want to store a 3D array because that is what oga expects to work with.
+            # We therefore make that conversion here
+            self.ref_frames = np.array(self.ref_frames)
+            
             # Automatically select a target frame and barrier
             # This can be overriden by the user/controller later
             self.pog_settings = pog.pick_target_and_barrier_frames(
@@ -358,7 +372,13 @@ class OpticalGater:
             logger.success("Period determined.")
 
             # Note, passing the new period to the adaptive system is left to the user/app
-            self.stop = True
+            if self.userInteractionPermitted:
+                self.stop = True
+            else:
+                # TODO: JT writes: I think this is what is needed to automatically switch to "sync" mode at this point,
+                # but hopefully CJN can confirm
+                self.frame_num = 0
+                self.state = "sync"
 
     def adapt_state(self, pixelArray):
         """ Code to run when in "adapt" state.
@@ -367,34 +387,13 @@ class OpticalGater:
             In this mode we determine a new period and then align with
             previous periods using an adaptive algorithm.
         """
-        logger.debug("Processing frame in adaptive optical gating mode.")
-
-        # Adds new frame to buffer
-        self.ref_buffer.append(pixelArray)
-
-        # Increases frame number
-        self.frame_num = self.frame_num + 1
-
-        # Calculate period from determine_reference_period.py
-        logger.info("Attempting to determine new reference period.")
-        self.ref_frames, self.pog_settings = ref.establish(
-            self.ref_buffer, self.pog_settings
-        )
+        
+        # Start by calling through to determine_state() to establish a new reference sequence
+        # TODO: JT writes: CJN can you confirm whether we should be setting self.stop (which determine_state will do)
+        # when we are in "adapt" mode like this?
+        self.determine_state(pixelArray, modeString="adaptive optical gating")
 
         if self.ref_frames is not None:
-            # Automatically select a target frame and barrier
-            # This can be overriden by the user/controller later
-            self.pog_settings = pog.pick_target_and_barrier_frames(
-                self.ref_frames, self.pog_settings
-            )
-
-            # Determine barrier frames
-            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
-
-            # Save the period
-            ref.save_period(self.ref_frames, self.settings["period_dir"])
-            logger.success("Period determined.")
-
             self.state = "sync"
 
             self.frame_num = 0

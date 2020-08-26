@@ -438,8 +438,8 @@ def pick_target_and_barrier_frames(reference_frames, settings):
     # The greatest diff (most rapid change) tends to come soon after the region of minimum change. The greatest diff tends to be a sharp peak (whereas, almost by definition, the minimum change is broader) We use the greatest diff as our "universal"(ish) reference point, but default to a phase 1/3 of a period after it, so that we get a good clear run-up to it with well-defined phases in our history.
 
     # Use v-fitting to find a sub-frame estimate of the maximum
-    if max_pos_without_padding <= 0:
-        # It looks as if the best position is right at the start of the dataset. Presumably due to a slightly glitch it's possible that the true minimum lies just outside the dataset. However, in pathological datasets there could be no minimum in easy reach at all, so we've got to give up at some point. Therefore, if we hit this condition, we just decide the best offset is 0.0. In sensible cases, that will be very close to optimum. In messy cases, this entire function is going to do unpredictable things anyway, so who cares!
+    if (max_pos_without_padding <= 0) or (max_pos_without_padding == deltas_without_padding.size - 1):
+        # It looks as if the best position is right at the start or end of the dataset. Presumably due to a slightly glitch it's possible that the true minimum lies just outside the dataset. However, in pathological datasets there could be no minimum in easy reach at all, so we've got to give up at some point. Therefore, if we hit this condition, we just decide the best offset is 0.0. In sensible cases, that will be very close to optimum. In messy cases, this entire function is going to do unpredictable things anyway, so who cares!
         target_frame_without_padding = 0
     else:
         target_frame_without_padding = (
