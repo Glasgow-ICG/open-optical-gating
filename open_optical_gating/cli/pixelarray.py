@@ -18,10 +18,22 @@ from pybase64 import b64encode, b64decode
 class PixelArray(np.ndarray):
     # See explanations at https://numpy.org/doc/stable/user/basics.subclassing.html
     def __new__(cls, input_array, metadata=dict()):
-        # Input array is an already formed ndarray instance
+        # Input array is an already formed ndarray (or subclass) instance
         # We first cast to be our class type
         obj = np.asarray(input_array).view(cls)
-        obj.metadata = metadata
+        
+        # TODO: I would like to do the following test here:
+        #if (isinstance(input_array, PixelArray)):
+        # ... but we end up comparing <class 'open_optical_gating.cli.pixelarray.PixelArray'>
+        #     with <class 'pixelarray.PixelArray'>, which is not the same.
+        #     We need to work out how to deal with that issue, but for now I can hack it
+        #     by testing for the case where input_array is NOT of the exact type np.ndarray
+        if not type(input_array) == np.ndarray:
+            if len(metadata) != 0:
+                raise TypeError("Cannot provide out-of-line metadata when constructing from an existing PixelArray object (with its own metadata)")
+            obj.metadata = input_array.metadata.copy()
+        else:
+            obj.metadata = metadata.copy()
         return obj
 
     def __array_finalize__(self, obj):

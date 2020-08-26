@@ -56,10 +56,7 @@ def establish_indices(sequence, period_history, settings):
         pastFrames = sequence[:-1]
 
         # Calculate Diffs between this frame and previous frames in the sequence
-        # TODO we should be able to remove these np.array and dtypes
-        diffs = jps.sad_with_references(
-            np.array(frame, dtype=np.uint8), np.array(pastFrames, dtype=np.uint8)
-        )
+        diffs = jps.sad_with_references(frame, pastFrames)
 
         # Calculate Period based on these Diffs
         period = calculate_period_length(diffs)

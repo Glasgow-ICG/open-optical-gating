@@ -46,12 +46,8 @@ def update_drift(frame0, bestMatch0, settings):
 
     candidateShifts = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
 
-    # Build up a set of frames each representing a window into frame0 with slightly different drift offsets
-    frames = np.zeros(
-        [len(candidateShifts), bestMatch.shape[0], bestMatch.shape[1]],
-        dtype=frame0.dtype,
-    )
-    counter = 0
+    # Build up a list of frames, each representing a window into frame0 with slightly different drift offsets
+    frames = []
     for shft in candidateShifts:
         dxp = dx + shft[0]
         dyp = dy + shft[1]
@@ -63,8 +59,7 @@ def update_drift(frame0, bestMatch0, settings):
         rectF[2] -= dyp
         rectF[3] -= dyp
 
-        frames[counter, :, :] = frame0[rectF[0] : rectF[1], rectF[2] : rectF[3]]
-        counter = counter + 1
+        frames.append(frame0[rectF[0] : rectF[1], rectF[2] : rectF[3]])
 
     # Compare all these candidate shifted images against the matching reference frame, and find the best-matching shift
     sad = jps.sad_with_references(bestMatch, frames)
