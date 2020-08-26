@@ -122,7 +122,7 @@ class OpticalGater:
             and so must return before the next frame is produced.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
         logger.debug(
-            "Analysing frame.; Current time: {0}s", pixelArray.metadata["timestamp"],
+            "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
         )
 
         # For logging processing time
@@ -256,6 +256,9 @@ class OpticalGater:
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
+            this_predicted_trigger_time_s = self.frame_history[-1].metadata["timestamp"]
+                                            + time_to_wait_seconds
+            
             # Captures the image
             if time_to_wait_seconds > 0:
                 logger.info("Possible trigger after: {0}s", time_to_wait_seconds)
@@ -277,22 +280,14 @@ class OpticalGater:
                         time_to_wait_seconds,
                     )
                     # Trigger only
-                    self.trigger_fluorescence_image_capture(
-                        self.frame_history[-1].metadata["timestamp"]
-                        + time_to_wait_seconds
-                    )
+                    self.trigger_fluorescence_image_capture(this_predicted_trigger_time_s)
 
                     # Store trigger time and update trigger number (for adaptive algorithm)
-                    self.sent_trigger_times.append(
-                        self.frame_history[-1].metadata["timestamp"]
-                        + time_to_wait_seconds
-                    )
+                    self.sent_trigger_times.append(this_predicted_trigger_time_s)
                     self.trigger_num += 1
 
             # for prediction plotting
-            self.predicted_trigger_time_s[-1] = (
-                self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
-            )
+            self.predicted_trigger_time_s[-1] = this_predicted_trigger_time_s
 
     def reset_state(self):
         """ Code to run when in "reset" state

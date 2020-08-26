@@ -508,7 +508,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             settings                dict    Parameters controlling the sync algorithms
         Returns:
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
-                                             Note that this returned  may be modified from its input value (see code below).
+                                             Note that this return value may be modified from its input value (see code below).
             sendIt                  int     Nonzero indicates that a trigger for the fluorescence camera should be scheduled now,
                                              for a time timeToWaitInSeconds into the future.
             settings                dict    Updated settings dictionary

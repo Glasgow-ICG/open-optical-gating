@@ -75,4 +75,4 @@ def get_metadata_from_list(pixelArrayList, metadataKey):
             [[i.metadata[m] for i in pixelArrayList] for m in metadataKey]
         ).T
     else:
-        return None
+        raise TypeError('Parameter metadataKey must be of type "str" or "list" (but is type "{0}")'.format(type(metadataKey)))
