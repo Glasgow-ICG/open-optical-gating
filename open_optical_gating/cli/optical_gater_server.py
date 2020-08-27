@@ -21,7 +21,7 @@ import open_optical_gating.cli.parameters as parameters
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
-# logger.add("oog_{time}.log", level="DEBUG")
+logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
 # TODO create a time-stamped copy of the settings file after this
@@ -55,14 +55,13 @@ class OpticalGater:
         self.settings = settings
         # NOTE: there is also self.pog_settings, be careful of this
 
-        self.userInteractionPermitted = True
-
         if ref_frames is not None:
             logger.success("Using existing reference frames...")
         self.ref_frames = ref_frames
         self.ref_frame_period = ref_frame_period
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
+        self.automatic_target_frame = True
 
     def initialise_internal_parameters(self):
         """Defines all internal parameters not already initialised"""
@@ -84,13 +83,17 @@ class OpticalGater:
 
         # Start by acquiring a sequence of reference frames, unless we have been provided with them
         if self.ref_frames is None:
-            logger.info("No reference frames found, switching to 'get period' mode.")
+            logger.info(
+                "No reference frames found, resetting before switching to determine period mode."
+            )
             self.state = "reset"
             self.pog_settings = parameters.initialise(
                 framerate=self.settings["brightfield_framerate"]
             )
         else:
-            logger.info("Using existing reference frames with integer period.")
+            logger.info(
+                "Using existing reference frames with integer period, setting to prospective optical gating mode."
+            )
             self.state = "sync"
             if self.ref_frame_period is None:
                 # Deduce an integer reference period from the reference frames we were provided with.
@@ -149,6 +152,10 @@ class OpticalGater:
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num will be reset
+            logger.info(
+                "At least {0} triggers have been sent; resetting before switching to adaptive mode.",
+                self.settings["update_after_n_triggers"],
+            )
             self.state = "reset"
 
         prediction = None
@@ -332,9 +339,13 @@ class OpticalGater:
         ):
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
+            logger.info(
+                "Switching to adaptive mode.", self.settings["update_after_n_triggers"]
+            )
             self.trigger_num = 0
             self.state = "adapt"
         else:
+            logger.info("Switching to determine period mode.")
             self.state = "determine"
 
     def determine_state(self, pixelArray, modeString="determine period"):
@@ -378,15 +389,22 @@ class OpticalGater:
             ref.save_period(self.ref_frames, self.settings["period_dir"])
             logger.success("Period determined.")
 
-            # Note, passing the new period to the adaptive system is left to the user/app
-            if self.userInteractionPermitted:
-                self.stop = True
-            else:
+            if self.automatic_target_frame:
+                logger.info(
+                    "Period determined and target frame automatically selected; switching to prospective optical gating mode."
+                )
                 # Switch to the sync state
                 self.state = "sync"
                 self.frame_num = (
                     0  # reset the frame iterator so a new frame buffer can be used
                 )
+            else:
+                # If we aren't using the automatically determined period
+                # We raise the stop flag, which returns the current state to the user/app
+                # The user/app can then select a target frame
+                # The user/app will also need to call the adaptive system
+                # see user_select_period()
+                self.stop = True
 
         # iterate the frame counter
         self.frame_num += 1
@@ -439,6 +457,9 @@ class OpticalGater:
             )
 
             # Switch back to the sync state
+            logger.info(
+                "Period updated and adaptive phase-lock successful; switching back to prospective optical gating mode."
+            )
             self.state = "sync"
             self.frame_num = (
                 0  # reset the frame iterator so a new frame buffer can be used
@@ -469,7 +490,9 @@ class OpticalGater:
 
         # Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
         if frame < 0:
-            logger.success("User has asked for a new period to be determined.")
+            logger.success(
+                "User has asked for a new period to be determined, resetting before switching to period determination mode."
+            )
             self.state = "reset"
 
         # Otherwise, if user is happy with period
@@ -495,7 +518,13 @@ class OpticalGater:
         # turn recording back on for rest of run
         self.stop = False
 
+        # turn automatic target frames on for future adaptive updates
+        self.automatic_target_frame = True
+
         # Switch to the sync state
+        logger.info(
+            "Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
+        )
         self.state = "sync"
         self.frame_num = 0  # reset the frame iterator so a new frame buffer can be used
 

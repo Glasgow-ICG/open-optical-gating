@@ -42,6 +42,9 @@ class PiOpticalGater(server.OpticalGater):
         )
         self.setup_camera(camera)
         self.init_hardware()
+        self.automatic_target_frame = (
+            False  # ask user for their preferred initial target frame
+        )
 
     def setup_camera(self, camera):
         """Initialise and apply camera-related settings."""

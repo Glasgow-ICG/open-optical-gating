@@ -16,23 +16,18 @@ from pixelarray import PixelArray
 import sockets_comms as comms
 
 
-
 class WebSocketOpticalGater(server.OpticalGater):
     """Extends the optical gater server for a remote client connecting over WebSockets
     """
 
-    def __init__(
-        self, settings=None, ref_frames=None, ref_frame_period=None
-    ):
+    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
             settings      dict  Parameters affecting operation (see default_settings.json)
         """
-        
+
         # Initialise parent
         super(WebSocketOpticalGater, self).__init__(
-            settings=settings,
-            ref_frames=ref_frames,
-            ref_frame_period=ref_frame_period,
+            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
         )
 
         # JT TODO: this is very temporary - for now the superclass requires this to be defined.
@@ -42,34 +37,43 @@ class WebSocketOpticalGater(server.OpticalGater):
         # We need to make sure they are, though, or our predictions will be off anyway!
         self.framerate = 80
 
-        self.userInteractionPermitted = False
-    
-    
     async def message_handler(self, websocket):
         # Wait for messages from the remote client
         async for rawMessage in websocket:
             message = comms.DecodeMessage(rawMessage)
 
             if not "type" in message:
-                logger.critical("Ignoring unknown message with no 'type' specifier. Message was {0}".format(message))
+                logger.critical(
+                    "Ignoring unknown message with no 'type' specifier. Message was {0}".format(
+                        message
+                    )
+                )
             elif message["type"] == "frame":
                 # Do the synchronization analysis on the frame in this message
                 pixelArrayObject = comms.ParseFrameMessage(message)
                 if not "timestamp" in pixelArrayObject.metadata:
-                    logger.critical("Received a frame that does not have compulsory metadata. We will ignore this frame.")
+                    logger.critical(
+                        "Received a frame that does not have compulsory metadata. We will ignore this frame."
+                    )
                     continue
-                logger.debug("Received frame with timestamp {0:.3f}".format(pixelArrayObject.metadata["timestamp"]))
+                logger.debug(
+                    "Received frame with timestamp {0:.3f}".format(
+                        pixelArrayObject.metadata["timestamp"]
+                    )
+                )
                 if "sync" in pixelArrayObject.metadata:
-                    logger.critical("Received a frame that already has 'sync' metadata. We will overwrite this!")
+                    logger.critical(
+                        "Received a frame that already has 'sync' metadata. We will overwrite this!"
+                    )
                 pixelArrayObject.metadata["sync"] = dict()
-                
+
                 # JT TODO: for now I just hack self.width and self.height, but this should get fixed as part of the PixelArray refactor
                 self.height, self.width = pixelArrayObject.shape
                 prediction = self.analyze_pixelarray(pixelArrayObject)
-                
+
                 # JT TODO: this should be done in the base class, as part of the PixelArray refactor
                 if True:
-                    if (prediction is not None):
+                    if prediction is not None:
                         pixelArrayObject.metadata["sync"]["send_trigger"] = 1
                         pixelArrayObject.metadata["sync"]["trigger_time"] = prediction
                     else:
@@ -82,10 +86,14 @@ class WebSocketOpticalGater(server.OpticalGater):
                     pixelArrayObject.metadata["sync"]["state"] = self.state
                 # Send back to the client whatever metadata we have added to the frame as part of the sync analysis.
                 # This will include whether or not a trigger is predicted, and when.
-                returnMessage = comms.EncodeFrameResponseMessage(pixelArrayObject.metadata["sync"])
+                returnMessage = comms.EncodeFrameResponseMessage(
+                    pixelArrayObject.metadata["sync"]
+                )
                 await websocket.send(returnMessage)
             else:
-                logger.critical("Ignoring unknown message of type {0}".format(message["type"]))
+                logger.critical(
+                    "Ignoring unknown message of type {0}".format(message["type"])
+                )
 
     def run_server(self, host="localhost", port=8765):
         """ Blocking call that runs the WebSockets server, acting on client messages (mostly frames, probably)
@@ -93,9 +101,12 @@ class WebSocketOpticalGater(server.OpticalGater):
               host          str   Host address to use for socket server
               port          int   Port to use for socket server
             """
-        start_server = websockets.serve(lambda ws, p: self.message_handler(ws), "localhost", 8765)
+        start_server = websockets.serve(
+            lambda ws, p: self.message_handler(ws), "localhost", 8765
+        )
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
+
 
 def run(settings):
     logger.success("Initialising gater...")

@@ -36,6 +36,9 @@ class FileOpticalGater(server.OpticalGater):
         )
         self.load_data(file_source_path)
         self.next_frame_index = 0
+        self.automatic_target_frame = (
+            False  # ask user for their preferred initial target frame
+        )
 
     def load_data(self, filename):
         """Apply data source-related settings."""
