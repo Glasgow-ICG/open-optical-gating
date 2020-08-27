@@ -46,7 +46,6 @@ class PiOpticalGater(server.OpticalGater):
     def setup_camera(self, camera):
         """Initialise and apply camera-related settings."""
         logger.success("Configuring RPi camera...")
-        self.frame_num = self.settings["frame_num"]
         self.height, self.width = camera.resolution
         self.framerate = camera.framerate
         self.camera = camera
