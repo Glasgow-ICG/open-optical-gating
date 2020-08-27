@@ -153,11 +153,11 @@ class OpticalGater:
 
         prediction = None
         if self.state == "sync":
-            # Using previously-determined reference peiod, analyse brightfield frames
+            # Using previously-determined reference period, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
-            self.predicted_trigger_time_s.append(
-                None
-            )  # placeholder - updated inside sync_state
+            # self.predicted_trigger_time_s.append(
+            #     None
+            # )  # placeholder - updated inside sync_state
 
             self.sync_state(pixelArray)
             prediction = self.predicted_trigger_time_s[-1]
@@ -181,6 +181,7 @@ class OpticalGater:
         # take a note of our processing rate (useful for decided what framerate to set)
         time_fin = time.time()
         self.processing_rate_fps.append(1 / (time_fin - time_init))
+
         return prediction
 
     def sync_state(self, pixelArray):
@@ -238,6 +239,7 @@ class OpticalGater:
 
         # If at least one period has passed, have a go at predicting a future trigger time
         time_to_wait_seconds = None
+        this_predicted_trigger_time_s = None
         if self.frame_num - 1 > self.pog_settings["reference_period"]:
             logger.debug("Predicting trigger...")
 
@@ -261,9 +263,10 @@ class OpticalGater:
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
-            this_predicted_trigger_time_s = self.frame_history[-1].metadata["timestamp"] \
-                                            + time_to_wait_seconds
-            
+            this_predicted_trigger_time_s = (
+                self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
+            )
+
             # Captures the image
             if time_to_wait_seconds > 0:
                 logger.info("Possible trigger after: {0}s", time_to_wait_seconds)
@@ -285,14 +288,16 @@ class OpticalGater:
                         time_to_wait_seconds,
                     )
                     # Trigger only
-                    self.trigger_fluorescence_image_capture(this_predicted_trigger_time_s)
+                    self.trigger_fluorescence_image_capture(
+                        this_predicted_trigger_time_s
+                    )
 
                     # Store trigger time and update trigger number (for adaptive algorithm)
                     self.sent_trigger_times.append(this_predicted_trigger_time_s)
                     self.trigger_num += 1
 
-            # for prediction plotting
-            self.predicted_trigger_time_s[-1] = this_predicted_trigger_time_s
+        # for prediction plotting
+        self.predicted_trigger_time_s.append(this_predicted_trigger_time_s)
 
     def reset_state(self):
         """ Code to run when in "reset" state
@@ -357,7 +362,7 @@ class OpticalGater:
             # However, long-term we want to store a 3D array because that is what oga expects to work with.
             # We therefore make that conversion here
             self.ref_frames = np.array(self.ref_frames)
-            
+
             # Automatically select a target frame and barrier
             # This can be overriden by the user/controller later
             self.pog_settings = pog.pick_target_and_barrier_frames(
@@ -387,7 +392,7 @@ class OpticalGater:
             In this mode we determine a new period and then align with
             previous periods using an adaptive algorithm.
         """
-        
+
         # Start by calling through to determine_state() to establish a new reference sequence
         # TODO: JT writes: CJN can you confirm whether we should be setting self.stop (which determine_state will do)
         # when we are in "adapt" mode like this?
