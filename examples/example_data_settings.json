@@ -12,7 +12,6 @@
     "fluorescence_trigger_mode": "edge",
     "fluorescence_exposure_us": 1000.0,
     "frame_buffer_length": 1000,
-    "frame_num": 0,
     "image_denoise": 0,
     "laser_trigger_pin": 22,
     "live": 0,

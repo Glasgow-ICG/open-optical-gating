@@ -111,11 +111,6 @@ class OpticalGater:
         # Start experiment timer
         self.initial_process_time_s = time.time()
 
-        # Defines variables and objects used for plotting
-        self.processing_rate_fps = []  # TODO move into pixelarray object?
-        self.sent_trigger_times = []
-        self.predicted_trigger_time_s = []  # TODO move into pixelarray object?
-
         # Flag for interrupting the program at key points
         # E.g. when user-input is needed
         # It is assumed that the user/app controls what this interaction is
@@ -158,7 +153,6 @@ class OpticalGater:
             )
             self.state = "reset"
 
-        prediction = None
         if self.state == "sync":
             # Using previously-determined reference period, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
@@ -167,7 +161,6 @@ class OpticalGater:
             # )  # placeholder - updated inside sync_state
 
             self.sync_state(pixelArray)
-            prediction = self.predicted_trigger_time_s[-1]
 
         elif self.state == "reset":
             # Clears reference period and resets frame number
@@ -185,11 +178,14 @@ class OpticalGater:
         else:
             logger.critical("Unknown state {0}.", self.state)
 
-        # take a note of our processing rate (useful for decided what framerate to set)
+        # take a note of our processing rate (useful for deciding what framerate to set)
+        # note only works for sync state (not period determination or adaptive update)
+        # TODO: it would be nice to do this for all states
         time_fin = time.time()
-        self.processing_rate_fps.append(1 / (time_fin - time_init))
-
-        return prediction
+        if len(self.frame_history) > 0:
+            self.frame_history[-1].metadata["processing_rate_fps"] = 1 / (
+                time_fin - time_init
+            )
 
     def sync_state(self, pixelArray):
         """ Code to run when in "sync" state
@@ -234,7 +230,7 @@ class OpticalGater:
         self.frame_history.append(pixelArray)
 
         logger.debug(
-            "Current time: {0}s; cumulative phase: {1} ({2:+f}); sad: {3}",
+            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad: {3}",
             self.frame_history[-1].metadata["timestamp"],
             self.frame_history[-1].metadata["unwrapped_phase"],
             delta_phase,
@@ -242,8 +238,8 @@ class OpticalGater:
         )
 
         # If at least one period has passed, have a go at predicting a future trigger time
-        time_to_wait_seconds = None
         this_predicted_trigger_time_s = None
+        sendTriggerNow = 0
         if (
             self.frame_num > self.pog_settings["reference_period"]
         ):  # i.e. at least one period
@@ -298,12 +294,20 @@ class OpticalGater:
                         this_predicted_trigger_time_s
                     )
 
-                    # Store trigger time and update trigger number (for adaptive algorithm)
-                    self.sent_trigger_times.append(this_predicted_trigger_time_s)
+                    # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
 
-        # for prediction plotting
-        self.predicted_trigger_time_s.append(this_predicted_trigger_time_s)
+        # Update PixelArray with predicted trigger time and trigger type
+        self.frame_history[-1].metadata[
+            "predicted_trigger_time_s"
+        ] = this_predicted_trigger_time_s
+        self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
+        logger.debug(
+            "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}",
+            self.frame_history[-1].metadata["timestamp"],
+            self.frame_history[-1].metadata["predicted_trigger_time_s"],
+            self.frame_history[-1].metadata["trigger_type_sent"],
+        )
 
         # store this phase now to calculate the delta phase for the next frame
         self.last_phase = float(current_phase)
@@ -534,6 +538,12 @@ class OpticalGater:
 
     def plot_triggers(self, outfile="triggers.png"):
         """Plot the phase vs. time sawtooth line with trigger events."""
+
+        # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history, "predicted_trigger_time_s"
+        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
+
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
         plt.plot(
@@ -543,10 +553,9 @@ class OpticalGater:
             label="Heart phase",
         )
         plt.scatter(
-            np.array(self.sent_trigger_times),
+            np.array(sent_trigger_times),
             np.full(
-                max(len(self.sent_trigger_times), 0),
-                self.pog_settings["targetSyncPhase"],
+                max(len(sent_trigger_times), 0), self.pog_settings["targetSyncPhase"],
             ),
             color="r",
             label="Trigger fire",
@@ -567,17 +576,21 @@ class OpticalGater:
         wrapped_phase = pa.get_metadata_from_list(
             self.frame_history, "unwrapped_phase"
         ) % (2 * np.pi)
-        self.sent_trigger_times = np.array(self.sent_trigger_times)
+
+        # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history, "predicted_trigger_time_s"
+        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
 
         triggeredPhase = []
-        for i in range(len(self.sent_trigger_times)):
+        for i in range(len(sent_trigger_times)):
 
             triggeredPhase.append(
                 wrapped_phase[
                     (
                         np.abs(
                             pa.get_metadata_from_list(self.frame_history, "timestamp")
-                            - self.sent_trigger_times[i]
+                            - sent_trigger_times[i]
                         )
                     ).argmin()
                 ]
@@ -604,13 +617,11 @@ class OpticalGater:
         plt.show()
 
     def plot_prediction(self, outfile="prediction.png"):
-        self.predicted_trigger_time_s = np.array(self.predicted_trigger_time_s)
-
         plt.figure()
         plt.title("Predicted Trigger Times")
         plt.plot(
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
-            np.array(self.predicted_trigger_time_s),
+            pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s"),
         )
         # Add labels etc
         plt.xlabel("Time (s)")
@@ -624,8 +635,8 @@ class OpticalGater:
         plt.figure()
         plt.title("Frame processing rate")
         plt.plot(
-            np.arange(len(self.processing_rate_fps)),
-            np.array(self.processing_rate_fps),
+            pa.get_metadata_from_list(self.frame_history, "timestamp"),
+            pa.get_metadata_from_list(self.frame_history, "processing_rate_fps"),
         )
         # Add labels etc
         plt.xlabel("Frame")
