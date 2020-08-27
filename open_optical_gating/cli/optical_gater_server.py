@@ -20,6 +20,7 @@ import open_optical_gating.cli.parameters as parameters
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
+# logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
 # TODO create a time-stamped copy of the settings file after this
