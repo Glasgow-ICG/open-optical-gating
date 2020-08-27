@@ -45,7 +45,7 @@ class FileOpticalGater(server.OpticalGater):
         self.data = io.imread(filename)
         self.height, self.width = self.data[0].shape
         self.framerate = self.settings["brightfield_framerate"]
-        self.start_time = time.time()
+        self.start_time = time.time()  # we use this to sanitise our timestamps
 
     def next_frame(self, force_framerate=False):
         """This function gets the next frame from the data source, which can be passed to analyze()"""
@@ -55,9 +55,9 @@ class FileOpticalGater(server.OpticalGater):
             len(self.frame_history) > 0
         ):  # only do once we have frames
             while (
-                time.time()
-                - self.start_time
-                - self.frame_history[-1].metadata["timestamp"]
+                time.time()  # now in seconds
+                - self.start_time  # when we started in seconds; used to sanitise
+                - self.frame_history[-1].metadata["timestamp"]  # last timestamp
             ) < (1 / self.settings["brightfield_framerate"]):
                 time.sleep(1e-5)
                 continue
@@ -66,7 +66,9 @@ class FileOpticalGater(server.OpticalGater):
             self.stop = True
         next = pa.PixelArray(
             self.data[self.next_frame_index, :, :],
-            metadata={"timestamp": time.time() - self.start_time},
+            metadata={
+                "timestamp": time.time() - self.start_time
+            },  # relative to start_time to sanitise
         )
         self.next_frame_index += 1
         return next
