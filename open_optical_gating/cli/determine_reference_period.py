@@ -47,6 +47,7 @@ def establish_indices(sequence, settings):
 
     periods = []
     for i in range(1, len(sequence)):
+        logger.debug("Attempting to establish reference period.")
         frame = sequence[i, :, :]
         pastFrames = sequence[: (i - 1), :, :]
         logger.trace("Running for frame {0}", i)
@@ -85,6 +86,7 @@ def establish_indices(sequence, settings):
             )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
+            logger.debug(np.arange(len(pastFrames) - numRefs, len(pastFrames)))
             return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
 
     logger.critical("I didn't find a period I'm happy with!")
