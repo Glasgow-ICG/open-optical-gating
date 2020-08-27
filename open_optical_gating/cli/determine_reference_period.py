@@ -32,9 +32,9 @@ def establish(sequence, period_history, settings):
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
     """
-    referenceFrameIdx, settings = establish_indices(sequence, period_history, settings)
-    if referenceFrameIdx is not None:
-        referenceFrames = sequence[referenceFrameIdx[0] : referenceFrameIdx[-1]]
+    start, stop, settings = establish_indices(sequence, period_history, settings)
+    if start is not None and stop is not None:
+        referenceFrames = sequence[start:stop]
     else:
         referenceFrames = None
 
@@ -89,13 +89,12 @@ def establish_indices(sequence, period_history, settings):
             )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
-            return (
-                np.arange(len(pastFrames) - numRefs, len(pastFrames), dtype=int),
-                settings,
-            )
+
+            # return start, stop, settings
+            return len(pastFrames) - numRefs, len(pastFrames), settings
 
     logger.info("I didn't find a period I'm happy with!")
-    return None, settings
+    return None, None, settings
 
 
 def calculate_period_length(diffs):
