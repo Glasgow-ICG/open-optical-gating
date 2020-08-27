@@ -315,7 +315,7 @@ class OpticalGater:
         self.frame_num = 0  # reset the frame iterator
         self.ref_frames = None
         self.ref_buffer = []
-        self.period_history = []
+        self.period_guesses = []
 
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,
@@ -354,7 +354,7 @@ class OpticalGater:
         # Calculate period from determine_reference_period.py
         logger.info("Attempting to determine new reference period.")
         self.ref_frames, self.pog_settings = ref.establish(
-            self.ref_buffer, self.period_history, self.pog_settings
+            self.ref_buffer, self.period_guesses, self.pog_settings
         )
 
         if self.ref_frames is not None:
