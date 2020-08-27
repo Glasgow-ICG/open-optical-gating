@@ -400,7 +400,6 @@ class OpticalGater:
         """
 
         # Start by calling through to determine_state() to establish a new reference sequence
-        # TODO: JT writes: CJN can you confirm whether we should be setting self.stop (which determine_state will do)
         # when we are in "adapt" mode like this?
         self.determine_state(pixelArray, modeString="adaptive optical gating")
 
