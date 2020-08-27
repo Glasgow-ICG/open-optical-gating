@@ -50,7 +50,7 @@ def establish_indices(sequence, period_history, settings):
         Returns:
             List of indices that form the reference sequence (or None).
     """
-
+    logger.debug("Attempting to determine reference period.")
     if len(sequence) > 1:
         frame = sequence[-1]
         pastFrames = sequence[:-1]
@@ -91,6 +91,11 @@ def establish_indices(sequence, period_history, settings):
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
 
             # return start, stop, settings
+            logger.debug(
+                "Start index: {0}; Stop index: {1};",
+                len(pastFrames) - numRefs,
+                len(pastFrames),
+            )
             return len(pastFrames) - numRefs, len(pastFrames), settings
 
     logger.info("I didn't find a period I'm happy with!")
