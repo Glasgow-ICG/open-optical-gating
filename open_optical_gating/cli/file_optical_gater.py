@@ -53,13 +53,21 @@ class FileOpticalGater(server.OpticalGater):
         if force_framerate and (
             len(self.frame_history) > 0
         ):  # only do once we have frames
-            while (
-                time.time()  # now in seconds
-                - self.start_time  # when we started in seconds; used to sanitise
-                - self.frame_history[-1].metadata["timestamp"]  # last timestamp
-            ) < (1 / self.settings["brightfield_framerate"]):
-                time.sleep(1e-5)
-                continue
+            # how long to wait
+            # i.e. expected time per frame (1/framerate)
+            # minus how long we've spent doing stuff
+            # i.e. current time - start time - frame timestamp
+            # (which is some (some time in the past - start time))
+            # the use of start time just keeps are time stamps small
+            wait_s = (1 / self.settings["brightfield_framerate"]) - (
+                time.time()
+                - self.start_time
+                - self.frame_history[-1].metadata["timestamp"]
+            )
+            if wait_s > 1e-5:
+                time.sleep(
+                    wait_s - 1e-5
+                )  # the 1e-5 is a very small time to allow for the calculation
         if self.next_frame_index == self.data.shape[0] - 1:
             ## if this is our last frame we set the stop flag for the user/app to know
             self.stop = True
