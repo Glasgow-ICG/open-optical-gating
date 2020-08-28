@@ -69,26 +69,17 @@ class WebSocketOpticalGater(server.OpticalGater):
 
                 # JT TODO: for now I just hack self.width and self.height, but this should get fixed as part of the PixelArray refactor
                 self.height, self.width = pixelArrayObject.shape
-                prediction = self.analyze_pixelarray(pixelArrayObject)
+                self.analyze_pixelarray(pixelArrayObject)
 
-                # JT TODO: this should be done in the base class, as part of the PixelArray refactor
-                if True:
-                    if prediction is not None:
-                        pixelArrayObject.metadata["sync"]["send_trigger"] = 1
-                        pixelArrayObject.metadata["sync"]["trigger_time"] = prediction
-                    else:
-                        pixelArrayObject.metadata["sync"]["send_trigger"] = 0
-                        pixelArrayObject.metadata["sync"]["trigger_time"] = 0
-                    try:
-                        pixelArrayObject.metadata["sync"]["phase"] = self.last_phase
-                    except:
-                        pass
-                    pixelArrayObject.metadata["sync"]["state"] = self.state
-                # Send back to the client whatever metadata we have added to the frame as part of the sync analysis.
+                # Send back to the client the metadata we have added to the frame as part of the sync analysis.
                 # This will include whether or not a trigger is predicted, and when.
-                returnMessage = comms.EncodeFrameResponseMessage(
-                    pixelArrayObject.metadata["sync"]
-                )
+                keys = ["optical_gating_state", "unwrapped_phase", "predicted_trigger_time_s", "trigger_type_sent"]
+                response_dict = dict()
+                for k in keys:
+                    if k in pixelArrayObject.metadata:
+                        response_dict[k] = pixelArrayObject.metadata[k]
+
+                returnMessage = comms.EncodeFrameResponseMessage(response_dict)
                 await websocket.send(returnMessage)
             else:
                 logger.critical(

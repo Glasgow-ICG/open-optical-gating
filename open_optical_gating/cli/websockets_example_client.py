@@ -47,7 +47,7 @@ async def send_frame(websocket, frame=None):
     else:
         # A test implementation that expects to be talking to a real sync server like websocket_optical_gater.py
         response = comms.DecodeMessage(responseRaw)
-        return response
+        return response, frame.metadata["timestamp"]
 
 async def send_test_frame(uri):
     async with websockets.connect(uri) as websocket:
@@ -62,12 +62,14 @@ async def send_from_file(uri, settings):
         # We don't then ask it to analyze those frames, we just send them on to the server.
         file_source = FileOpticalGater(file_source_path=settings["path"], settings=settings)
         phases = []
+        times = []
         while not file_source.stop:
-            response = await send_frame(websocket, file_source.next_frame())
+            response, timestamp = await send_frame(websocket, file_source.next_frame(force_framerate=True))
             print("Got sync response: ", response)
-            if "phase" in response["sync"]:
-                phases.append(response["sync"]["phase"])
-        plt.plot(phases)
+            if "unwrapped_phase" in response["sync"]:
+                phases.append(response["sync"]["unwrapped_phase"] % (2*np.pi))
+                times.append(timestamp)
+        plt.plot(times, phases)
         plt.show()
 
 if __name__ == "__main__":
