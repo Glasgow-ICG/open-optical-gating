@@ -42,11 +42,13 @@ class PiOpticalGater(server.OpticalGater):
         )
         self.setup_camera(camera)
         self.init_hardware()
+        self.automatic_target_frame = (
+            False  # ask user for their preferred initial target frame
+        )
 
     def setup_camera(self, camera):
         """Initialise and apply camera-related settings."""
         logger.success("Configuring RPi camera...")
-        self.frame_num = self.settings["frame_num"]
         self.height, self.width = camera.resolution
         self.framerate = camera.framerate
         self.camera = camera
@@ -157,7 +159,7 @@ def run(settings):
             camera.wait_recording(0.001)  # s
         camera.stop_recording()
         # logger.info("Requesting user input...")
-        # analyser.user_select_period(10)
+        # analyser.user_select_ref_frame(10)
     logger.success(
         "Period determined ({0} frames long) and user has selected frame {1} as target.",
         analyser.pog_settings["reference_period"],

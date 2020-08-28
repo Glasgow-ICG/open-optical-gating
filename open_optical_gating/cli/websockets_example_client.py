@@ -2,6 +2,7 @@ import websockets, asyncio
 import sys, time
 import numpy as np
 import json
+import matplotlib.pyplot as plt
 
 from pixelarray import PixelArray
 from file_optical_gater import FileOpticalGater
@@ -34,7 +35,7 @@ async def send_frame(websocket, frame=None):
 
         print("Array creation {0:.3f}ms, json.dumps {1:.3f}ms, websocket.send {2:.3f}ms".format((t1-t0)*1e3, (t2-t1)*1e3, (t3-t2)*1e3))
         try:
-            decT = arrBack.metadata['decodeTimes']
+            decT = arrBack.metadata["decodeTimes"]
         except:
             decT = [0, 0]
         print("Received at server {0:.3f}ms after send started, decode {1:.3f}ms and server ready to use object".format((decT[0]-t2)*1e3,
@@ -46,7 +47,7 @@ async def send_frame(websocket, frame=None):
     else:
         # A test implementation that expects to be talking to a real sync server like websocket_optical_gater.py
         response = comms.DecodeMessage(responseRaw)
-        return response
+        return response, frame.metadata["timestamp"]
 
 async def send_test_frame(uri):
     async with websockets.connect(uri) as websocket:
@@ -60,9 +61,16 @@ async def send_from_file(uri, settings):
         # We do instantiate a FileOpticalGater object, but actually all we use it for is to get frames from the file.
         # We don't then ask it to analyze those frames, we just send them on to the server.
         file_source = FileOpticalGater(file_source_path=settings["path"], settings=settings)
+        phases = []
+        times = []
         while not file_source.stop:
-            response = await send_frame(websocket, file_source.next_frame())
+            response, timestamp = await send_frame(websocket, file_source.next_frame(force_framerate=True))
             print("Got sync response: ", response)
+            if "unwrapped_phase" in response["sync"]:
+                phases.append(response["sync"]["unwrapped_phase"] % (2*np.pi))
+                times.append(timestamp)
+        plt.plot(times, phases)
+        plt.show()
 
 if __name__ == "__main__":
     uri = "ws://localhost:8765"

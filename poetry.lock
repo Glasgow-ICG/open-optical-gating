@@ -141,6 +141,7 @@ version = "1.0"
 reference = "3426263cb95b8ddb919d26bc52cd210688b1b6c8"
 type = "git"
 url = "https://github.com/abdrysdale/fastpins"
+
 [[package]]
 category = "main"
 description = "A simple framework for building complex web applications."
@@ -392,6 +393,7 @@ numba = ["numba (^0.50.1)"]
 reference = "86bcb8cc71c8db024cef910a0e1a7a94a12bfc8a"
 type = "git"
 url = "https://github.com/Glasgow-ICG/optical-gating-alignment"
+
 [[package]]
 category = "main"
 description = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
@@ -480,6 +482,17 @@ name = "py"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.9.0"
+
+[[package]]
+category = "main"
+description = "Fast Base64 encoding/decoding"
+name = "pybase64"
+optional = false
+python-versions = ">=3.5"
+version = "1.0.1"
+
+[package.extras]
+test = ["pytest (>=5.0.0)"]
 
 [[package]]
 category = "dev"
@@ -681,6 +694,14 @@ version = "0.2.5"
 
 [[package]]
 category = "main"
+description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
+name = "websockets"
+optional = false
+python-versions = ">=3.6.1"
+version = "8.1"
+
+[[package]]
+category = "main"
 description = "The comprehensive WSGI web application library."
 name = "werkzeug"
 optional = false
@@ -730,7 +751,7 @@ rpi = ["picamera", "fastpins"]
 socket = ["orjson", "cbor"]
 
 [metadata]
-content-hash = "65d15542756d4b57806d07ee325b729340eb00f1d1cabcb2ce9c39cbaaff3547"
+content-hash = "4ab5a64608c98d6e26ad823827260cf8002c09d32fa9596e3576167d5718a255"
 lock-version = "1.0"
 python-versions = "^3.7"
 
@@ -1112,6 +1133,37 @@ py = [
     {file = "py-1.9.0-py2.py3-none-any.whl", hash = "sha256:366389d1db726cd2fcfc79732e75410e5fe4d31db13692115529d34069a043c2"},
     {file = "py-1.9.0.tar.gz", hash = "sha256:9ca6883ce56b4e8da7e79ac18787889fa5206c79dcc67fb065376cd2fe03f342"},
 ]
+pybase64 = [
+    {file = "pybase64-1.0.1-cp35-cp35m-macosx_10_6_intel.whl", hash = "sha256:f5dffffef4190ae3b2a659051a364bce6339d23c63b26b97507725c8f58a9947"},
+    {file = "pybase64-1.0.1-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:479cc0adee267beba63e54e3ba19ac2c5f3a8f32e2184f1e0d7bb1ecf9df103b"},
+    {file = "pybase64-1.0.1-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:a493d50ae696cfcbff659cc2935c449396360df900f77745b0ceec1d3e14e6bc"},
+    {file = "pybase64-1.0.1-cp35-cp35m-manylinux2010_i686.whl", hash = "sha256:62d1854c76b84b8bd98d38fc64c6bd49a976b6a440ebb06f16e0d9fe272a5417"},
+    {file = "pybase64-1.0.1-cp35-cp35m-manylinux2010_x86_64.whl", hash = "sha256:9313cf13a8c92b8831cc0a02fd176f9467d6144adb3f40bd4dec5b65d1dc2d9c"},
+    {file = "pybase64-1.0.1-cp35-cp35m-win32.whl", hash = "sha256:fb2ecba45831da747a8f5d7dd364c87ebfd709e89f2eac44be07b1319f75715b"},
+    {file = "pybase64-1.0.1-cp35-cp35m-win_amd64.whl", hash = "sha256:091154da3232cf46880a0b459955a0a240d2d6e5a090242f164da6a47c6fc4cb"},
+    {file = "pybase64-1.0.1-cp36-cp36m-macosx_10_6_intel.whl", hash = "sha256:b941ab9bc32ce0ff17d711921af7f5537f6d4d6c382340cc38bd36793ea08ea5"},
+    {file = "pybase64-1.0.1-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:9a807f9b80979628b56302d96280f6a7529e911a72fcf3bc7483e8b12585a92b"},
+    {file = "pybase64-1.0.1-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:177dba666ef67604ad4a5440995abd5f8eccbe6266a2ab23bef311ea7c767d6f"},
+    {file = "pybase64-1.0.1-cp36-cp36m-manylinux2010_i686.whl", hash = "sha256:f03a4562fd90a39419243c82a9165fc2014033e4c1aaa3c959983bbf32566144"},
+    {file = "pybase64-1.0.1-cp36-cp36m-manylinux2010_x86_64.whl", hash = "sha256:16e8dbd75eb6fe59f40147873b99c599ced8ad3aff494f645a3ab59d64114d24"},
+    {file = "pybase64-1.0.1-cp36-cp36m-win32.whl", hash = "sha256:8e1e5b06a9dba854f4e04520514c4b13936e499c3c5b7229336d4ae3fae75786"},
+    {file = "pybase64-1.0.1-cp36-cp36m-win_amd64.whl", hash = "sha256:21f5e881b953387298c5fcc437de1faae94265368dd24ca31f6f1f08cf7dd8c2"},
+    {file = "pybase64-1.0.1-cp37-cp37m-macosx_10_6_intel.whl", hash = "sha256:0babe9456cd1ae34a3072d80f09fbd862788222d3afb6f82a4d202cba07324a6"},
+    {file = "pybase64-1.0.1-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:35f4c517b00ebe81003e6f26bc2fdd1820161f56eddf24658b0ebf7b3ef587e9"},
+    {file = "pybase64-1.0.1-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:1aeee7caef83a4a5c49129fa29f3b717dbf4b071825e352f9f6e546140efbf23"},
+    {file = "pybase64-1.0.1-cp37-cp37m-manylinux2010_i686.whl", hash = "sha256:b06c873a9e4c15c5b2ae0a3d980ec764c864ec9615e9421d9be25a5b477566d2"},
+    {file = "pybase64-1.0.1-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:d19edbb02d1cc074d26b2546f08ba82f0f1ac502d771429de3ae5b88047bdf18"},
+    {file = "pybase64-1.0.1-cp37-cp37m-win32.whl", hash = "sha256:b7ac8e1310be11ebfb99bae5d03cecb5d110340814edd58fd84f4e666b3db185"},
+    {file = "pybase64-1.0.1-cp37-cp37m-win_amd64.whl", hash = "sha256:61d6307760b62ddb2b930178e2447046988854fbf99877d665d4800b21c2849c"},
+    {file = "pybase64-1.0.1-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:4fe0e8ce35fc8a7839dc598ae3a9332d1de7b3a5e47dff3fe823fa22c23e0168"},
+    {file = "pybase64-1.0.1-cp38-cp38-manylinux1_i686.whl", hash = "sha256:5302987ce48b298aea9a49891d73e3d2cd8a4303a55a41cf9b4e39449eee2d30"},
+    {file = "pybase64-1.0.1-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:34d0149cccb0eb0fe7b769b48ff8034db4ce87f48c83eb8d5e5b83f4d14f2e9c"},
+    {file = "pybase64-1.0.1-cp38-cp38-manylinux2010_i686.whl", hash = "sha256:1e47563426cb52599e6d79d3c5ef8383605650b1a13862a5caaa7a7e8ef5cf4f"},
+    {file = "pybase64-1.0.1-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:2e691aedcf7b79a948c65775d2e60075a9cc52b89ec6d147f72528ed5194aca8"},
+    {file = "pybase64-1.0.1-cp38-cp38-win32.whl", hash = "sha256:5e4ede60d4dd357c7c25281cb05d06fe7bc5cc03cf5c7c866459208c48694f18"},
+    {file = "pybase64-1.0.1-cp38-cp38-win_amd64.whl", hash = "sha256:ac5febbef9f942333206bf1be2c2f06783df7b074d63fd5bf989206473610ca6"},
+    {file = "pybase64-1.0.1.tar.gz", hash = "sha256:6ced40531bffc81bafc790d5c0d2f752e281b3b00fd6ff4e79385c625e5dbab1"},
+]
 pylint = [
     {file = "pylint-2.5.3-py3-none-any.whl", hash = "sha256:d0ece7d223fe422088b0e8f13fa0a1e8eb745ebffcb8ed53d3e95394b6101a1c"},
     {file = "pylint-2.5.3.tar.gz", hash = "sha256:7dd78437f2d8d019717dbf287772d0b2dbdfd13fc016aa7faa08d67bccc46adc"},
@@ -1272,6 +1324,30 @@ typed-ast = [
 wcwidth = [
     {file = "wcwidth-0.2.5-py2.py3-none-any.whl", hash = "sha256:beb4802a9cebb9144e99086eff703a642a13d6a0052920003a230f3294bbe784"},
     {file = "wcwidth-0.2.5.tar.gz", hash = "sha256:c4d647b99872929fdb7bdcaa4fbe7f01413ed3d98077df798530e5b04f116c83"},
+]
+websockets = [
+    {file = "websockets-8.1-cp36-cp36m-macosx_10_6_intel.whl", hash = "sha256:3762791ab8b38948f0c4d281c8b2ddfa99b7e510e46bd8dfa942a5fff621068c"},
+    {file = "websockets-8.1-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:3db87421956f1b0779a7564915875ba774295cc86e81bc671631379371af1170"},
+    {file = "websockets-8.1-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:4f9f7d28ce1d8f1295717c2c25b732c2bc0645db3215cf757551c392177d7cb8"},
+    {file = "websockets-8.1-cp36-cp36m-manylinux2010_i686.whl", hash = "sha256:295359a2cc78736737dd88c343cd0747546b2174b5e1adc223824bcaf3e164cb"},
+    {file = "websockets-8.1-cp36-cp36m-manylinux2010_x86_64.whl", hash = "sha256:1d3f1bf059d04a4e0eb4985a887d49195e15ebabc42364f4eb564b1d065793f5"},
+    {file = "websockets-8.1-cp36-cp36m-win32.whl", hash = "sha256:2db62a9142e88535038a6bcfea70ef9447696ea77891aebb730a333a51ed559a"},
+    {file = "websockets-8.1-cp36-cp36m-win_amd64.whl", hash = "sha256:0e4fb4de42701340bd2353bb2eee45314651caa6ccee80dbd5f5d5978888fed5"},
+    {file = "websockets-8.1-cp37-cp37m-macosx_10_6_intel.whl", hash = "sha256:9b248ba3dd8a03b1a10b19efe7d4f7fa41d158fdaa95e2cf65af5a7b95a4f989"},
+    {file = "websockets-8.1-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:ce85b06a10fc65e6143518b96d3dca27b081a740bae261c2fb20375801a9d56d"},
+    {file = "websockets-8.1-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:965889d9f0e2a75edd81a07592d0ced54daa5b0785f57dc429c378edbcffe779"},
+    {file = "websockets-8.1-cp37-cp37m-manylinux2010_i686.whl", hash = "sha256:751a556205d8245ff94aeef23546a1113b1dd4f6e4d102ded66c39b99c2ce6c8"},
+    {file = "websockets-8.1-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:3ef56fcc7b1ff90de46ccd5a687bbd13a3180132268c4254fc0fa44ecf4fc422"},
+    {file = "websockets-8.1-cp37-cp37m-win32.whl", hash = "sha256:7ff46d441db78241f4c6c27b3868c9ae71473fe03341340d2dfdbe8d79310acc"},
+    {file = "websockets-8.1-cp37-cp37m-win_amd64.whl", hash = "sha256:20891f0dddade307ffddf593c733a3fdb6b83e6f9eef85908113e628fa5a8308"},
+    {file = "websockets-8.1-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:c1ec8db4fac31850286b7cd3b9c0e1b944204668b8eb721674916d4e28744092"},
+    {file = "websockets-8.1-cp38-cp38-manylinux1_i686.whl", hash = "sha256:5c01fd846263a75bc8a2b9542606927cfad57e7282965d96b93c387622487485"},
+    {file = "websockets-8.1-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:9bef37ee224e104a413f0780e29adb3e514a5b698aabe0d969a6ba426b8435d1"},
+    {file = "websockets-8.1-cp38-cp38-manylinux2010_i686.whl", hash = "sha256:d705f8aeecdf3262379644e4b55107a3b55860eb812b673b28d0fbc347a60c55"},
+    {file = "websockets-8.1-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:c8a116feafdb1f84607cb3b14aa1418424ae71fee131642fc568d21423b51824"},
+    {file = "websockets-8.1-cp38-cp38-win32.whl", hash = "sha256:e898a0863421650f0bebac8ba40840fc02258ef4714cb7e1fd76b6a6354bda36"},
+    {file = "websockets-8.1-cp38-cp38-win_amd64.whl", hash = "sha256:f8a7bff6e8664afc4e6c28b983845c5bc14965030e3fb98789734d416af77c4b"},
+    {file = "websockets-8.1.tar.gz", hash = "sha256:5c65d2da8c6bce0fca2528f69f44b2f977e06954c8512a952222cea50dad430f"},
 ]
 werkzeug = [
     {file = "Werkzeug-1.0.1-py2.py3-none-any.whl", hash = "sha256:2de2a5db0baeae7b2d2664949077c2ac63fbd16d98da0ff71837f7d1dea3fd43"},

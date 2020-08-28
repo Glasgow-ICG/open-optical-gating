@@ -14,6 +14,7 @@ from loguru import logger
 import optical_gating_alignment.optical_gating_alignment as oga
 
 # Local imports
+import open_optical_gating.cli.pixelarray as pa
 import open_optical_gating.cli.determine_reference_period as ref
 import open_optical_gating.cli.prospective_optical_gating as pog
 import open_optical_gating.cli.parameters as parameters
@@ -60,11 +61,12 @@ class OpticalGater:
         self.ref_frame_period = ref_frame_period
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
+        self.automatic_target_frame = True
 
     def initialise_internal_parameters(self):
         """Defines all internal parameters not already initialised"""
-        # Defines the arrays for sad and frame_history (which contains timestamp, phase and argmin(sad))
-        self.frame_history = np.zeros((self.settings["frame_buffer_length"], 3))
+        # Defines an empty list to store past frames with timestamp, phase and argmin(sad) metadata
+        self.frame_history = []
         self.pixel_dtype = "uint8"
 
         # Variables for adaptive algorithm
@@ -81,13 +83,17 @@ class OpticalGater:
 
         # Start by acquiring a sequence of reference frames, unless we have been provided with them
         if self.ref_frames is None:
-            logger.info("No reference frames found, switching to 'get period' mode.")
+            logger.info(
+                "No reference frames found, resetting before switching to determine period mode."
+            )
             self.state = "reset"
             self.pog_settings = parameters.initialise(
                 framerate=self.settings["brightfield_framerate"]
             )
         else:
-            logger.info("Using existing reference frames with integer period.")
+            logger.info(
+                "Using existing reference frames with integer period, setting to prospective optical gating mode."
+            )
             self.state = "sync"
             if self.ref_frame_period is None:
                 # Deduce an integer reference period from the reference frames we were provided with.
@@ -105,55 +111,58 @@ class OpticalGater:
         # Start experiment timer
         self.initial_process_time_s = time.time()
 
-        # Defines variables and objects used for plotting
-        self.timestamp = []
-        self.phase = []
-        self.processing_rate_fps = []
-        self.trigger_times = []
-        self.predicted_trigger_time_s = []
-
         # Flag for interrupting the program at key points
         # E.g. when user-input is needed
         # It is assumed that the user/app controls what this interaction is
         self.stop = False
 
-    def analyze(self, pixelArray):
+    def analyze_pixelarray(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
             The documentation explains that this must be fast, since it is running within the encoder's callback,
             and so must return before the next frame is produced.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
-        logger.debug("Analysing frame.")
+        logger.debug(
+            "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
+        )
 
         # For logging processing time
         time_init = time.time()
 
+        # TODO: These lines need to be moved into the eventual
+        # pi_optical_gater analyze (inherited from picamera) method
         # If we're passed a colour image, take the first channel (Y; luma)
-        if len(pixelArray.shape) == 3:
-            pixelArray = pixelArray[:, :, 0]
+        # if isinstance(frame, pa.PixelArray):
+        #     logger.info('PixelArray object passed to analyze.')
+        #     pixelArray = frame
+        # elif isinstance(frame, np.ndarray) and len(pixelArray.shape) == 3:
+        #     logger.info('Colour frame (LUV) passed to analyze, only using luma (Y) channel in PixelArray object.')
+        #     pixelArray = pa.PixelArray(frame[:, :, 0], metadata={'timestamp':time_init})
+        # elif isinstance(frame, np.ndarray) and len(pixelArray.shape) == 2:
+        #     logger.info('Greyscale frame passed to analyze, converting to PixelArray object.')
+        #     pixelArray = pa.PixelArray(frame, metadata={'timestamp':time_init})
+        # else:
+        #     logger.critical('Frame of unknown type passed to analyze.')
 
         if self.trigger_num >= self.settings["update_after_n_triggers"]:
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num will be reset
+            logger.info(
+                "At least {0} triggers have been sent; resetting before switching to adaptive mode.",
+                self.settings["update_after_n_triggers"],
+            )
             self.state = "reset"
 
+        pixelArray.metadata["optical_gating_state"] = self.state
+        
         if self.state == "sync":
-            # Using previously-determined reference peiod, analyse brightfield frames
+            # Using previously-determined reference period, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
-            (trigger_response, current_phase, current_time_s) = self.sync_state(
-                pixelArray
-            )
+            # self.predicted_trigger_time_s.append(
+            #     None
+            # )  # placeholder - updated inside sync_state
 
-            # Logs results and processing time
-            time_fin = time.time()
-            self.timestamp.append(current_time_s)
-            self.phase.append(current_phase)
-            self.processing_rate_fps.append(1 / (time_fin - time_init))
-            self.predicted_trigger_time_s.append(
-                None
-            )  # placeholder - updated inside sync_state
-
-            return trigger_response, current_phase, current_time_s
+            self.sync_state(pixelArray)
 
         elif self.state == "reset":
             # Clears reference period and resets frame number
@@ -171,10 +180,13 @@ class OpticalGater:
         else:
             logger.critical("Unknown state {0}.", self.state)
 
-        # Default return - all None
-        return (None, None, None)
+        # take a note of our processing rate (useful for deciding what framerate to set)
+        time_fin = time.time()
+        pixelArray.metadata["processing_rate_fps"] = 1 / (
+                time_fin - time_init
+            )
 
-    def sync_state(self, frame):
+    def sync_state(self, pixelArray):
         """ Code to run when in "sync" state
             Synchronising with prospective optical gating for phase-locked triggering.
         """
@@ -182,7 +194,7 @@ class OpticalGater:
 
         # Gets the phase (in frames) and arrays of SADs between the current frame and the referencesequence
         currentPhaseInFrames, sad, self.pog_settings = pog.phase_matching(
-            frame, self.ref_frames, settings=self.pog_settings
+            pixelArray, self.ref_frames, settings=self.pog_settings
         )
         logger.trace(sad)
 
@@ -194,11 +206,8 @@ class OpticalGater:
             / self.pog_settings["reference_period"]
         )  # rad
 
-        # Gets the current timestamp in seconds
-        current_time_s = time.time() - self.initial_process_time_s
-
         # Calculate cumulative phase (phase) from delta phase (current_phase - last_phase)
-        if self.frame_num == 0:
+        if len(self.frame_history) == 0:  # i.e. first frame
             logger.debug("First frame, using current phase as cumulative phase.")
             delta_phase = 0
             phase = current_phase
@@ -207,43 +216,30 @@ class OpticalGater:
             delta_phase = current_phase - self.last_phase
             while delta_phase < -np.pi:
                 delta_phase += 2 * np.pi
-            if self.frame_num < self.settings["frame_buffer_length"]:
-                phase = self.frame_history[self.frame_num - 1, 1] + delta_phase
-            else:
-                phase = self.frame_history[-1, 1] + delta_phase
+            phase = self.frame_history[-1].metadata["unwrapped_phase"] + delta_phase
             self.last_phase = current_phase
 
         # Evicts the oldest entry in frame_history if it exceeds the history length that we are meant to be retaining
-        if self.frame_num >= self.settings["frame_buffer_length"]:
-            self.frame_history = np.roll(self.frame_history, -1, axis=0)
+        if len(self.frame_history) >= self.settings["frame_buffer_length"]:
+            del self.frame_history[0]
 
-        # Gets the argmin of SAD and adds to frame_history array
-        # TODO: JT writes: I think it's pretty weird to have a preallocated buffer, rather than a buffer that grows (up to a limit).
-        # That avoids having to have the separate "Predicting with partial buffer" logic.
-        #
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            self.frame_history[self.frame_num, :] = (
-                current_time_s,
-                phase,
-                np.argmin(sad),
-            )
-        else:
-            self.frame_history[-1, :] = current_time_s, phase, np.argmin(sad)
+        # Append PixelArray object to frame_history list with its metadata
+        pixelArray.metadata["unwrapped_phase"] = phase
+        pixelArray.metadata["sad_min"] = np.argmin(sad)
+        self.frame_history.append(pixelArray)
 
-        self.last_phase = float(current_phase)
-        self.frame_num += 1
-
-        logger.trace(self.frame_history[-1, :])
         logger.debug(
-            "Current time: {0}s; cumulative phase: {1} ({2:+f}); sad: {3}",
-            current_time_s,
-            phase,
+            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad: {3}",
+            self.frame_history[-1].metadata["timestamp"],
+            self.frame_history[-1].metadata["unwrapped_phase"],
             delta_phase,
-            self.frame_history[-1, -1],
+            self.frame_history[-1].metadata["sad_min"],
         )
 
-        # If at least one period has passed, have a go at predicting a future trigger time
-        if self.frame_num - 1 > self.pog_settings["reference_period"]:
+        # If we have at least one period of phase history, have a go at predicting a future trigger time
+        this_predicted_trigger_time_s = None
+        sendTriggerNow = 0
+        if (len(self.frame_history) > self.pog_settings["reference_period"]):
             logger.debug("Predicting trigger...")
 
             # TODO: JT writes: this seems as good a place as any to highlight the general issue that the code is not doing a great job of precise timing.
@@ -253,57 +249,65 @@ class OpticalGater:
             # I think it would be much better to pass around absolute times, not deltas.
 
             # Gets the trigger response
-            if self.frame_num < self.settings["frame_buffer_length"]:
-                logger.trace("Predicting with partial buffer.")
-                timeToWaitInSecs = pog.predict_trigger_wait(
-                    self.frame_history[: self.frame_num :, :],
-                    self.pog_settings,
-                    fitBackToBarrier=True,
-                )
-            else:
-                logger.trace("Predicting with full buffer.")
-                timeToWaitInSecs = pog.predict_trigger_wait(
-                    self.frame_history, self.pog_settings, fitBackToBarrier=True
-                )
+            logger.trace("Predicting next trigger.")
+            time_to_wait_seconds = pog.predict_trigger_wait(
+                pa.get_metadata_from_list(
+                    self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
+                ),
+                self.pog_settings,
+                fitBackToBarrier=True,
+            )
+            logger.trace("Time to wait: {0} s.".format(time_to_wait_seconds))
             # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
             # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
             # targetSyncPhase should be in [0,2pi]
 
+            this_predicted_trigger_time_s = (
+                self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
+            )
+
             # Captures the image
-            if timeToWaitInSecs > 0:
-                logger.info("Possible trigger after: {0}s", timeToWaitInSecs)
+            if time_to_wait_seconds > 0:
+                logger.info("Possible trigger after: {0}s", time_to_wait_seconds)
 
                 (
-                    timeToWaitInSecs,
+                    time_to_wait_seconds,
                     sendTriggerNow,
                     self.pog_settings,
                 ) = pog.decide_trigger(
-                    current_time_s, timeToWaitInSecs, self.pog_settings
+                    self.frame_history[-1].metadata["timestamp"],
+                    time_to_wait_seconds,
+                    self.pog_settings,
                 )
                 if sendTriggerNow != 0:
                     logger.success(
                         "Sending trigger (reason: {0}) at time ({1} plus {2}) s",
                         sendTriggerNow,
-                        current_time_s,
-                        timeToWaitInSecs,
+                        self.frame_history[-1].metadata["timestamp"],
+                        time_to_wait_seconds,
                     )
                     # Trigger only
                     self.trigger_fluorescence_image_capture(
-                        current_time_s + timeToWaitInSecs
+                        this_predicted_trigger_time_s
                     )
 
-                    # Store trigger time and update trigger number (for adaptive algorithm)
-                    self.trigger_times.append(current_time_s + timeToWaitInSecs)
+                    # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
-                    # Returns the delay time, phase and timestamp (useful in the emulated scenario)
-                    return timeToWaitInSecs, current_phase, current_time_s
 
-            # for prediction plotting
-            self.predicted_trigger_time_s[-1] = self.timestamp[-1] + timeToWaitInSecs
+        # Update PixelArray with predicted trigger time and trigger type
+        self.frame_history[-1].metadata[
+            "predicted_trigger_time_s"
+        ] = this_predicted_trigger_time_s
+        self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
+        logger.debug(
+            "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}",
+            self.frame_history[-1].metadata["timestamp"],
+            self.frame_history[-1].metadata["predicted_trigger_time_s"],
+            self.frame_history[-1].metadata["trigger_type_sent"],
+        )
 
-        # JT TODO: for WebSockets clients in particular, I think it would be nice to report the prediction time even when we are not requesting a trigger.
-        # I will adjust this as part of the upcoming refactors
-        return None, current_phase, current_time_s
+        # store this phase now to calculate the delta phase for the next frame
+        self.last_phase = float(current_phase)
 
     def reset_state(self):
         """ Code to run when in "reset" state
@@ -313,12 +317,10 @@ class OpticalGater:
             or before getting a new reference period in the adaptive mode.
         """
         logger.info("Resetting for new period determination.")
-        self.frame_num = 0
         self.ref_frames = None
-        self.ref_buffer = np.empty(
-            (self.settings["frame_buffer_length"], self.height, self.width),
-            dtype=self.pixel_dtype,
-        )
+        self.ref_buffer = []
+        self.period_guesses = []
+
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,
         # but the user should have the ability to reset the sync through the GUI, or there might
@@ -334,40 +336,42 @@ class OpticalGater:
         ):
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
+            logger.info(
+                "Switching to adaptive mode.", self.settings["update_after_n_triggers"]
+            )
             self.trigger_num = 0
             self.state = "adapt"
         else:
+            logger.info("Switching to determine period mode.")
             self.state = "determine"
 
-    def determine_state(self, frame):
+    def determine_state(self, pixelArray, modeString="determine period"):
         """ Code to run when in "determine" state
             Determine period mode (default behaviour requires user input).
             In this mode we obtain a minimum number of frames, determine a
             period and then return.
             It is assumed that the user (or cli/flask app) then runs the
-            user_select_period function (and updates the state) before running
+            user_select_ref_frame function (and updates the state) before running
             analyse again with the new state.
         """
-        logger.debug("Processing frame in determine period mode.")
+        logger.debug("Processing frame in {0} mode.".format(modeString))
 
-        # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            logger.debug("Not yet enough frames to determine a new period.")
+        # Adds new frame to buffer
+        self.ref_buffer.append(pixelArray)
 
-            # Adds current frame to buffer
-            self.ref_buffer[self.frame_num, :, :] = frame
+        # Calculate period from determine_reference_period.py
+        logger.info("Attempting to determine new reference period.")
+        self.ref_frames, self.pog_settings = ref.establish(
+            self.ref_buffer, self.period_guesses, self.pog_settings
+        )
 
-            # Increases frame number
-            self.frame_num += 1
+        if self.ref_frames is not None:
+            # We were provided with ref_frames as a list, and this is helpful because it means we could still access
+            # the PixelArray metadata at this point if we wished.
 
-        # Once a suitable reference size has been buffered
-        # gets a period and ask the user to select the target frame
-        else:
-            logger.info("Determining new reference period")
-            # Calculate period from determine_reference_period.py
-            self.ref_frames, self.pog_settings = ref.establish(
-                self.ref_buffer, self.pog_settings
-            )
+            # However, long-term we want to store a 3D array because that is what oga expects to work with.
+            # We therefore make that conversion here
+            self.ref_frames = np.array(self.ref_frames)
 
             # Automatically select a target frame and barrier
             # This can be overriden by the user/controller later
@@ -382,49 +386,35 @@ class OpticalGater:
             ref.save_period(self.ref_frames, self.settings["period_dir"])
             logger.success("Period determined.")
 
-            # Note, passing the new period to the adaptive system is left to the user/app
-            self.stop = True
+            if self.automatic_target_frame:
+                logger.info(
+                    "Period determined and target frame automatically selected; switching to prospective optical gating mode."
+                )
+                # Automatically switch to the "sync" state, using the default reference frame.
+                # The user is expected to change the reference frame later, via a GUI, if they wish to
+                self.start_sync_with_ref_frame(self.pog_settings["referenceFrame"])
+                self.state = "sync"
+            else:
+                # If we aren't using the automatically determined period
+                # We raise the stop flag, which returns the current state to the user/app
+                # The user/app can then select a target frame
+                # The user/app will also need to call the adaptive system
+                # see user_select_ref_frame()
+                self.stop = True
 
-    def adapt_state(self, frame):
+
+    def adapt_state(self, pixelArray):
         """ Code to run when in "adapt" state.
             Adaptive prospective optical gating mode
             i.e. update reference sequence, while maintaining the same phase-lock.
             In this mode we determine a new period and then align with
             previous periods using an adaptive algorithm.
         """
-        logger.debug("Processing frame in adaptive optical gating mode.")
 
-        # Obtains a minimum amount of buffer frames
-        if self.frame_num < self.settings["frame_buffer_length"]:
-            logger.debug("Not yet enough frames to determine a new period.")
+        # Start by calling through to determine_state() to establish a new reference sequence
+        self.determine_state(pixelArray, modeString="adaptive optical gating")
 
-            # Inserts current frame into buffer
-            self.ref_buffer[self.frame_num, :, :] = frame
-
-            # Increases frame number counter
-            self.frame_num += 1
-
-        # Once a suitable number of frames has been buffered,
-        # gets a new period and aligns to the history
-        else:
-            # Obtains a reference period
-            logger.debug("Determining new reference period")
-            # Calculate period from determine_reference_period.py
-            self.ref_frames, self.pog_settings = ref.establish(
-                self.ref_buffer, self.pog_settings
-            )
-
-            # Determine barrier frames
-            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
-
-            # Save the period
-            ref.save_period(self.ref_frames, self.settings["period_dir"])
-            logger.success("Period determined.")
-
-            self.state = "sync"
-
-            self.frame_num = 0
-
+        if self.ref_frames is not None:
             # add to periods history for adaptive updates
             (
                 self.sequence_history,
@@ -459,58 +449,62 @@ class OpticalGater:
                 self.pog_settings["referenceFrame"],
             )
 
-    def user_select_period(self, frame=None):
-        """Prompts the user to select the period from a set of reference frames
+            # Switch back to the sync state
+            logger.info(
+                "Period updated and adaptive phase-lock successful; switching back to prospective optical gating mode."
+            )
+            self.state = "sync"
 
-        Function inputs:
-            self.ref_frames = a 3D array consisting of evenly spaced frames containing exactly one period
-            self.pog_settings = the settings dictionary (for more information see the parameters.py file)
-
-        Optional inputs:
-            framerate = the framerate of the brightfield picam (float or int)
-        """
-        # Defines initial variables
-        period_length_in_frames = self.ref_frames.shape[0]
-
-        if frame is None:
+    def start_sync_with_ref_frame(self, ref_frame_number):
+        self.pog_settings = parameters.update(self.pog_settings, referenceFrame=ref_frame_number)
+        # add to periods history for adaptive updates
+        (
+         self.sequence_history,
+         self.period_history,
+         self.drift_history,
+         self.shift_history,
+         self.global_solution,
+         self.target,
+         ) = oga.process_sequence(
+                                  self.ref_frames,
+                                  self.pog_settings["reference_period"],
+                                  self.pog_settings["drift"],
+                                  max_offset=3,
+                                  ref_seq_id=0,
+                                  ref_seq_phase=ref_frame_number,
+                                  )
+            
+        # Turn recording back on for rest of run
+        self.stop = False
+        # Turn automatic target frames on for future adaptive updates
+        self.automatic_target_frame = True
+        # Switch to "sync" state, in which we send camera triggers
+        logger.info(
+                    "Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
+                    )
+        self.state = "sync"
+    
+    def user_select_ref_frame(self, ref_frame_number=None):
+        """Prompts the user to select the target frame from a one-period set of reference frames"""
+        if ref_frame_number is None:
             # For now it is a simple command line interface (which is not helpful at all)
-            frame = int(
+            ref_frame_number = int(
                 input(
                     "Please select a frame between 0 and "
-                    + str(period_length_in_frames - 1)
+                    + str(len(self.ref_frames) - 1)
                     + "\nOr enter -1 to select a new period.\n"
                 )
             )
 
-        # Checks if user wants to select a new period. Users can use their creative side by selecting any negative number.
-        if frame < 0:
-            logger.success("User has asked for a new period to be determined.")
+        if ref_frame_number < 0:
+            # User wants to select a new period. Users can use their creative side by selecting any negative number.
+            logger.success(
+                           "User has asked for a new period to be determined, resetting before switching to period determination mode."
+                           )
             self.state = "reset"
-
-        # Otherwise, if user is happy with period
-        self.pog_settings = parameters.update(self.pog_settings, referenceFrame=frame)
-        self.frame_num = 0
-        # add to periods history for adaptive updates
-        (
-            self.sequence_history,
-            self.period_history,
-            self.drift_history,
-            self.shift_history,
-            self.global_solution,
-            self.target,
-        ) = oga.process_sequence(
-            self.ref_frames,
-            self.pog_settings["reference_period"],
-            self.pog_settings["drift"],
-            max_offset=3,
-            ref_seq_id=0,
-            ref_seq_phase=frame,
-        )
-
-        # turn recording back on for rest of run
-        self.stop = False
-
-        self.state = "sync"
+        else:
+            # Commit to using this reference frame
+            self.start_sync_with_ref_frame(ref_frame_number)
 
     def trigger_fluorescence_image_capture(self, delay):
         """As this is the base server, this function just outputs a log that a trigger would have been sent."""
@@ -518,13 +512,24 @@ class OpticalGater:
 
     def plot_triggers(self, outfile="triggers.png"):
         """Plot the phase vs. time sawtooth line with trigger events."""
+
+        # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history, "predicted_trigger_time_s"
+        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
+
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
-        plt.plot(np.array(self.timestamp), np.array(self.phase), label="Heart phase")
+        plt.plot(
+            pa.get_metadata_from_list(self.frame_history, "timestamp"),
+            pa.get_metadata_from_list(self.frame_history, "unwrapped_phase")
+            % (2 * np.pi),
+            label="Heart phase",
+        )
         plt.scatter(
-            np.array(self.trigger_times),
+            np.array(sent_trigger_times),
             np.full(
-                max(len(self.trigger_times), 0), self.pog_settings["targetSyncPhase"]
+                max(len(sent_trigger_times), 0), self.pog_settings["targetSyncPhase"],
             ),
             color="r",
             label="Trigger fire",
@@ -542,15 +547,27 @@ class OpticalGater:
 
     def plot_accuracy(self, outfile="accuracy.png"):
         """Plot the target phase and adjusted real phase of trigger events."""
-        self.timestamp = np.array(self.timestamp)
-        self.phase = np.array(self.phase)
-        self.trigger_times = np.array(self.trigger_times)
+        wrapped_phase = pa.get_metadata_from_list(
+            self.frame_history, "unwrapped_phase"
+        ) % (2 * np.pi)
+
+        # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history, "predicted_trigger_time_s"
+        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
 
         triggeredPhase = []
-        for i in range(len(self.trigger_times)):
+        for i in range(len(sent_trigger_times)):
 
             triggeredPhase.append(
-                self.phase[(np.abs(self.timestamp - self.trigger_times[i])).argmin()]
+                wrapped_phase[
+                    (
+                        np.abs(
+                            pa.get_metadata_from_list(self.frame_history, "timestamp")
+                            - sent_trigger_times[i]
+                        )
+                    ).argmin()
+                ]
             )
 
         plt.figure()
@@ -574,12 +591,12 @@ class OpticalGater:
         plt.show()
 
     def plot_prediction(self, outfile="prediction.png"):
-        self.timestamps = np.array(self.timestamp)
-        self.predicted_trigger_time_s = np.array(self.predicted_trigger_time_s)
-
         plt.figure()
         plt.title("Predicted Trigger Times")
-        plt.plot(np.array(self.timestamp), np.array(self.predicted_trigger_time_s))
+        plt.plot(
+            pa.get_metadata_from_list(self.frame_history, "timestamp"),
+            pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s"),
+        )
         # Add labels etc
         plt.xlabel("Time (s)")
         plt.ylabel("Prediction (s)")
@@ -589,12 +606,12 @@ class OpticalGater:
         plt.show()
 
     def plot_running(self, outfile="running.png"):
-        self.timestamps = np.array(self.timestamp)
-        self.processing_rate_fps = np.array(self.processing_rate_fps)
-
         plt.figure()
         plt.title("Frame processing rate")
-        plt.plot(self.timestamp, self.processing_rate_fps)
+        plt.plot(
+            pa.get_metadata_from_list(self.frame_history, "timestamp"),
+            pa.get_metadata_from_list(self.frame_history, "processing_rate_fps"),
+        )
         # Add labels etc
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")

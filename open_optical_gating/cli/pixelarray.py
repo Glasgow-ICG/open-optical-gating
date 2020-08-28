@@ -1,4 +1,16 @@
-"""PixelArray class encapsulating a 2D camera image and its accompanying metadata"""
+"""PixelArray class encapsulating a 2D camera image and its accompanying metadata.
+
+Frame metadata:
+    Dictionary keys that are used:
+        "timestamp"                 Timestamp associated with the frame.
+                                    This can be in any timebase (e.g. computer, camera hardware, ...), and predicted future trigger times will be computed and returned
+                                    in that same timebase.
+        "unwrapped_phase"           Unwrapped phase based on prospective optical gating phase matching.
+        "sad_min"                   Position of minimum SAD with reference period.
+        "predicted_trigger_time_s"  The predicted trigger as determined by prospective optical gating
+        "trigger_type_sent"         Trigger type sent; 0 is no trigger; 1 and 2 are a sent trigger
+        "processing_rate_fps"       Current frame processing rate in frames per second
+"""
 
 import numpy as np
 import time
@@ -8,15 +20,30 @@ from pybase64 import b64encode, b64decode
 class PixelArray(np.ndarray):
     # See explanations at https://numpy.org/doc/stable/user/basics.subclassing.html
     def __new__(cls, input_array, metadata=dict()):
-        # Input array is an already formed ndarray instance
+        # Input array is an already formed ndarray (or subclass) instance
         # We first cast to be our class type
         obj = np.asarray(input_array).view(cls)
-        obj.metadata = metadata
+
+        # TODO: I would like to do the following test here:
+        # if (isinstance(input_array, PixelArray)):
+        # ... but we end up comparing <class 'open_optical_gating.cli.pixelarray.PixelArray'>
+        #     with <class 'pixelarray.PixelArray'>, which is not the same.
+        #     We need to work out how to deal with that issue, but for now I can hack it
+        #     by testing for the case where input_array is NOT of the exact type np.ndarray
+        if not type(input_array) == np.ndarray:
+            if len(metadata) != 0:
+                raise TypeError(
+                    "Cannot provide out-of-line metadata when constructing from an existing PixelArray object (with its own metadata)"
+                )
+            obj.metadata = input_array.metadata.copy()
+        else:
+            obj.metadata = metadata.copy()
         return obj
-        
+
     def __array_finalize__(self, obj):
-        if obj is None: return
-        self.metadata = getattr(obj, 'metadata', dict())
+        if obj is None:
+            return
+        self.metadata = getattr(obj, "metadata", dict())
 
     def for_cbor(self):
         # Returns a representation of the array that is suitable for CBOR serialisation.
@@ -29,11 +56,13 @@ class PixelArray(np.ndarray):
         arrayData = b64encode(self.tobytes()).decode()
         return [self.shape, str(self.dtype), arrayData, self.metadata]
 
+
 def ArrayCBORDecode(jsonEncoded):
     arr = np.frombuffer(jsonEncoded[2], dtype=jsonEncoded[1]).reshape(jsonEncoded[0])
     result = PixelArray(arr)
     result.metadata = jsonEncoded[3]
     return result
+
 
 def ArrayJSONDecode(jsonEncoded):
     arrayBytes = b64decode(jsonEncoded[2])
@@ -42,15 +71,28 @@ def ArrayJSONDecode(jsonEncoded):
     result.metadata = jsonEncoded[3]
     return result
 
-def MetadataArrayFromPixelArrayList(pixelArrayList, metadataKey):
+
+def get_metadata_from_list(pixelArrayList, metadataKey):
     """ Given a list of PixelArray objects, returns a numpy array containing the
         value associated with the metadata entry for 'metadataKey' (e.g. 'timestamp')
         for each of the objects in the list. i.e. return an array containing the
         timestamp for each array object.
         
         Function inputs:
-         pixelArrayList   list     List of PixelArray objects
-         metadataKey      str      Metadata key to extract.
-                                    Must be present for all objects in pixelArrayList.
+         pixelArrayList   list          List of PixelArray objects
+         metadataKey      str or list   Metadata key to extract.
+                                        Must be present for all objects in pixelArrayList.
+                                        If a list, returns an array with n columns.
         """
-    return np.array([i.metadata[metadataKey] for i in pixelArrayList])
+    if isinstance(metadataKey, str):
+        return np.array([i.metadata[metadataKey] for i in pixelArrayList])
+    elif isinstance(metadataKey, list):
+        return np.array(
+            [[i.metadata[m] for i in pixelArrayList] for m in metadataKey]
+        ).T
+    else:
+        raise TypeError(
+            'Parameter metadataKey must be of type "str" or "list" (but is type "{0}")'.format(
+                type(metadataKey)
+            )
+        )

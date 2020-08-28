@@ -1,5 +1,5 @@
 {
-    "analyse_time_s": 1000,
+    "analyse_time_s": 100000,
     "awb_mode": "off",
     "brightfield_framerate": 80,
     "brightfield_resolution": 115,
@@ -11,8 +11,7 @@
     },
     "fluorescence_trigger_mode": "edge",
     "fluorescence_exposure_us": 1000.0,
-    "frame_buffer_length": 100,
-    "frame_num": 0,
+    "frame_buffer_length": 1000,
     "image_denoise": 0,
     "laser_trigger_pin": 22,
     "live": 0,
