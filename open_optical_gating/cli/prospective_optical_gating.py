@@ -186,12 +186,11 @@ def phase_matching(frame, reference_frames, settings=None):
         np.amin(reference_frames_cropped),
         np.amax(reference_frames_cropped),
     )
-    # DEV NOTE: these two .astypes aren't ideal (especially as the data is already 8-bit)
-    # However they were needed when running the picam live to stop jps falling down on types
+    # DEV NOTE: problems were previously seen when running the picam live, where these casts
+    # were required to stop jps objecting to being passed the wrong types. This seems like it
+    # ought not to be an issue, and is the subject of bug #16.
     # This is also why the above three traces seem a bit overkill
-    SADs = jps.sad_with_references(
-        frame_cropped.astype("uint8"), np.array(reference_frames_cropped, dtype="uint8")
-    )
+    SADs = jps.sad_with_references(frame_cropped, reference_frames_cropped)
     logger.trace(SADs)
 
     # Identify best match between 'frame' and the reference frame sequence

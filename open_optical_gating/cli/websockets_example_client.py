@@ -14,7 +14,8 @@ async def send_frame(websocket, frame=None):
     # although it's what websockets_example_server.py does
     t0 = time.time()
     if frame is None:
-        frame = PixelArray(np.zeros((1,1)).astype('uint8'))
+        # Create a dummy frame of zeroes, just for test purposes
+        frame = PixelArray(np.zeros((300,300)).astype('uint8'))
     else:
         frame = PixelArray(frame)
     if not "timestamp" in frame.metadata:
