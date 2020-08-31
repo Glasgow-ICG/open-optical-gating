@@ -1,4 +1,4 @@
-"""Main CLI Open Optical Gating System"""
+"""Extension of CLI Open Optical Gating System for using a Raspberry Pi and PiCam NoIR"""
 
 # Python imports
 import sys
@@ -6,6 +6,7 @@ import json
 import time
 
 # Module imports
+import numpy as np
 from loguru import logger
 
 # Raspberry Pi-specific imports
@@ -18,53 +19,66 @@ import fastpins as fp
 
 # Local imports
 import open_optical_gating.cli.optical_gater_server as server
-
-logger.remove()
-logger.add(sys.stderr, level="SUCCESS")
-logger.enable("open_optical_gating")
+import open_optical_gating.cli.pixelarray as pa
 
 
 class PiOpticalGater(server.OpticalGater):
-    """Extends the optical gater server for a picam stream.
+    """Extends the optical gater server for the Raspberry Pi.
     """
 
     def __init__(
-        self, camera=None, settings=None, ref_frames=None, ref_frame_period=None
+        self,
+        settings=None,
+        ref_frames=None,
+        ref_frame_period=None,
+        automatic_target_frame=True,
     ):
         """Function inputs:
-            camera - the raspberry picam PiCamera object
-            settings - a dictionary of settings (see default_settings.json)
+            settings      dict  Parameters affecting operation (see default_settings.json)
         """
 
-        # initialise parent
+        # Initialise parent
         super(PiOpticalGater, self).__init__(
             settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
         )
-        self.setup_camera(camera)
-        self.init_hardware()
-        self.automatic_target_frame = (
-            False  # ask user for their preferred initial target frame
-        )
 
-    def setup_camera(self, camera):
-        """Initialise and apply camera-related settings."""
-        logger.success("Configuring RPi camera...")
+        # Set-up the Raspberry Pi hardware
+        self.setup_pi()
+
+        # By default we will take a guess at a goof target frame (True)
+        # rather than ask user for their preferred initial target frame (False)
+        self.automatic_target_frame = automatic_target_frame
+
+    def setup_pi(self):
+        """Initialise Raspberry Pi hardware I/O interfaces.
+        """
+        # Initialise PiCamera
+        logger.success("Initialising camera...")
+        # Camera settings from settings.json
+        camera = picamera.PiCamera()
+        camera.framerate = self.settings["brightfield_framerate"]
+        camera.resolution = (
+            self.settings["brightfield_resolution"],
+            self.settings["brightfield_resolution"],
+        )
+        camera.awb_mode = self.settings["awb_mode"]
+        camera.exposure_mode = self.settings["exposure_mode"]
+        camera.shutter_speed = self.settings["shutter_speed_us"]  # us
+        camera.image_denoise = self.settings["image_denoise"]
+        # Store key variables for later
         self.height, self.width = camera.resolution
         self.framerate = camera.framerate
         self.camera = camera
 
-    def init_hardware(self):
-        """ Function that initialises various hardware I/O interfaces (pins for triggering laser and fluorescence camera) """
+        # Initialise Pins for Triggering
         logger.success("Initialising triggering hardware...")
-
         # Initialises fastpins module
         try:
             logger.debug("Initialising fastpins...")
             fp.init()
         except Exception as inst:
             logger.critical("Error setting up fastpins module. {0}", inst)
-
-        # Sets up laser trigger pin
+        # Sets up trigger pin (for laser or BNC trigger)
         laser_trigger_pin = self.settings["laser_trigger_pin"]
         if laser_trigger_pin is not None:
             try:
@@ -73,7 +87,6 @@ class PiOpticalGater(server.OpticalGater):
                 fp.setpin(laser_trigger_pin, 1, 0)
             except Exception as inst:
                 logger.critical("Error setting up laser pin. {0}", inst)
-
         # Sets up fluorescence camera pins
         fluorescence_camera_pins = self.settings["fluorescence_camera_pins"]
         if fluorescence_camera_pins is not None:
@@ -86,6 +99,65 @@ class PiOpticalGater(server.OpticalGater):
                 self.duration_us = self.settings["fluorescence_exposure_us"]
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
+
+        # Initialise frame iterator and time tracker
+        self.next_frame_index = 0
+        self.start_time = time.time()  # we use this to sanitise our timestamps
+        self.last_frame_wallclock_time = None
+
+    def run_server(self, force_framerate=False):
+        """ Run the OpticalGater server, acting on the in-file data.
+            Function inputs:
+                force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
+        """
+        if self.automatic_target_frame == False:
+            logger.success("Determining reference period...")
+            while self.state != "sync":
+                while not self.stop:
+                    self.analyze_pixelarray(self.next_frame(force_framerate=True))
+                logger.info("Requesting user input...")
+                self.user_select_ref_frame()
+            logger.success(
+                "Period determined ({0} frames long) and user has selected frame {1} as target.",
+                self.pog_settings["reference_period"],
+                self.pog_settings["referenceFrame"],
+            )
+
+        logger.success("Emulating...")
+        while not self.stop:
+            self.analyze_pixelarray(self.next_frame(force_framerate=force_framerate))
+
+    def next_frame(self, force_framerate=False):
+        """This function gets the next frame from the data source, which can be passed to analyze()"""
+        # Force framerate to match the brightfield_framerate in the settings
+        # This gives accurate timings and plots
+        if force_framerate and (self.last_frame_wallclock_time is not None):
+            wait_s = (1 / self.settings["brightfield_framerate"]) - (
+                time.time() - self.last_frame_wallclock_time
+            )
+            if wait_s > 1e-9:
+                # the 1e-9 is a very small time to allow for the calculation
+                time.sleep(wait_s - 1e-9)
+            else:
+                logger.warning(
+                    "Failing to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
+                        self.settings["brightfield_framerate"],
+                        self.next_frame_index,
+                        wait_s,
+                    )
+                )
+
+        output = np.empty((self.width, self.height, 3), dtype=np.uint8)
+        self.camera.capture(output, "yuv")
+        next = pa.PixelArray(
+            output[:, :, 0],  # Y channel
+            metadata={
+                "timestamp": time.time() - self.start_time
+            },  # relative to start_time to sanitise
+        )
+        self.next_frame_index += 1
+        self.last_frame_wallclock_time = time.time()
+        return next
 
     def trigger_fluorescence_image_capture(self, delay_us):
         """ Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
@@ -132,55 +204,17 @@ class PiOpticalGater(server.OpticalGater):
 
 
 def run(settings):
-    """Run the software using a live PiCam."""
-
-    # Initialise PiCamera
-    logger.success("Initialising camera...")
-    # Camera settings
-    camera = picamera.PiCamera()
-    camera.framerate = settings["brightfield_framerate"]
-    camera.resolution = (
-        settings["brightfield_resolution"],
-        settings["brightfield_resolution"],
-    )
-    camera.awb_mode = settings["awb_mode"]
-    camera.exposure_mode = settings["exposure_mode"]
-    camera.shutter_speed = settings["shutter_speed_us"]  # us
-    camera.image_denoise = settings["image_denoise"]
-
-    # Initialise Gater
     logger.success("Initialising gater...")
-    analyser = PiOpticalGater(camera=camera, settings=settings,)
+    analyser = PiOpticalGater(settings=settings, automatic_target_frame=False)
 
-    logger.success("Determining reference period...")
-    while analyser.state != "sync":
-        camera.start_recording(analyser, format="yuv")
-        while not analyser.stop:
-            camera.wait_recording(0.001)  # s
-        camera.stop_recording()
-        # logger.info("Requesting user input...")
-        # analyser.user_select_ref_frame(10)
-    logger.success(
-        "Period determined ({0} frames long) and user has selected frame {1} as target.",
-        analyser.pog_settings["reference_period"],
-        analyser.pog_settings["referenceFrame"],
-    )
-
-    logger.success("Running...")
-    camera.start_recording(analyser, format="yuv")
-    time_started = time.time()  # so we can time-out
-    time_running = 0
-    while not analyser.stop and time_running < settings["analyse_time_s"]:
-        camera.wait_recording(0.001)  # s
-        time_running = time.time() - time_started
-    camera.stop_recording()
+    logger.success("Running server...")
+    analyser.run_server(force_framerate=True)
 
     logger.success("Plotting summaries...")
     analyser.plot_triggers()
+    analyser.plot_prediction()
     analyser.plot_accuracy()
     analyser.plot_running()
-
-    logger.success("Fin.")
 
 
 if __name__ == "__main__":
@@ -193,5 +227,5 @@ if __name__ == "__main__":
     with open(settings_file) as data_file:
         settings = json.load(data_file)
 
-    # Performs a live data capture
+    # Runs the server
     run(settings)

@@ -20,7 +20,7 @@ class FileOpticalGater(server.OpticalGater):
 
     def __init__(
         self,
-        file_source_path=None,
+        source=None,
         settings=None,
         ref_frames=None,
         ref_frame_period=None,
@@ -40,7 +40,7 @@ class FileOpticalGater(server.OpticalGater):
         )
 
         # Load the data
-        self.load_data(file_source_path)
+        self.load_data(source)
 
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
@@ -126,9 +126,7 @@ class FileOpticalGater(server.OpticalGater):
 def run(settings):
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        file_source_path=settings["path"],
-        settings=settings,
-        automatic_target_frame=False,
+        source=settings["path"], settings=settings, automatic_target_frame=False,
     )
 
     logger.success("Running server...")
