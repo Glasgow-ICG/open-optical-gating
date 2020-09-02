@@ -6,7 +6,7 @@
 
 Cardiac diseases account for more deaths worldwide than any other cause.
 The zebrafish is a commonly used and powerful model organism for investigating cardiac conditions with a strong connection to human disease.
-This is important for furthering biomedical sciences such as developing new disease models or drugs to combat those diseases. 
+This is important for furthering biomedical sciences such as developing new disease models or drugs to combat those diseases.
 
 Prospective optical gating technologies allow 3D, time-lapse microscopy of the living, beating zebrafish heart without the use of pharmaceuticals or electrical/optical pacing [1].
 Further, prospective optical gating reduces the data deluge and processing time compared to other gating-based techniques.
@@ -17,31 +17,71 @@ Our fully open-source system is able to perform prospective optical gating with 
 
 1. Taylor, J.M., Nelson, C.J., Bruton, F.A. et al. Adaptive prospective optical gating enables day-long 3D time-lapse imaging of the beating embryonic zebrafish heart. Nat Commun 10, 5173 (2019) doi:[10.1038/s41467-019-13112-6](https://dx.doi.org/10.1038/s41467-019-13112-6)
 
+## Installation
+
+The following instructions have been tested on a Raspberry Pi 3 with Raspberry Pi OS (release: 2020-08-20).
+
+### Dependencies
+
+If you install this software through either of the following to methods, you should not need to install any extra dependencies.
+All dependencies are specified in the `pyproject.toml` file.
+
+### For users
+
+We are planning to build and publish this package to PyPi, so that you can install in using `pip` as you would any other package: `python3 -m pip install --user open-optical-gating`.
+However, until that time, please use the developer instructions below.
+
+### For Developers
+
+We use Poetry, the popular python packaging and dependency management tool ([installation instructions](https://python-poetry.org/docs/#installation)).
+At time of testing we found we needed to run `poetry self update --preview` to fix a temporary bug, this may not be necessary on your system.
+
+Once poetry is installed please use the following to install all dependencies and create a python environment for development.
+
+1. `git clone https://github.com/Glasgow-ICG/open-optical-gating.git` (or clone with SSH),
+2. `cd open-optical-gating`,
+3. `poetry install --extras "rpi" --no-root` to install core dependencies and those required for the Raspberry Pi*,
+4. `poetry build; poetry install` to build and install this commit of the software,
+5. Develop and enjoy! Remembering to install new dependencies with `poetry add <package>` and pushing both the updated `pyproject.toml` and `poetry.lock` when you create a pull request.
+
+* Note: there are currently three 'extras': 1) `rpi` for Raspberry Pi-specific packages; 2) `numba` for JIT compilation (not compatible with Raspberry Pi yet); 3) `socket` for communicating with a microscope over websockets instead of the using the PiCamera and GPIO pins.
+
+### Testing the Install
+
+If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run: `poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json`.
+This should ask you to pick a period frame (try '10') and produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
+
 ## Instructions for Raspberry Pi gated microscopy
 
 The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePius) and perform various tests. Prior to this please ensure that AsclePius has been set up correctly to control the microscope.
 
 Currently AsclePius can be operated in 5V BNC Only mode and Glasgow SPIM mode. Whilst in 5V BNC Only mode AsclePius sends a trigger signal through pin 22 when an image capture should be performed
-Whilst in Glasgow SPIM mode AsclePius controls the laser, fluorescence camera and movement stages separately.
+Whilst in Glasgow SPIM mode AsclePius controls the laser and fluorescence camera separately.
 
 For all programs, please ensure that you are using Python 3 as they have not been tested on Python 2.
 
 The pin numbering system being used is the physical numbering system.
 
-## Set up
+## Raspberry Pi Set up
 
-### 5V BNC Mode
+The Raspberry Pi is able to send two triggers through its GPIO pins:
 
-- Connect the 5V BNC cable to pin 22 and a ground pin (pin 6 for example).
+* a BNC trigger that can be used as an input to a commercial microscope or laser.
+* a Trigger/SYNC-A/SYNC-B connection for directly triggering many fluorescent cameras.
 
-### Glasgow SPIM Mode
+All pins below refer to the Raspberry Pi's pin numbering (and not the GPIO number).
 
-- Connect the laser to pin 22 and a ground pin.
-- Connect the fluorescence camera in the following way:
-  - Trigger: pin 8
-  - SYNC-A: pin 10
-  - SYNC-B: pin 12
-- Connect the stage controls via USB.
+### BNC Trigger Only
+
+* Connect the 5V BNC cable to pin 22 and pin 6 (or any other ground pin).
+
+### Joint Laser and Fluorescence Camera Trigger
+
+* Connect the laser to pin 22 and pin 6 (or any other ground pin).
+* Connect the fluorescence camera in the following way:
+  * Trigger: pin 8
+  * SYNC-A: pin 10
+  * SYNC-B: pin 12
 
 ## Tests
 
@@ -50,29 +90,17 @@ The pin numbering system being used is the physical numbering system.
 The microscope test can be run through the 'trigger_check' file.
 This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly.
 The test simply pulses pin 22 and pin 8 and returns an error if the software can not perform the pulsing and the user can detect a hardware if no signal is being detected by the microscope.
-
 *Note: the triggering runs for a very very long time so make sure to quit the program*
 
 If the microscope is not being triggered, please check the connections.
 If the microscope is connected properly check all the required modules have been installed.
 After this, it would be best to check if the signals are being fired by AsclePius's pins and proceed accordingly.
 
-### Stage test
+## Operating the timing box
 
-The stages only apply when operating in Glasgow SPIM mode.
+1. Ensure that the settings are set to the correct values (in the ```settings.json``` file) specifically that
 
-The stage testing can be run through the 'stage_test.py'.
-This operates by obtaining the addresses of all available stages and then enters an enviroment to control the stages.
-The stages can be tested by entering various commands.
-
-*Note: The stages are assumed to be  a **SMC100CC/PP** and both the testing enviroment and the stage functions will need to be altered for different stages.
-The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might also need to be updated if different.*
-
-## Operating the timing box 
-
-1. Ensure that the settings are set to the correct values (in the ```settings.json``` file) specifically that 
-
-   ```'live':1``` 
+   ```'live':1```
 
    to capture live data. Set ```'live':0``` for an emulated data capture. If the emulation is successful the phase of the heart should resemble a rough saw tooth with the triggering times at the same phase. The prediction latency, logging and many other variables can all be set through the ```settings.json``` file. The default values are included at the end of this file.
 
@@ -96,15 +124,11 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
    python3 cli.py
    ```
 
-   
+4. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
-4. Manually set the stage limits of the over which to acquire an image (only in Glasgow SPIM mode) and ensure that the stage is at the on edge of the heart. The stage will move the length of the heart from one end to another.
+5. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
 
-5. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
-
-6. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
-
-7. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
+6. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 
 ## Default settings.json values
 
@@ -117,24 +141,17 @@ The stage logic in both 'stage_test.py' and 'stage_control_functions.py' might a
  "shutter_speed":2500,
  "image_denoise":0,
  "laser_trigger_pin":22,
- "fluorescence_camera_pins":[8,10,12],
- "usb_name":"/dev/tty/USB0",
- "usb_timeout":0.1,
- "usb_baud_rate":57600,
- "usb_data_bits":8,
- "usb_parity":"N",
- "usb_x_on_off":1,
- "plane_address":1,
- "encoding":"utf-8",
- "terminators":[13,10],
- "increment":0.0005,
- "negative_limit":0,
- "positive_limit":0.075,
+ "fluorescence_camera_pins": {
+  "trigger": 8,
+  "SYNC-A": 10,
+  "SYNC-B": 12
+ },
+ "fluorescence_trigger_mode": "edge",
+ "fluorescence_exposure_us": "1000.0",
  "current_position":0,
  "frame_buffer_length":100,
  "frame_num":0,
  "live":0,
- "trigger_mode":"5V_BNC_Only",
  "log":0,
  "prediction_latency":15
  }

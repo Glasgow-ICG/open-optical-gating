@@ -4,6 +4,7 @@ output.log
 **/triggers.png
 **/accuracy.png
 **/running.png
+**/prediction.png
 
 # Caches
 **/.ipynb_checkpoints/**
@@ -13,6 +14,7 @@ output.log
 
 # Packages
 **/dist/**
+**/open_optical_gating.egg-info/**
 
 # Unit test / coverage reports
 .coverage

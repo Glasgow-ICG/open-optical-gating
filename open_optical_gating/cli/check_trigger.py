@@ -1,7 +1,6 @@
 """This script is used to check that the software can trigger a microscope."""
 
 # Python imports
-import fastpins as fp
 import time
 import cli
 import json
@@ -14,12 +13,10 @@ def run(settings="settings.json", delay=500e3, number=10):
     dict_data = json.load(data_file)
 
     laser_trigger_pin = dict_data["laser_trigger_pin"]
-    fluorescence_camera_pins = dict_data[
-        "fluorescence_camera_pins"
-    ]  # Trigger, SYNC-A, SYNC-B
+    fluorescence_camera_pins = dict_data["fluorescence_camera_pins"]
 
     duration = dict_data[
-        "fluorescence_exposure"
+        "fluorescence_exposure_us"
     ]  # us, this is the duration of a laser pulse (also controls the camera exposure if set to do so)
 
     if cli.init_controls(laser_trigger_pin, fluorescence_camera_pins) == 0:

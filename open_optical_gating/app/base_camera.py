@@ -45,6 +45,7 @@ class CameraEvent(object):
                 # did not process a previous frame
                 # if the event stays set for more than 5 seconds, then assume
                 # the client is gone and remove it
+                # TODO: JT writes: what happens to the client then? Does the client hang indefinitely in wait()? Is that acceptable?
                 if now - event[1] > 5:
                     remove = ident
         if remove:
@@ -93,6 +94,7 @@ class BaseCamera(object):
     def _thread(cls):
         """Camera background thread."""
         print("Starting camera thread.")
+        # TODO: JT writes: needs a brief comment here explaining what's going on, the role of the iterator and the 'yield' keyword in frames(). [would benefit from a general comment in base_camera.frames() as well as in camera_pi
         frames_iterator = cls.frames()
         for frame in frames_iterator:
             BaseCamera.frame = frame
