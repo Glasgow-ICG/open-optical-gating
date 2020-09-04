@@ -28,13 +28,13 @@ All dependencies are specified in the `pyproject.toml` file.
 
 ### For users
 
-We are planning to build and publish this package to PyPi, so that you can install in using `pip` as you would any other package: `python3 -m pip install --user open-optical-gating`.
+In future we are planning to build and publish this package to PyPi, so that you could install it using `pip`, as you would any other package: `python3 -m pip install --user open-optical-gating`.
 However, until that time, please use the developer instructions below.
 
 ### For Developers
 
 We use Poetry, the popular python packaging and dependency management tool ([installation instructions](https://python-poetry.org/docs/#installation)).
-At time of testing we found we needed to run `poetry self update --preview` to fix a temporary bug, this may not be necessary on your system.
+At time of testing we found we needed to first run `poetry self update --preview` to fix a temporary bug, this may not be necessary on your system.
 
 Once poetry is installed please use the following to install all dependencies and create a python environment for development.
 
@@ -51,7 +51,17 @@ Once poetry is installed please use the following to install all dependencies an
 If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run: `poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json`.
 This should ask you to pick a period frame (try '10') and produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
 
-## Instructions for Raspberry Pi gated microscopy
+### Websocket interface
+
+To test the websocket version of this software, from within the repository folder run two separate commands simultaneously:
+
+`poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json` 
+
+`poetry run python open_optical_gating/cli/websockets_example_client.py file examples/example_data_settings.json`
+
+This will perform a run similar to that with file_optical_gater, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
+
+# Instructions for Raspberry Pi gated microscopy
 
 The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePius) and perform various tests. Prior to this please ensure that AsclePius has been set up correctly to control the microscope.
 

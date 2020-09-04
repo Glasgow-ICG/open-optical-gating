@@ -78,6 +78,7 @@ async def send_from_file(uri, settings):
         file_source = FileOpticalGater(source=settings["path"], settings=settings)
         phases = []
         times = []
+        sent_trigger_times = []
         while not file_source.stop:
             response, timestamp = await send_frame(
                 websocket, file_source.next_frame(force_framerate=True)
@@ -86,7 +87,30 @@ async def send_from_file(uri, settings):
             if "unwrapped_phase" in response["sync"]:
                 phases.append(response["sync"]["unwrapped_phase"] % (2 * np.pi))
                 times.append(timestamp)
-        plt.plot(times, phases)
+            if ("trigger_type_sent" in response["sync"]) and (response["sync"]["trigger_type_sent"] > 0):
+                print('prediction', response["sync"]["predicted_trigger_time_s"])
+                sent_trigger_times.append(response["sync"]["predicted_trigger_time_s"])
+
+        plt.figure()
+        plt.title("Zebrafish heart phase with trigger fires")
+        plt.plot(times,
+                 phases,
+                 label="Heart phase"
+                 )
+        # JT TODO: instead of the second '0' in np.full, below, we should be using the target sync phase (but we don't know that).
+        # Note that the file_optical_gater also has a (different) bug here where it does not allow for the fact that this changes with LTU!
+        plt.scatter(
+                    np.array(sent_trigger_times),
+                    np.full(
+                            max(len(sent_trigger_times), 0), 0,
+                            ),
+                    10,
+                    color="r",
+                    label="Trigger fire",
+                    )
+        plt.legend()
+        plt.xlabel("Time (s)")
+        plt.ylabel("Phase (rad)")
         plt.show()
 
 
