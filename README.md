@@ -1,6 +1,6 @@
-# A fully open-source system for prospective optical gating in 3D fluorescence light sheet cardiac imaging (IN DEVELOPMENT)
+# Open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
 
-## Alex Drysdale, Jonathan Taylor and Chas Nelson
+## Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson
 
 ### School of Physics and Astronomy, University of Glasgow, UK
 
@@ -13,9 +13,9 @@ Further, prospective optical gating reduces the data deluge and processing time 
 However, currently these systems requires specialist, custom-made timing boxes and highly sophisticated system-specific software.
 In order to make these tools more widely available to research groups around the world we have ported these technologies onto the popular, single-board computer, the Raspberry Pi with Python code for prospective optical gating, microscope triggering and a simple GUI for user-friendliness.
 
-Our fully open-source system is able to perform prospective optical gating with a quality near that achieved by custom and specialised hardware/software packages. We hope that by moving this project into the open-science sphere we can ensure that all groups with an interest are able to implement prospective optical gating in a cheap (<50 Euros) and simple way.
+Our fully open-source system is able to perform prospective optical gating with a quality near that achieved by custom and specialised hardware/software packages. We hope that by moving this project into the open-science sphere we can ensure that all groups with an interest are able to implement prospective optical gating in a cheap (<50 EUR) and simple way.
 
-1. Taylor, J.M., Nelson, C.J., Bruton, F.A. et al. Adaptive prospective optical gating enables day-long 3D time-lapse imaging of the beating embryonic zebrafish heart. Nat Commun 10, 5173 (2019) doi:[10.1038/s41467-019-13112-6](https://dx.doi.org/10.1038/s41467-019-13112-6)
+1. Taylor, J.M., Nelson, C.J., Bruton, F.A. et al. Adaptive prospective optical gating enables day-long 3D time-lapse imaging of the beating embryonic zebrafish heart. Nature Communications 10, 5173 (2019) doi:[10.1038/s41467-019-13112-6](https://dx.doi.org/10.1038/s41467-019-13112-6)
 
 ## Installation
 
@@ -31,7 +31,7 @@ All dependencies are specified in the `pyproject.toml` file.
 In future we are planning to build and publish this package to PyPi, so that you could install it using `pip`, as you would any other package: `python3 -m pip install --user open-optical-gating`.
 However, until that time, please use the developer instructions below.
 
-### For Developers
+### For developers
 
 We use Poetry, the popular python packaging and dependency management tool ([installation instructions](https://python-poetry.org/docs/#installation)).
 At time of testing we found we needed to first run `poetry self update --preview` to fix a temporary bug, this may not be necessary on your system.
@@ -44,48 +44,61 @@ Once poetry is installed please use the following to install all dependencies an
 4. `poetry build; poetry install` to build and install this commit of the software,
 5. Develop and enjoy! Remembering to install new dependencies with `poetry add <package>` and pushing both the updated `pyproject.toml` and `poetry.lock` when you create a pull request.
 
-* Note: there are currently three 'extras': 1) `rpi` for Raspberry Pi-specific packages; 2) `numba` for JIT compilation (not compatible with Raspberry Pi yet); 3) `socket` for communicating with a microscope over websockets instead of the using the PiCamera and GPIO pins.
+**Note:** there are currently three 'extras':
 
-### Testing the Install
+1. `rpi` for Raspberry Pi-specific packages,
+2. `numba` for JIT compilation (not compatible with Raspberry Pi yet),
+3. `socket` for communicating with a microscope over websocket instead of the using the PiCamera and GPIO pins.
+
+## Testing an installation
+
+### Testing the install by emulating on a file
 
 If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run: `poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json`.
 This should ask you to pick a period frame (try '10') and produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
 
-### Websocket interface
+### Testing the websocket interface
 
 To test the websocket version of this software, from within the repository folder run two separate commands simultaneously:
 
-`poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json` 
+`poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json`
 
-`poetry run python open_optical_gating/cli/websockets_example_client.py file examples/example_data_settings.json`
+`poetry run python open_optical_gating/cli/websocket_example_client.py file examples/example_data_settings.json`
 
 This will perform a run similar to that with file_optical_gater, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
 
-# Instructions for Raspberry Pi gated microscopy
+### Tests for developers
 
-The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePius) and perform various tests. Prior to this please ensure that AsclePius has been set up correctly to control the microscope.
+We are currently in the process of building a pytest framework for this repository.
+Watch this space.
 
-Currently AsclePius can be operated in 5V BNC Only mode and Glasgow SPIM mode. Whilst in 5V BNC Only mode AsclePius sends a trigger signal through pin 22 when an image capture should be performed
-Whilst in Glasgow SPIM mode AsclePius controls the laser and fluorescence camera separately.
+## AsclePIus - Raspberry Pi plug-n-play smart microscope
+
+The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePIus) and perform various tests.
+Prior to this please ensure that AsclePIus has been set up correctly to control the microscope.
+
+Currently AsclePIus can be operated in 5V BNC only trigger mode or a joint laser and camera trigger mode.
+Whilst in 5V BNC Only mode AsclePIus sends a trigger signal through pin 22 when an image capture should be performed
+Whilst in joint laser and fluorescence camera mode AsclePIus controls the laser and fluorescence camera through separate triggers allowing you to take in to account the trigger type needed for the camera, e.g. `"edge"`.
 
 For all programs, please ensure that you are using Python 3 as they have not been tested on Python 2.
 
 The pin numbering system being used is the physical numbering system.
 
-## Raspberry Pi Set up
+### Raspberry Pi set up
 
 The Raspberry Pi is able to send two triggers through its GPIO pins:
 
 * a BNC trigger that can be used as an input to a commercial microscope or laser.
 * a Trigger/SYNC-A/SYNC-B connection for directly triggering many fluorescent cameras.
 
-All pins below refer to the Raspberry Pi's pin numbering (and not the GPIO number).
+All pins below refer to the Raspberry Pi pin numbering (and not the GPIO number).
 
-### BNC Trigger Only
+#### BNC trigger only
 
 * Connect the 5V BNC cable to pin 22 and pin 6 (or any other ground pin).
 
-### Joint Laser and Fluorescence Camera Trigger
+#### Joint laser and fluorescence camera trigger
 
 * Connect the laser to pin 22 and pin 6 (or any other ground pin).
 * Connect the fluorescence camera in the following way:
@@ -93,9 +106,7 @@ All pins below refer to the Raspberry Pi's pin numbering (and not the GPIO numbe
   * SYNC-A: pin 10
   * SYNC-B: pin 12
 
-## Tests
-
-### Microscope test
+### Triggering test
 
 The microscope test can be run through the 'trigger_check' file.
 This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly.
@@ -104,9 +115,9 @@ The test simply pulses pin 22 and pin 8 and returns an error if the software can
 
 If the microscope is not being triggered, please check the connections.
 If the microscope is connected properly check all the required modules have been installed.
-After this, it would be best to check if the signals are being fired by AsclePius's pins and proceed accordingly.
+After this, it would be best to check if the signals are being fired by the AsclePius pins and proceed accordingly.
 
-## Operating the timing box
+### Operating the timing box
 
 1. Ensure that the settings are set to the correct values (in the ```settings.json``` file) specifically that
 
@@ -140,7 +151,7 @@ After this, it would be best to check if the signals are being fired by AsclePiu
 
 6. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 
-## Default settings.json values
+## Settings.json defaults and meanings
 
 ```{json}
 {"brightfield_framerate": 80,
