@@ -67,6 +67,8 @@ To test the websocket version of this software, from within the repository folde
 
 `poetry run python open_optical_gating/cli/websocket_example_client.py file examples/example_data_settings.json`
 
+(Yes, that really is a command line parameter consisting of the word "file", rather than a path to a file on disk. The file from which the frames are served is specified in the .json file)
+
 This will perform a run similar to that with file_optical_gater, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
 
 ### Tests for developers
