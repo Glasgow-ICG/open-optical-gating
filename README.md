@@ -44,11 +44,13 @@ Once poetry is installed please use the following to install all dependencies an
 4. `poetry build; poetry install` to build and install this commit of the software,
 5. Develop and enjoy! Remembering to install new dependencies with `poetry add <package>` and pushing both the updated `pyproject.toml` and `poetry.lock` when you create a pull request.
 
-**Note:** there are currently three 'extras':
+* **Note:** there are currently three 'extras':
 
 1. `rpi` for Raspberry Pi-specific packages,
 2. `numba` for JIT compilation (not compatible with Raspberry Pi yet),
-3. `socket` for communicating with a microscope over websocket instead of the using the PiCamera and GPIO pins.
+3. `socket` for communicating with a microscope over websocket, instead of the using our own camera and GPIO (e.g. the PiCamera and GPIO pins).
+
+You can install more than one 'extra' by separating them with space, *inside* the quotes, e.g. `"socket numba"`
 
 ## Testing an installation
 
