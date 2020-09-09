@@ -140,6 +140,7 @@ version = "1.0"
 reference = "3426263cb95b8ddb919d26bc52cd210688b1b6c8"
 type = "git"
 url = "https://github.com/abdrysdale/fastpins"
+
 [[package]]
 category = "main"
 description = "A simple framework for building complex web applications."
@@ -243,6 +244,7 @@ version = "1.0.0"
 reference = "55587c55dc6b3af24afb8f8dcd31d9db0be53835"
 type = "git"
 url = "https://bitbucket.org/jmtaylor/py_sad_correlation"
+
 [[package]]
 category = "main"
 description = "A very fast and expressive template engine."
@@ -399,7 +401,7 @@ notebooks = []
 numba = ["numba (^0.50.1)"]
 
 [package.source]
-reference = "fc0f3567de5e54441c2152af19fd5077069e3f34"
+reference = "aa39aac06a34471c99c15b27c4b343b214191761"
 type = "git"
 url = "https://github.com/Glasgow-ICG/optical-gating-alignment"
 [[package]]
