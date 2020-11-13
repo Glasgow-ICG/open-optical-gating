@@ -10,8 +10,8 @@ from loguru import logger
 from skimage import io
 
 # Local imports
-import open_optical_gating.cli.optical_gater_server as server
-import open_optical_gating.cli.pixelarray as pa
+import optical_gater_server as server
+import pixelarray as pa
 
 
 class FileOpticalGater(server.OpticalGater):

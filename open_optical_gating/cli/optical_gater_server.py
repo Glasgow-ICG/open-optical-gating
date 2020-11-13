@@ -14,10 +14,10 @@ from loguru import logger
 import optical_gating_alignment.optical_gating_alignment as oga
 
 # Local imports
-import open_optical_gating.cli.pixelarray as pa
-import open_optical_gating.cli.determine_reference_period as ref
-import open_optical_gating.cli.prospective_optical_gating as pog
-import open_optical_gating.cli.parameters as parameters
+import pixelarray as pa
+import determine_reference_period as ref
+import prospective_optical_gating as pog
+import parameters as parameters
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")

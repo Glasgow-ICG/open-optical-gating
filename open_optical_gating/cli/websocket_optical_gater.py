@@ -11,7 +11,7 @@ from skimage import io
 import websockets, asyncio
 
 # Local imports
-import open_optical_gating.cli.optical_gater_server as server
+import optical_gater_server as server
 from pixelarray import PixelArray
 import sockets_comms as comms
 
