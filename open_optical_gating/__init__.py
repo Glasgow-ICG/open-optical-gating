@@ -1,1 +1,1 @@
-print('here')
+import cli
