@@ -3,7 +3,7 @@ import websockets
 import time
 
 from pixelarray import PixelArray
-import sockets_comms as comms
+from . import sockets_comms as comms
 
 async def hello(websocket, path):
     frameMessage = await websocket.recv()

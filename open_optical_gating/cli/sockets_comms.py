@@ -41,7 +41,7 @@
             "phase"          float [0,2pi) Our computed phase (0 to 2pi) for the most recent frame
 """
 
-from pixelarray import ArrayJSONDecode, ArrayCBORDecode
+from . import pixelarray
 
 useCBOR = True
 
@@ -79,9 +79,9 @@ def DecodeArray(arrayEncoded):
             New PixelArray object
     """
     if useCBOR:
-        return ArrayCBORDecode(arrayEncoded)
+        return pixelarray.ArrayCBORDecode(arrayEncoded)
     else:
-        return ArrayJSONDecode(arrayEncoded)
+        return pixelarray.ArrayJSONDecode(arrayEncoded)
 
 
 def EncodeMessage(message):

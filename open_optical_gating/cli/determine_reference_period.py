@@ -5,13 +5,13 @@ as used from prospective optical gating."""
 import os
 import numpy as np
 from skimage import io
-import jps_placeholder as jps
 from loguru import logger
 from datetime import datetime
 
 # Local
-import parameters
-import prospective_optical_gating as pog
+from . import parameters
+from . import jps_placeholder as jps
+from . import prospective_optical_gating as pog
 
 
 def establish(sequence, period_history, settings):

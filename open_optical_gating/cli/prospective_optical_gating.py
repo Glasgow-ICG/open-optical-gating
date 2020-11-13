@@ -6,10 +6,10 @@ import numpy as np
 
 # Module imports
 from loguru import logger
-import jps_placeholder as jps
 
 # Local imports
-import parameters as parameters
+from . import jps_placeholder as jps
+from . import parameters as parameters
 
 # TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
 # Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
