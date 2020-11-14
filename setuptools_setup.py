@@ -1,10 +1,18 @@
-from distutils.core import setup, Extension
+'''
+    There appears to be a bug in setuptools (Nov 2020) which
+    prevents us from using this supposedly more modern approach:
+        https://github.com/pypa/setuptools/issues/2353
+        https://stackoverflow.com/questions/63683262/modulenotfounderror-no-module-named-setuptools-distutils
+    Workaround is to delete pyproject.toml (but we need it…!?),
+    or I could just revert to not using setuptools, which is what I have done for now
+'''
+
+import setuptools
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-'''
-    setuptools.setup(
+setuptools.setup(
                  name="open-optical-gating", # Replace with your own username
                  version="2.0.0b",
                  author="Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson",
@@ -21,18 +29,3 @@ with open("README.md", "r") as fh:
                               ],
                  python_requires='>=3.7',
                  )
-'''
-setup(
-      name="open-optical-gating", # Replace with your own username
-      version="2.0.0b",
-      author="Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson",
-      description="Open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts",
-      long_description=long_description,
-      url="https://github.com/Glasgow-ICG/open-optical-gating/",
-      packages=['open_optical_gating', 'open_optical_gating.cli'],
-      classifiers=[
-                   "Programming Language :: Python :: 3",
-                   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-                   "Operating System :: OS Independent",
-                   ],
-      )
