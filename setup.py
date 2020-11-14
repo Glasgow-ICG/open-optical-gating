@@ -1,3 +1,5 @@
+import sys
+import numpy
 import setuptools
 
 with open("README.md", "r") as fh:
