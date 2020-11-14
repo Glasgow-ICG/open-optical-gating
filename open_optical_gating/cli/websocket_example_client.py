@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from pixelarray import PixelArray
 from file_optical_gater import FileOpticalGater
-import sockets_comms as comms
+from . import sockets_comms as comms
 
 
 async def send_frame(websocket, frame=None):
