@@ -7,7 +7,6 @@ import time
 
 # Module imports
 from loguru import logger
-from skimage import io
 import websockets, asyncio
 
 # Local imports
