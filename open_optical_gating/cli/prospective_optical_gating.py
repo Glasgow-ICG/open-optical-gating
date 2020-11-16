@@ -6,10 +6,17 @@ import numpy as np
 
 # Module imports
 from loguru import logger
+import j_py_sad_correlation as jps
 
 # Local imports
-from . import jps_placeholder as jps
 from . import parameters as parameters
+
+try:
+    _ = jps.windows_fallback
+    logger.warning("Using fallback code for temporary Windows support (slower - not suitable for realtime operation")
+except:
+    # Standard code
+    pass
 
 # TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
 # Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.

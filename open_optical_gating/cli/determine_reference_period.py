@@ -7,10 +7,10 @@ import numpy as np
 from skimage import io
 from loguru import logger
 from datetime import datetime
+import j_py_sad_correlation as jps
 
 # Local
 from . import parameters
-from . import jps_placeholder as jps
 from . import prospective_optical_gating as pog
 
 
