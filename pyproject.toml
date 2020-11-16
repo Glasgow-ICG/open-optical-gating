@@ -5,7 +5,7 @@ description = ""
 authors = ["Chas Nelson <chas.nelson@glasgow.ac.uk>"]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.5"
 optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gating-alignment" }
 j_py_sad_correlation = { git = "https://bitbucket.org/jmtaylor/py_sad_correlation" }
 loguru = "^0.4.1"
