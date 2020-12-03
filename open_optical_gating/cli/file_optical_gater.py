@@ -1,7 +1,7 @@
 """Extension of CLI Open Optical Gating System for emulating gating with saved brightfield data"""
 
 # Python imports
-import sys
+import sys, os
 import json
 import time
 
@@ -124,6 +124,33 @@ class FileOpticalGater(server.OpticalGater):
 
 
 def run(settings):
+    '''
+        Run the optical gater based on a settings.json file containing information
+        including the path to the .tif file to be processed.
+        
+        Params:   settings     str or dict
+        If settings is a string, this is interpreted as a path to a settings.json file.
+        If settings is a dictionary, this is interpreted as a settings dictionary as would be loaded
+         from a settings.json file.
+         
+        Note that in a settings file, if the key "path" is a relative path then this will be treated
+        as relative to the *settings file*, not the current working directory.
+        That seems the only sane behaviour, since when writing the settings file we cannot know
+        what the current working directory will be when it is used.
+    '''
+    if isinstance(settings, str):
+        # We have been passed a path - load the file as a settings file
+        logger.success("Loading settings file...")
+        settings_file_path = settings
+        with open(settings_file_path) as data_file:
+            settings = json.load(data_file)
+
+        # If a relative path to the data file is specified in the settings file,
+        # we will adjust it to be a path relative to the location of the settings file itself
+        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
+        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+
+    
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["path"], settings=settings, automatic_target_frame=False,
@@ -142,12 +169,9 @@ def run(settings):
 if __name__ == "__main__":
     # Reads data from settings json file
     if len(sys.argv) > 1:
-        settings_file = sys.argv[1]
+        settings_file_path = sys.argv[1]
     else:
-        settings_file = "settings.json"
-
-    with open(settings_file) as data_file:
-        settings = json.load(data_file)
+        settings_file_path = "settings.json"
 
     # Runs the server
-    run(settings)
+    run(settings_file_path)

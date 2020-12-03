@@ -16,7 +16,7 @@
     "laser_trigger_pin": 22,
     "live": 0,
     "log": 0,
-    "path": "./examples/example_data.tif",
+    "path": "example_data.tif",
     "period_dir": "period-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 10
