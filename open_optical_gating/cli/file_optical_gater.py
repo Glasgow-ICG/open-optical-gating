@@ -7,7 +7,7 @@ import time
 
 # Module imports
 from loguru import logger
-from skimage import io
+import tifffile
 
 # Local imports
 from . import optical_gater_server as server
@@ -53,7 +53,7 @@ class FileOpticalGater(server.OpticalGater):
         """Load data file"""
         # Load
         logger.success("Loading image data...")
-        self.data = io.imread(filename)
+        self.data = tifffile.imread(filename)
         self.height, self.width = self.data[0].shape
 
         # Initialise frame iterator and time tracker

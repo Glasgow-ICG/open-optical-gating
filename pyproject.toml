@@ -10,7 +10,7 @@ optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gatin
 j_py_sad_correlation = { git = "https://bitbucket.org/jmtaylor/py_sad_correlation" }
 loguru = "^0.4.1"
 tqdm = "^4.45.0"
-scikit-image = "^0.15.0"
+tifffile = "^2020.11.26"
 serial = "^0.0.97"
 flask = "^1.1.2"
 

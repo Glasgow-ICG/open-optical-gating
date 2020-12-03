@@ -4,7 +4,7 @@ as used from prospective optical gating."""
 # Module imports
 import os
 import numpy as np
-from skimage import io
+import tifffile
 from loguru import logger
 from datetime import datetime
 import j_py_sad_correlation as jps
@@ -213,5 +213,5 @@ def save_period(reference_period, parent_dir="~/"):
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        io.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
+        tifffile.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
 
