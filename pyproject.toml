@@ -15,7 +15,7 @@ serial = "^0.0.97"
 flask = "^1.1.2"
 
 # Socket Specific
-orjson = { version = "^3.4.5", optional = true }
+#orjson = { version = "^3.4.5", optional = true }
 #  JT: note that orjson v2 seems to have problems on Windows (https://github.com/readthedocs/readthedocs.org/issues/7313)
 #      which may, from the sound of that issue report, go away with version 3.
 #      However, I don't actively use orjson at the moment, so I have instead worked around by just removing it as a 'socket' dependency, below.
