@@ -50,8 +50,12 @@ useCBOR = True
 if useCBOR:
     import cbor
 else:
-    # We use 'orjson', because dumps() and loads() are perhaps 40% faster than with vanilla 'json'
-    import orjson as json
+    # It is desirable to use 'orjson', because dumps() and loads() are perhaps 40% faster than with vanilla 'json'
+    # However, we have encountered problems installing orjson v2 on Windows
+    # (https://github.com/readthedocs/readthedocs.org/issues/7313),
+    # although that issue report implies the problem may go away with orjson v3.
+    #import orjson as json
+    import json
 
 def DecodeMessage(message):
     """ Function inputs:
