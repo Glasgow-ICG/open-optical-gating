@@ -124,6 +124,7 @@ class OpticalGater:
         logger.debug(
             "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
         )
+        self.justRefreshedRefFrames = False # Will be overridden if necessary
 
         # For logging processing time
         time_init = time.time()
@@ -385,6 +386,7 @@ class OpticalGater:
             # Save the period
             ref.save_period(self.ref_frames, self.settings["period_dir"])
             logger.success("Period determined.")
+            self.justRefreshedRefFrames = True   # Flag that a slow action took place
 
             if self.automatic_target_frame:
                 logger.info(
@@ -415,7 +417,7 @@ class OpticalGater:
         self.determine_state(pixelArray, modeString="adaptive optical gating")
 
         if self.ref_frames is not None:
-            # add to periods history for adaptive updates
+            # Align the current reference sequence relative to previous ones (adaptive update)
             (
                 self.sequence_history,
                 self.period_history,
@@ -436,6 +438,7 @@ class OpticalGater:
                 ref_seq_id=0,
                 ref_seq_phase=self.pog_settings["referenceFrame"],
             )
+            self.justRefreshedRefFrames = True   # Flag that a slow action took place
             self.pog_settings = parameters.update(
                 self.pog_settings,
                 referenceFrame=(

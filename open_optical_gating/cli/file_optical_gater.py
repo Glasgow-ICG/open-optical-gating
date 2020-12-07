@@ -94,9 +94,18 @@ class FileOpticalGater(server.OpticalGater):
             if wait_s > 1e-9:
                 # the 1e-9 is a very small time to allow for the calculation
                 time.sleep(wait_s - 1e-9)
+            elif self.justRefreshedRefFrames:
+                logger.success(
+                    "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s). " \
+                    "But that is no particular surprise, because we just did a reference frame refresh".format(
+                        self.settings["brightfield_framerate"],
+                        self.next_frame_index,
+                        wait_s,
+                    )
+                )
             else:
                 logger.warning(
-                    "Failing to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
+                    "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
                         self.settings["brightfield_framerate"],
                         self.next_frame_index,
                         wait_s,

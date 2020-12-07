@@ -245,7 +245,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     else:
         framesForFit = settings["minFramesForFit"]
         allowedToExtendNumberOfFittedPoints = True
-    pastPhases = frame_history[-int(framesForFit) : :, :]
+    pastPhases = frame_history[-int(framesForFit):, :]
 
     # Perform a linear fit to the past phases. We will use this for our forward-prediction
     radsPerSec, alpha = np.polyfit(pastPhases[:, 0], pastPhases[:, 1], 1)
@@ -256,7 +256,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     logger.info("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
     if radsPerSec < 0:
         logger.warning(
-            "Linear fit to unwrapped phases is negative! This is a problem (fakeNews)."
+            "Linear fit to unwrapped phases is negative! This is a problem for the trigger prediction."
         )
     elif radsPerSec == 0:
         logger.warning(
