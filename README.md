@@ -1,4 +1,4 @@
-# Open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
+# aclePIus - Open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
 
 ## Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson
 
@@ -56,16 +56,27 @@ You can install more than one 'extra' by separating them with space, *inside* th
 
 ### Testing the install by emulating on a file
 
-If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run: `poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json`.
+If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run
+
+    poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json
+
 This should ask you to pick a period frame (try '10') and produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
+
+### Testing the Raspberry Pi Triggers
+
+If this software is correctly installed and your hardware is correctly configured (see below), you should be able to run the PiOpticalGater using the example data in this repository, from within the repository folder run
+
+    poetry run python open_optical_gating/cli/check_trigger.py examples/default_settings.json
+
+This should trigger your timing box/laser/camera depending on your configuration.
+If using this to test a camera trigger, you will need to set your camera ready to recieve external triggers (see below).
 
 ### Testing the websocket interface
 
 To test the websocket version of this software, from within the repository folder run two separate commands simultaneously:
 
-`poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json`
-
-`poetry run python open_optical_gating/cli/websocket_example_client.py file examples/example_data_settings.json`
+    poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json
+    poetry run python open_optical_gating/cli/websocket_example_client.py file examples/example_data_settings.json
 
 (Yes, that really is a command line parameter consisting of the word "file", rather than a path to a file on disk. The file from which the frames are served is specified in the .json file)
 
@@ -76,16 +87,14 @@ This will perform a run similar to that with file_optical_gater, but with frames
 We are currently in the process of building a pytest framework for this repository.
 Watch this space.
 
-## AsclePIus - Raspberry Pi plug-n-play smart microscope
+## asclePIus - Raspberry Pi plug-n-play smart microscope
 
-The following instructions provide a guide of how to operate the Raspberry Pi timing box (AsclePIus) and perform various tests.
-Prior to this please ensure that AsclePIus has been set up correctly to control the microscope.
+The following instructions provide a guide of how to operate the Raspberry Pi system, asclePIus, and perform various tests.
+Prior to this please ensure that asclePIus has been set up correctly to control the microscope.
 
-Currently AsclePIus can be operated in 5V BNC only trigger mode or a joint laser and camera trigger mode.
-Whilst in 5V BNC Only mode AsclePIus sends a trigger signal through pin 22 when an image capture should be performed
-Whilst in joint laser and fluorescence camera mode AsclePIus controls the laser and fluorescence camera through separate triggers allowing you to take in to account the trigger type needed for the camera, e.g. `"edge"`.
-
-For all programs, please ensure that you are using Python 3 as they have not been tested on Python 2.
+AsclePIus is be operated in 5V BNC trigger mode where asclePIus sends a trigger signal through pin 22 when an image capture should be performed.
+Additionally, seperate pins can be used to trigger a camera at the same time if you don't have the hardware to trigger your laser and camera instantaneously.
+This can be either and "edge" or "expose" trigger mode, depending on your set-up; this can be controlled in the settings JSON file.
 
 The pin numbering system being used is the physical numbering system.
 
@@ -112,7 +121,7 @@ All pins below refer to the Raspberry Pi pin numbering (and not the GPIO number)
 
 ### Triggering test
 
-The microscope test can be run through the 'trigger_check' file.
+The microscope test can be run through the 'trigger_check.py' file as described above.
 This is, in essence, designed to ensure that the microscope system has been set up correctly and the custom fastpins module has been installed correctly.
 The test simply pulses pin 22 and pin 8 and returns an error if the software can not perform the pulsing and the user can detect a hardware if no signal is being detected by the microscope.
 *Note: the triggering runs for a very very long time so make sure to quit the program*
@@ -123,61 +132,55 @@ After this, it would be best to check if the signals are being fired by the Ascl
 
 ### Operating the timing box
 
-1. Ensure that the settings are set to the correct values (in the ```settings.json``` file) specifically that
+1. Ensure that the settings are set to the correct values (in the `settings.json` file) specifically that
 
    ```'live':1```
 
    to capture live data. Set ```'live':0``` for an emulated data capture. If the emulation is successful the phase of the heart should resemble a rough saw tooth with the triggering times at the same phase. The prediction latency, logging and many other variables can all be set through the ```settings.json``` file. The default values are included at the end of this file.
 
-2. Ensure the zebrafish heart is the field of view of both the fluorescence camera and the brightfield camera (Pi Cam). The brightfield camera can be displayed for 60s using the following command. To increase the time, replace 60 with the desired time in seconds.
+2. Ensure the zebrafish heart is the field of view of both the fluorescence camera and the brightfield camera (PiCam). The brightfield camera can be displayed for 60 seconds using the following command. To increase the time, replace 60000 with the desired time in milliseconds.
 
-   ```{bash}
-   python3 camera.py 60
-   ```
+       poetry run raspivid -t 60000
 
-   You can save the video output by typing the following command.
-
-   ```{bash}
-   ./vidcap.sh NAME 60 80
-   ```
-
-   Which will save a file with name RPi-vidcap-NAME-DATE.h264 with a length of 60s at a frame rate of 80 fps.
+    You can save the video output by using the `-o` flag, e.g.
+   
+       poetry run raspivid -t 60000 -o file.h264
 
 3. Launching the cli program.
 
-   ```{bash}
-   python3 cli.py
-   ```
+       poetry run python cli/pi_optical_gater.py examples/default_settings.json
 
 4. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
-5. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data//' in the same directory as the 'cli.py' program. You can obtain a new reference period by entering -1.  
+5. Select a frame from within the period to be used as the target frame (the frames are stored in a folder called 'period-data/'). You can obtain a new reference period by entering -1.  
 
 6. The program will now attempt to capture a 3D gated image of the zebrafish heart (or other period object). The results will be stored with the image capture software.
 
 ## Settings.json defaults and meanings
 
 ```{json}
-{"brightfield_framerate": 80,
- "brightfield_resolution":128,
- "analyse_time":1000,
- "awb_mode":"off",
- "exposure_mode":"off",
- "shutter_speed":2500,
- "image_denoise":0,
- "laser_trigger_pin":22,
- "fluorescence_camera_pins": {
-  "trigger": 8,
-  "SYNC-A": 10,
-  "SYNC-B": 12
- },
- "fluorescence_trigger_mode": "edge",
- "fluorescence_exposure_us": "1000.0",
- "current_position":0,
- "frame_buffer_length":100,
- "frame_num":0,
- "live":0,
- "log":0,
- "prediction_latency":15
- }
+{
+    "brightfield_framerate": "80",
+    "brightfield_resolution": "128",
+    "analyse_time": "1000",
+    "awb_mode": "off",
+    "exposure_mode": "off",
+    "image_denoise": "0",
+    "laser_trigger_pin": "22",
+    "fluorescence_camera_pins": {
+        "trigger": 8,
+        "SYNC-A": 10,
+        "SYNC-B": 12
+    },
+    "fluorescence_trigger_mode": "edge",
+    "fluorescence_exposure_us": "1000.0",
+    "frame_buffer_length": "100",
+    "frame_num": "0",
+    "live": "1",
+    "log": "0",
+    "period_dir": "period-data/",
+    "prediction_latency_s": "0.015",
+    "update_after_n_triggers": "5",
+    "shutter_speed_us": 2500
+}
 ```
