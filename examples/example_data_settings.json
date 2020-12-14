@@ -1,7 +1,8 @@
 {
     "analyse_time_s": 100000,
     "awb_mode": "off",
-    "brightfield_framerate": 80,
+    # fps for this dataset, which is 3x downsampled from Chas original dataset at 226fps
+    "brightfield_framerate": 75,
     "brightfield_resolution": 115,
     "exposure_mode": "off",
     "fluorescence_camera_pins": {
