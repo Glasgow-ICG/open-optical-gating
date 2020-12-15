@@ -186,20 +186,6 @@ def phase_matching(frame, reference_frames, settings=None):
     logger.trace(
         "Reference frame shapes: {0} and {1}", frame.shape, reference_frames[0].shape
     )
-    if False:
-        # JT: disabling this for performance: even if trace logging is disabled,
-        # the min and amin functions are still called, and these are slow
-        logger.trace(
-            "Reference frames range over {0} to {1} and {2} to {3}.",
-            frame_cropped.min(),
-            frame_cropped.max(),
-            np.amin(reference_frames_cropped),
-            np.amax(reference_frames_cropped),
-        )
-    # DEV NOTE: problems were previously seen when running the picam live, where these casts
-    # were required to stop jps objecting to being passed the wrong types. This seems like it
-    # ought not to be an issue, and is the subject of bug #16.
-    # This is also why the above three traces seem a bit overkill
     SADs = jps.sad_with_references(frame_cropped, reference_frames_cropped)
     logger.trace(SADs)
 
