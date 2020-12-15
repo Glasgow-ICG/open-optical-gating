@@ -15,6 +15,10 @@ serial = "^0.0.97"
 flask = "^1.1.2"
 matplotlib = "^3.0.3"
 
+# Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
+"numpy == 1.19.3; sys_platform == 'win32'",
+"numpy; sys_platform != 'win32'"
+
 # Socket Specific
 #orjson = { version = "^3.4.5", optional = true }
 #  JT: note that orjson v2 seems to have problems on Windows (https://github.com/readthedocs/readthedocs.org/issues/7313)
