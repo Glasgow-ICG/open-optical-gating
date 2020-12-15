@@ -20,8 +20,8 @@ matplotlib = "^3.0.3"
 #  JT: note that orjson v2 seems to have problems on Windows (https://github.com/readthedocs/readthedocs.org/issues/7313)
 #      which may, from the sound of that issue report, go away with version 3.
 #      However, I don't actively use orjson at the moment, so I have instead worked around by just removing it as a 'socket' dependency, below.
-cbor = { version = "^1.0.0", optional = true }
-websockets = { version = "^7.0", optional = true }
+cbor = { version = "^1.0.0" }
+websockets = { version = "^7.0" }
 
 # Numba for optical gating (not on Pi)
 numba = { version = "^0.41.0", optional = true}
@@ -42,8 +42,6 @@ pylint = "^2.4.4"
 [tool.poetry.extras]
 numba = ["numba"]
 rpi = ["picamera", "fastpins"]
-# JT: removed requirement for orjson as part of 'socket' - see comment above
-socket = ["cbor", "websockets"]
 
 [build-system]
 # Bug in setuptools v50 breaks installation
