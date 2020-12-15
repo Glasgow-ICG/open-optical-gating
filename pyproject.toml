@@ -15,9 +15,12 @@ serial = "^0.0.97"
 flask = "^1.1.2"
 matplotlib = "^3.0.3"
 
-# Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
+# JT: Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
+# I am not sure if/how I can specify a different version if *not* running Windows -
+# it seems to complain about a duplicate key. But fortunately numpy gets installed via
+# other dependencies, so hopefully that won't be an issue
 numpy = {version = "1.19.3", platform = "Windows"}
-numpy = {version = *, platform != "Windows"}
+#numpy = {version = "*", platform = "~Windows"}
 
 # Socket Specific
 #orjson = { version = "^3.4.5", optional = true }
