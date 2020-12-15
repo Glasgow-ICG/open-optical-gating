@@ -127,7 +127,7 @@ class OpticalGater:
         self.justRefreshedRefFrames = False # Will be overridden if necessary
 
         # For logging processing time
-        time_init = time.time()
+        time_init = time.perf_counter()
 
         # TODO: These lines need to be moved into the eventual
         # pi_optical_gater analyze (inherited from picamera) method
@@ -155,7 +155,7 @@ class OpticalGater:
             self.state = "reset"
 
         pixelArray.metadata["optical_gating_state"] = self.state
-        
+
         if self.state == "sync":
             # Using previously-determined reference period, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
@@ -182,7 +182,7 @@ class OpticalGater:
             logger.critical("Unknown state {0}.", self.state)
 
         # take a note of our processing rate (useful for deciding what framerate to set)
-        time_fin = time.time()
+        time_fin = time.perf_counter()
         pixelArray.metadata["processing_rate_fps"] = 1 / (
                 time_fin - time_init
             )
@@ -476,7 +476,7 @@ class OpticalGater:
                                   ref_seq_id=0,
                                   ref_seq_phase=ref_frame_number,
                                   )
-            
+
         # Turn recording back on for rest of run
         self.stop = False
         # Turn automatic target frames on for future adaptive updates
@@ -486,7 +486,7 @@ class OpticalGater:
                     "Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
                     )
         self.state = "sync"
-    
+
     def user_select_ref_frame(self, ref_frame_number=None):
         """Prompts the user to select the target frame from a one-period set of reference frames"""
         if ref_frame_number is None:

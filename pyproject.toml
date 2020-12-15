@@ -13,13 +13,16 @@ tqdm = "^4.45.0"
 tifffile = "^2019.7.26"
 serial = "^0.0.97"
 flask = "^1.1.2"
-matplotlib = "^3.0.3"
+
+# JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
+# I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
+matplotlib = "<3.3.0"
 
 # JT: Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
 # I am not sure if/how I can specify a different version if *not* running Windows -
 # it seems to complain about a duplicate key. But fortunately numpy gets installed via
 # other dependencies, so hopefully that won't be an issue
-numpy = {version = "1.19.3", platform = "Windows"}
+numpy = {version = "1.19.3", platform = "win32"}
 #numpy = {version = "*", platform = "~Windows"}
 
 # Socket Specific
