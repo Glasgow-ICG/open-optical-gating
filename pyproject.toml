@@ -13,6 +13,7 @@ tqdm = "^4.45.0"
 tifffile = "^2019.7.26"
 serial = "^0.0.97"
 flask = "^1.1.2"
+matplotlib = "^3.0.3"
 
 # Socket Specific
 #orjson = { version = "^3.4.5", optional = true }
