@@ -4,10 +4,14 @@ as used from prospective optical gating."""
 # Module imports
 import os
 import numpy as np
-import tifffile
 from loguru import logger
 from datetime import datetime
 import j_py_sad_correlation as jps
+# See comment in pyproject.toml for why we have to try both of these
+try:
+    import skimage as tiffio
+except:
+    import tifffile as tiffio
 
 # Local
 from . import parameters
@@ -213,5 +217,4 @@ def save_period(reference_period, parent_dir="~/"):
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        tifffile.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
-
+        tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)

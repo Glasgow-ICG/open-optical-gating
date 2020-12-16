@@ -10,9 +10,16 @@ optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gatin
 j_py_sad_correlation = { git = "https://bitbucket.org/jmtaylor/py_sad_correlation" }
 loguru = "^0.4.1"
 tqdm = "^4.45.0"
-tifffile = "^2019.7.26"
 serial = "^0.0.97"
 flask = "^1.1.2"
+# On Windows, scikit-image does not install cleanly.
+# But on the RPi, tifffile does not install (dependency imagecodecs fails to find openjpeg.h).
+# JT: current workaround is to have platform-dependent installation here,
+# and the source code will need to try importing both.
+# Tidier would be to special-case scikit-image on the RPi only, or to work out how to get
+# tifffile to install on the RPi. This should serve as a workaround for now, though.
+tifffile = { version = "^2019.7.26", platform = "win32" }
+scikit-image = { version = "0.15.0", platform = "~win32" }
 
 # JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
@@ -24,7 +31,7 @@ matplotlib = "<3.3.0"
 # other dependencies, so hopefully that won't be an issue
 # Note that we have to be open to using 1.18 for back-compatibility with python 3.5 on Windows.
 numpy = {version = "<=1.19.3", platform = "win32"}
-#numpy = {version = "*", platform = "~Windows"}
+#numpy = {version = "*", platform = "~win32"}
 
 # Socket Specific
 #orjson = { version = "^3.4.5", optional = true }
