@@ -22,7 +22,8 @@ matplotlib = "<3.3.0"
 # I am not sure if/how I can specify a different version if *not* running Windows -
 # it seems to complain about a duplicate key. But fortunately numpy gets installed via
 # other dependencies, so hopefully that won't be an issue
-numpy = {version = "1.19.3", platform = "win32"}
+# Note that we have to be open to using 1.18 for back-compatibility with python 3.5 on Windows.
+numpy = {version = "<=1.19.3", platform = "win32"}
 #numpy = {version = "*", platform = "~Windows"}
 
 # Socket Specific
