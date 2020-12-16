@@ -9,7 +9,7 @@ from datetime import datetime
 import j_py_sad_correlation as jps
 # See comment in pyproject.toml for why we have to try both of these
 try:
-    import skimage as tiffio
+    import skimage.io as tiffio
 except:
     import tifffile as tiffio
 

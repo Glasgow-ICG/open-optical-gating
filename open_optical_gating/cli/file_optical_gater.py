@@ -9,7 +9,7 @@ import time
 from loguru import logger
 # See comment in pyproject.toml for why we have to try both of these
 try:
-    import skimage as tiffio
+    import skimage.io as tiffio
 except:
     import tifffile as tiffio
 
