@@ -47,28 +47,34 @@ class PixelArray(np.ndarray):
 
     def for_cbor(self):
         # Returns a representation of the array that is suitable for CBOR serialisation.
-        return [self.shape, str(self.dtype), self.tobytes(), self.metadata]
+        return { "shape": self.shape,
+                 "dtype": str(self.dtype),
+                 "pixels": self.tobytes(),
+                 "metadata": self.metadata }
 
     def for_json(self):
         # Returns a representation of the array that is suitable for JSON serialisation.
         # Note that we do not do this by subclassing JSONEncoder, because fast json encoders
         # such as orjson do not appear to support this mechanism, as far as I can see.
         arrayData = b64encode(self.tobytes()).decode()
-        return [self.shape, str(self.dtype), arrayData, self.metadata]
+        return { "shape": self.shape,
+                 "dtype": str(self.dtype),
+                 "pixels": arrayData,
+                 "metadata": self.metadata }
 
 
-def ArrayCBORDecode(jsonEncoded):
-    arr = np.frombuffer(jsonEncoded[2], dtype=jsonEncoded[1]).reshape(jsonEncoded[0])
+def ArrayCBORDecode(arrayDict):
+    arr = np.frombuffer(arrayDict["pixels"], dtype=arrayDict["dtype"]).reshape(arrayDict["shape"])
     result = PixelArray(arr)
-    result.metadata = jsonEncoded[3]
+    result.metadata = arrayDict["metadata"]
     return result
 
 
-def ArrayJSONDecode(jsonEncoded):
-    arrayBytes = b64decode(jsonEncoded[2])
-    arr = np.frombuffer(arrayBytes, dtype=jsonEncoded[1]).reshape(jsonEncoded[0])
+def ArrayJSONDecode(arrayDict):
+    arrayBytes = b64decode(arrayDict["pixels"])
+    arr = np.frombuffer(arrayBytes, dtype=arrayDict["dtype"]).reshape(arrayDict["shape"])
     result = PixelArray(arr)
-    result.metadata = jsonEncoded[3]
+    result.metadata = arrayDict["metadata"]
     return result
 
 

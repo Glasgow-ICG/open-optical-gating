@@ -10,16 +10,16 @@
         Sent from client->server to provide a new brightfield frame for analysis.
         Dictionary containing:
             "type"    ="frame"
-            "frame"   list of:
-                [0]    list  Image dimensions, represented as a list of: [height,width]
-                [1]    str   Pixel data type. Recommended: "uint8". Also supported: "uint16".
-                [2]    bytes Array data. Raw pixel data, in row-major order.
+            "frame"   Dictionary containing:
+                "shape"    list  Image dimensions, represented as a list of integers: [height,width]
+                "dtype"    str   Pixel data type. Recommended: "uint8". Also supported: "uint16".
+                "pixels"   bytes Array data. Raw pixel data, in row-major order.
                               [If transmitting using JSON encoding, pixel data is base64 encoded]
                               TODO: endianness is not currently considered.
                                Data should be transmitted in machine-native endianness,
                                and transmission between different machines of different
-                               endianness is not supported.
-                [3]    dict  Frame metadata (see below)
+                               endianness is not currently supported.
+                "metadata" dict  Frame metadata (see below)
                 
         "Sync response"
         Sent from server->client in response to a "frame" message (after sync analysis is complete)
