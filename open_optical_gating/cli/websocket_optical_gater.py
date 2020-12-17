@@ -1,9 +1,8 @@
 """Extension of CLI Open Optical Gating System for a remote client connecting over WebSockets"""
 
 # Python imports
-import sys
+import sys, os, time
 import json
-import time
 
 # Module imports
 from loguru import logger
@@ -99,6 +98,18 @@ class WebSocketOpticalGater(server.OpticalGater):
 
 
 def run(settings):
+    if isinstance(settings, str):
+        # We have been passed a path - load the file as a settings file
+        logger.success("Loading settings file...")
+        settings_file_path = settings
+        with open(settings_file_path) as data_file:
+            settings = json.load(data_file)
+        
+        # If a relative path to the data file is specified in the settings file,
+        # we will adjust it to be a path relative to the location of the settings file itself
+        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
+        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+
     logger.success("Initialising gater...")
     analyser = WebSocketOpticalGater(settings=settings)
     logger.success("Running server...")
@@ -106,15 +117,11 @@ def run(settings):
 
 
 if __name__ == "__main__":
-    t = time.time()
     # Reads data from settings json file
     if len(sys.argv) > 1:
         settings_file = sys.argv[1]
     else:
         settings_file = "settings.json"
-
-    with open(settings_file) as data_file:
-        settings = json.load(data_file)
 
     # Runs the server
     run(settings)

@@ -62,6 +62,7 @@ class OpticalGater:
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
         self.automatic_target_frame = True
+        self.justRefreshedRefFrames = False
 
     def initialise_internal_parameters(self):
         """Defines all internal parameters not already initialised"""
@@ -124,7 +125,7 @@ class OpticalGater:
         logger.debug(
             "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
         )
-        self.justRefreshedRefFrames = False # Will be overridden if necessary
+        self.justRefreshedRefFrames = False # Will be set to True later, if applicable
 
         # For logging processing time
         time_init = time.perf_counter()

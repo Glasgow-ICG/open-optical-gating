@@ -1,24 +1,25 @@
 import websockets, asyncio
-import sys, time
+import sys, time, os
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+from loguru import logger
 
-from pixelarray import PixelArray
-from file_optical_gater import FileOpticalGater
+from . import pixelarray
+from . import file_optical_gater
 from . import sockets_comms as comms
 
 
-async def send_frame(websocket, frame=None):
+async def send_frame(websocket, frame=None, expect_echo=False):
     # Sends a frame message to the server, and expects the server to send a frame message back as response.
     # (Note that that is not the normal behaviour of websocket_optical_gater.py,
     # although it's what websockets_example_server.py does
     t0 = time.time()
     if frame is None:
         # Create a dummy frame of zeroes, just for test purposes
-        frame = PixelArray(np.zeros((300, 300)).astype("uint8"))
+        frame = pixelarray.PixelArray(np.zeros((300, 300)).astype("uint8"))
     else:
-        frame = PixelArray(frame)
+        frame = pixelarray.PixelArray(frame)
     if not "timestamp" in frame.metadata:
         frame.metadata["timestamp"] = time.time()
     t1 = time.time()
@@ -30,7 +31,7 @@ async def send_frame(websocket, frame=None):
     responseRaw = await websocket.recv()
     t4 = time.time()
 
-    if sys.argv[1] == "echo":
+    if expect_echo:
         # A test implementation that expects to be talking to a server behaving like websockets_example_server.py
         arrBack = comms.ParseFrameMessage(comms.DecodeMessage(responseRaw))
         t5 = time.time()
@@ -63,25 +64,25 @@ async def send_frame(websocket, frame=None):
         return response, frame.metadata["timestamp"]
 
 
-async def send_test_frame(uri):
+async def send_test_frame(uri, expect_echo=False):
     async with websockets.connect(uri) as websocket:
-        asyncio.get_event_loop().run_until_complete(send_frame(websocket))
+        asyncio.get_event_loop().run_until_complete(send_frame(websocket, expect_echo))
 
 
-async def send_from_file(uri, settings):
+async def send_from_file(uri, settings, expect_echo=False):
     """Emulated data capture for a set of sample brightfield frames."""
     async with websockets.connect(uri) as websocket:
         source = settings["path"]
 
         # We do instantiate a FileOpticalGater object, but actually all we use it for is to get frames from the file.
         # We don't then ask it to analyze those frames, we just send them on to the server.
-        file_source = FileOpticalGater(source=settings["path"], settings=settings)
+        file_source = file_optical_gater.FileOpticalGater(source=settings["path"], settings=settings)
         phases = []
         times = []
         sent_trigger_times = []
         while not file_source.stop:
             response, timestamp = await send_frame(
-                websocket, file_source.next_frame(force_framerate=True)
+                websocket, file_source.next_frame(force_framerate=True), expect_echo
             )
             print("Got sync response: ", response)
             if "unwrapped_phase" in response["sync"]:
@@ -113,19 +114,34 @@ async def send_from_file(uri, settings):
         plt.ylabel("Phase (rad)")
         plt.show()
 
+def run(settings, uri="ws://localhost:8765", expect_echo=False):
+    if isinstance(settings, str):
+        # We have been passed a path - load the file as a settings file
+        logger.success("Loading settings file...")
+        settings_file_path = settings
+        with open(settings_file_path) as data_file:
+            settings = json.load(data_file)
+        
+        # If a relative path to the data file is specified in the settings file,
+        # we will adjust it to be a path relative to the location of the settings file itself
+        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
+        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+
+    if (settings is not None):
+        asyncio.get_event_loop().run_until_complete(send_from_file(uri, settings, expect_echo))
+    else:
+        asyncio.get_event_loop().run_until_complete(send_test_frame(uri, expect_echo))
 
 if __name__ == "__main__":
-    uri = "ws://localhost:8765"
+    settings_file_path = None
+    expect_echo = False
     if sys.argv[1] == "file":
         # Reads data from settings json file
         if len(sys.argv) > 2:
-            settings_file = sys.argv[2]
+            settings_file_path = sys.argv[2]
         else:
-            settings_file = "settings.json"
+            settings_file_path = "settings.json"
+    elif sys.argv[1] == "echo":
+        expect_echo = True
 
-        with open(settings_file) as data_file:
-            settings = json.load(data_file)
-
-        asyncio.get_event_loop().run_until_complete(send_from_file(uri, settings))
-    else:
-        asyncio.get_event_loop().run_until_complete(send_test_frame(uri))
+    run(settings_file_path, expect_echo)
