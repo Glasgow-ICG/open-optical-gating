@@ -1,3 +1,7 @@
+# JT: Note that this seems to be required for pip installation,
+# even though some of it duplicates information in pyproject.toml
+# If there is a way to avoid requiring this duplication, I have not figured it out yet
+
 from distutils.core import setup, Extension
 
 with open("README.md", "r") as fh:
