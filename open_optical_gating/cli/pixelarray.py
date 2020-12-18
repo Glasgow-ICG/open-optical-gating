@@ -13,6 +13,7 @@ Frame metadata:
 """
 
 import numpy as np
+from ast import literal_eval
 import time
 from pybase64 import b64encode, b64decode
 
@@ -47,26 +48,42 @@ class PixelArray(np.ndarray):
 
     def for_cbor(self):
         # Returns a representation of the array that is suitable for CBOR serialisation.
-        return { "shape": self.shape,
-                 "dtype": str(self.dtype),
-                 "pixels": self.tobytes(),
-                 "metadata": self.metadata }
+        return {"shape": self.shape,
+                "dtype": str(self.dtype),
+                "pixels": self.tobytes(),
+                "metadata": self.metadata}
 
     def for_json(self):
         # Returns a representation of the array that is suitable for JSON serialisation.
         # Note that we do not do this by subclassing JSONEncoder, because fast json encoders
         # such as orjson do not appear to support this mechanism, as far as I can see.
         arrayData = b64encode(self.tobytes()).decode()
-        return { "shape": self.shape,
-                 "dtype": str(self.dtype),
-                 "pixels": arrayData,
-                 "metadata": self.metadata }
+        return {"shape": self.shape,
+                "dtype": str(self.dtype),
+                "pixels": arrayData,
+                "metadata": self.metadata}
 
 
-def ArrayCBORDecode(arrayDict):
-    arr = np.frombuffer(arrayDict["pixels"], dtype=arrayDict["dtype"]).reshape(arrayDict["shape"])
+def ArrayCBORDecode(array_dict):
+    pixels: bytes = array_dict["pixels"]
+
+    data_type = array_dict["dtype"]
+
+    if type(data_type) is str:
+        if data_type == "int32":
+            data_type = int
+        elif data_type == "float64":
+            data_type = float
+
+    shape = array_dict["shape"]
+
+    if type(shape) is str:
+        shape = literal_eval(shape)
+
+    arr = np.frombuffer(pixels, dtype=data_type).reshape(shape)
+
     result = PixelArray(arr)
-    result.metadata = arrayDict["metadata"]
+    result.metadata = array_dict["metadata"]
     return result
 
 
