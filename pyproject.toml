@@ -18,8 +18,12 @@ flask = "^1.1.2"
 # and the source code will need to try importing both.
 # Tidier would be to special-case scikit-image on the RPi only, or to work out how to get
 # tifffile to install on the RPi. This should serve as a workaround for now, though.
-tifffile = { version = "^2019.7.26", platform = "win32" }
-scikit-image = { version = "0.15.0", platform = "~win32" }
+#tifffile = { version = "^2019.7.26", platform = "win32" }
+#scikit-image = { version = "0.15.0", platform = "~win32" }
+# JT: the above does not seem to work as I had hoped.
+# Radhan is finding that it is still installing tifffile on the Pi.
+# We'll need to work out what's going on, on a Pi, but we can just force scikit-image in the meantime, on this Pi-only branch
+scikit-image = { version = "0.15.0" }
 
 # JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
