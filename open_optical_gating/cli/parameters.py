@@ -31,6 +31,9 @@ def initialise(
     prediction_latency_s=0.015,
     referenceFrame=0.0,
     numExtraRefFrames=2,
+    phase_stamp_only=False,
+    lowerThresholdFactor=0.5,
+    upperThresholdFactor=0.75,
 ):
     """Function to initialise our custom settings dict with sensible pre-sets."""
     parameters = {}
@@ -70,6 +73,9 @@ def initialise(
     else:
         parameters.update({"referenceFrame": referenceFrame})
     parameters.update({"numExtraRefFrames": numExtraRefFrames})  # padding number
+    parameters.update({"phase_stamp_only": phase_stamp_only})
+    parameters.update({"lowerThresholdFactor": lowerThresholdFactor})
+    parameters.update({"upperThresholdFactor": upperThresholdFactor})
 
     # automatically added keys
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
@@ -108,6 +114,9 @@ def update(
     prediction_latency_s=None,
     referenceFrame=None,
     numExtraRefFrames=None,
+    phase_stamp_only=None,
+    lowerThresholdFactor=None,
+    upperThresholdFactor=None,
 ):
     """Function to update our custom settings dict with sensible pre-sets.
     Note: users should not use parameters.update(), i.e. a dictionary update
@@ -125,6 +134,13 @@ def update(
         parameters["reference_period"] = reference_period
     if numExtraRefFrames is not None:
         parameters["numExtraRefFrames"] = numExtraRefFrames
+    if phase_stamp_only is not None:
+        parameters["phase_stamp_only"] = phase_stamp_only
+    if lowerThresholdFactor is not None:
+        parameters["lowerThresholdFactor"] = lowerThresholdFactor
+    if upperThresholdFactor is not None:
+        parameters["upperThresholdFactor"] = upperThresholdFactor
+
     if barrierFrame is not None:
         parameters["barrierFrame"] = (
             (barrierFrame - parameters["numExtraRefFrames"])

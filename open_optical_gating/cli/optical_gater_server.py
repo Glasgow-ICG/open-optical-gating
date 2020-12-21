@@ -239,9 +239,12 @@ class OpticalGater:
         )
 
         # If we have at least one period of phase history, have a go at predicting a future trigger time
+        # (Note that this prediction can be disabled by enabling "phase_stamp_only" in pog_settings
         this_predicted_trigger_time_s = None
         sendTriggerNow = 0
-        if (len(self.frame_history) > self.pog_settings["reference_period"]):
+        if (len(self.frame_history) > self.pog_settings["reference_period"]
+            and self.pog_settings["phase_stamp_only"] != True
+        ):
             logger.debug("Predicting trigger...")
 
             # TODO: JT writes: this seems as good a place as any to highlight the general issue that the code is not doing a great job of precise timing.
