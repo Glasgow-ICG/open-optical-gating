@@ -262,7 +262,7 @@ develop = false
 type = "git"
 url = "https://bitbucket.org/jmtaylor/py_sad_correlation"
 reference = "master"
-resolved_reference = "b4b00f1fa21f1153ae7e437732ed08d63f9f9f4c"
+resolved_reference = "16f411ff1ccd34dc3a7dce26bd6ab7b7a8867940"
 
 [[package]]
 name = "jinja2"
@@ -754,7 +754,7 @@ rpi = ["picamera", "fastpins"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.5"
-content-hash = "354400b3c9f2b36e529019cd9bc9da72f4b6ad921a4597234773417aa69db55c"
+content-hash = "56e29af3fad0c5870706edd4ad0ca8602ab1e7bf34b325f5fe78bc4219f212cf"
 
 [metadata.files]
 aiocontextvars = [
