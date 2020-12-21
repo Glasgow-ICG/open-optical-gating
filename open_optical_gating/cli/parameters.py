@@ -32,6 +32,7 @@ def initialise(
     referenceFrame=0.0,
     numExtraRefFrames=2,
     phase_stamp_only=False,
+    minPeriod=5,
     lowerThresholdFactor=0.5,
     upperThresholdFactor=0.75,
 ):
@@ -74,6 +75,7 @@ def initialise(
         parameters.update({"referenceFrame": referenceFrame})
     parameters.update({"numExtraRefFrames": numExtraRefFrames})  # padding number
     parameters.update({"phase_stamp_only": phase_stamp_only})
+    parameters.update({"minPeriod": minPeriod})
     parameters.update({"lowerThresholdFactor": lowerThresholdFactor})
     parameters.update({"upperThresholdFactor": upperThresholdFactor})
 
@@ -115,6 +117,7 @@ def update(
     referenceFrame=None,
     numExtraRefFrames=None,
     phase_stamp_only=None,
+    minPeriod=None,
     lowerThresholdFactor=None,
     upperThresholdFactor=None,
 ):
@@ -136,6 +139,8 @@ def update(
         parameters["numExtraRefFrames"] = numExtraRefFrames
     if phase_stamp_only is not None:
         parameters["phase_stamp_only"] = phase_stamp_only
+    if minPeriod is not None:
+        parameters["minPeriod"] = minPeriod
     if lowerThresholdFactor is not None:
         parameters["lowerThresholdFactor"] = lowerThresholdFactor
     if upperThresholdFactor is not None:

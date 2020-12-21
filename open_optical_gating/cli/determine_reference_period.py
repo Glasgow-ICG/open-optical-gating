@@ -57,7 +57,7 @@ def establish_indices(sequence, period_history, settings, require_stable_history
         diffs = jps.sad_with_references(frame, pastFrames)
 
         # Calculate Period based on these Diffs
-        period = calculate_period_length(diffs, settings["lowerThresholdFactor"], settings["upperThresholdFactor"])
+        period = calculate_period_length(diffs, settings["minPeriod"], settings["lowerThresholdFactor"], settings["upperThresholdFactor"])
         if period != -1:
             period_history.append(period)
 
@@ -101,7 +101,7 @@ def establish_indices(sequence, period_history, settings, require_stable_history
     return None, None, settings
 
 
-def calculate_period_length(diffs, lowerThresholdFactor=0.5, upperThresholdFactor=0.75):
+def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperThresholdFactor=0.75):
     """ Attempt to determine the period of one heartbeat, from the diffs array provided. The period will be measured backwards from the most recent frame in the array
         Parameters:
             diffs    ndarray    Diffs between latest frame and previously-received frames
@@ -130,7 +130,7 @@ def calculate_period_length(diffs, lowerThresholdFactor=0.5, upperThresholdFacto
     numScores = 1
     got = False
 
-    for d in range(5, diffs.size+1):
+    for d in range(minPeriod, diffs.size+1):
         logger.trace(d)
         score = diffs[diffs.size - d]
         # got, values = gotScoreForDelta(score, d, values)
