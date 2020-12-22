@@ -17,9 +17,10 @@ flask = "^1.1.2"
 # But on the RPi, tifffile does not install (dependency imagecodecs fails to find openjpeg.h).
 # JT: current workaround is to have platform-dependent installation here,
 #     and the source code will need to try importing both.
-#     TODO: It would be tidier to work out how to get tifffile to install on the RPi.
+#     TODO: It would be tidier to work out how to get tifffile to install on the RPi,
+#     or at least figure out how to specify to use tifffile one everything *except* the RPi
 tifffile = { version = "^2019.7.26", markers = "sys_platform == 'win32'"}
-scikit-image = { version = "0.15.0", markers = "sys_platform != 'win32'"}
+scikit-image = { version = "^0.15.0", markers = "sys_platform != 'win32'"}
 
 # JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
