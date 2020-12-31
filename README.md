@@ -20,23 +20,23 @@ Our fully open-source system is able to perform prospective optical gating with 
 ## Installation
 
 The following instructions have been tested on:
+
 - Debian and CentOS Linux, Windows with Anaconda python, OS X with Anaconda python, Raspberry Pi 3 with Raspberry Pi OS (release: 2020-08-20).
 - Python 3.5-3.9
 
 ### Dependencies
 
-If you install this software through either of the following to methods, you should not need to install any extra dependencies.
-All dependencies are specified in the `pyproject.toml` file.
+If you install this software using the following methods, you should not need to manually install any extra dependencies - any required packages will be automatically installed.
 
 ### For users
 
-This package is not yet published to PyPi, but you can install it directly from our git respository using `pip`.
+This package is not yet published to PyPi, but you can install it directly from our git respository using the instructions given here.
 
 On any platform *except* the Raspberry Pi, run the following command:
 
 `python -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
-(Note: use `python3` in place of `python` if you have a Python 2.x installed as well)
+(Note: use `python3` in place of `python` if you have a Python 2.x version installed as well)
 
 On the Raspberry Pi, run the following commands:
 
@@ -46,12 +46,20 @@ On the Raspberry Pi, run the following commands:
 
 ### Installation - troubleshooting
 
-- On some computers it may be necessary to run all commands using `python3` instead of `python` (e.g. if there is both a python 2 and a python 3 installed)
+- `ERROR: Package u'open-optical-gating' requires a different Python: 2.7.13 not in '>=3.5,<4.0'`. 
+  Rerun the installation commands substituting `python3` in place of `python`.
 
-- If you are installing inside a virtual environment, you must omit the `--user` flag on the `pip install` command. Otherwise, depending on your version of `pip`, you may get an error or just a silent failure.
+- Installation fails while installing dependency scikit-image:
+`ModuleNotFoundError: No module named 'numpy'`
+`ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.`
+Fix by running `python -m pip install numpy`, and then rerun the installation command.
 
-- If you have a *very* old version of pip installed, you may find that the installation process is suspiciously fast and then when you try and run the code you get an error  `No module named open_optical_gating`. 
-In that case the solution is to run `pip install --upgrade pip` and then follow the installation instructions again.
+- `ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` when installing inside a virtual environment. 
+  Omit the `--user` flag on the `pip install` command, and rerun.
+
+- Installation appears to succeed, but error `No module named open_optical_gating` or `ImportError: No module named 'loguru'` encountered when running the code:
+    - If you are installing inside a virtual environment, rerun the install command but omit the `--user` flag. [A newer version of `pip` would have warned you about the problem - see above]
+    - If you have a *very* old version of pip installed, you will see this error after a suspiciously fast installation process. Run `python -m pip install --upgrade pip` and then repeat the original installation instructions.
 
 
 ## Testing an installation
@@ -81,14 +89,14 @@ To test the websocket version of this software, from within the repository folde
 `python -m open_optical_gating.cli.websocket_optical_gater optical_gating_data/example_data_settings.json`
 `python -m open_optical_gating.cli.websocket_example_client optical_gating_data/example_data_settings.json`
 
-This will perform a run similar to that with file_optical_gater, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
+This will perform a run similar to that with `file_optical_gater`, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
 
 
 ## For developers - pip installation of source code
 
 Instead of the standard `pip install` command given above, run the following command from the directory where you want the source tree to be generated:
 
-`python -mpip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
+`python -m pip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
 ### Tests for developers
 
