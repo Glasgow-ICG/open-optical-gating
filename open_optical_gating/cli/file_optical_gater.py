@@ -1,12 +1,13 @@
 """Extension of CLI Open Optical Gating System for emulating gating with saved brightfield data"""
 
 # Python imports
-import sys, os
+import sys, os, time, argparse
 import json
-import time
+import urllib.request
 
 # Module imports
 from loguru import logger
+from tqdm.auto import tqdm
 # See comment in pyproject.toml for why we have to try both of these
 try:
     import skimage.io as tiffio
@@ -57,7 +58,28 @@ class FileOpticalGater(server.OpticalGater):
         """Load data file"""
         # Load
         logger.success("Loading image data...")
-        self.data = tiffio.imread(filename)
+        try:
+            self.data = tiffio.imread(filename)
+        except FileNotFoundError:
+            if "source_url" in self.settings:
+                response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(filename))
+                if (response.startswith("Y") or response.startswith("y") or (response == "")):
+                    # Download from the URL provided in the settings file
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    with tqdm(unit='B', unit_scale=True, desc="Downloading") as t:
+                        urllib.request.urlretrieve(self.settings["source_url"],
+                                                   filename,
+                                                   reporthook=tqdm_hook(t))
+                    logger.info("Downloaded file {0}".format(filename))
+                    # Try again
+                    self.data = tiffio.imread(filename)
+                else:
+                    raise
+            else:
+                logger.error("File {0} not found".format(settings_file_path))
+                raise
+            
+
         self.height, self.width = self.data[0].shape
 
         # Initialise frame iterator and time tracker
@@ -135,35 +157,96 @@ class FileOpticalGater(server.OpticalGater):
         self.last_frame_wallclock_time = time.time()
         return next
 
-
-def run(settings):
+def load_settings(raw_args, desc, add_extra_args=None):
     '''
-        Run the optical gater based on a settings.json file containing information
-        including the path to the .tif file to be processed.
+        Load the settings.json file containing information including
+        the path to the .tif file to be processed.
         
-        Params:   settings     str or dict
-        If settings is a string, this is interpreted as a path to a settings.json file.
-        If settings is a dictionary, this is interpreted as a settings dictionary as would be loaded
-         from a settings.json file.
-         
+        Params:   raw_args        list      Caller should normally pass sys.argv here
+                  desc            str       Description to provide as command line help description
+                  add_extra_args  function  Function describing additional arguments that argparse should expect,
+                                             given the specific needs of the caller
+        
         Note that in a settings file, if the key "path" is a relative path then this will be treated
         as relative to the *settings file*, not the current working directory.
         That seems the only sane behaviour, since when writing the settings file we cannot know
         what the current working directory will be when it is used.
-    '''
-    if isinstance(settings, str):
-        # We have been passed a path - load the file as a settings file
-        logger.success("Loading settings file...")
-        settings_file_path = settings
+        '''
+    parser = argparse.ArgumentParser(description=desc,
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("settings", help="path to .json file containing settings")
+    if (add_extra_args is not None):
+        add_extra_args(parser)
+    args = parser.parse_args(raw_args)
+
+    # Load the file as a settings file
+    settings_file_path = args.settings
+    logger.success("Loading settings file {0}...".format(settings_file_path))
+    try:
         with open(settings_file_path) as data_file:
             settings = json.load(data_file)
+    except FileNotFoundError:
+        if (os.path.basename(settings_file_path) == "example_data_settings.json"):
+            url = "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/examples/example_data_settings.json"
+            response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(settings_file_path))
+            if (response.startswith("Y") or response.startswith("y") or (response == "")):
+                # Download from github
+                os.makedirs(os.path.dirname(settings_file_path), exist_ok=True)
+                urllib.request.urlretrieve(url, settings_file_path)
+                with open(settings_file_path) as data_file:
+                    settings = json.load(data_file)
+            else:
+                raise
+        else:
+            logger.error("File {0} not found".format(settings_file_path))
+            raise
+                    
+    # If a relative path to the data file is specified in the settings file,
+    # we will adjust it to be a path relative to the location of the settings file itself.
+    # This is the only sane way to behave given that this code could be being run from any working directory
+    # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
+    settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
 
-        # If a relative path to the data file is specified in the settings file,
-        # we will adjust it to be a path relative to the location of the settings file itself
-        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+    # Provide the parsed arguments to the caller, as a way for them to access
+    # any additional flags etc that they have specified
+    settings["parsed_args"] = args
 
+    return settings
+
+# This next function taken from tqdm example code
+def tqdm_hook(t):
+    """ Wraps tqdm instance for use with urlretrieve()    """
+    last_b = [0]
     
+    def update_to(b=1, bsize=1, tsize=None):
+        """
+            b  : int, optional
+            Number of blocks transferred so far [default: 1].
+            bsize  : int, optional
+            Size of each block (in tqdm units) [default: 1].
+            tsize  : int, optional
+            Total size (in tqdm units). If [default: None] or -1,
+            remains unchanged.
+            """
+        if tsize not in (None, -1):
+            t.total = tsize
+        displayed = t.update((b - last_b[0]) * bsize)
+        last_b[0] = b
+        return displayed
+    
+    return update_to
+
+
+def run(args, desc):
+    '''
+        Run the optical gater based on a settings.json file which includes
+        the path to the .tif file to be processed.
+        
+        Params:   raw_args   list    Caller should normally pass sys.argv here
+                  desc       str     Description to provide as command line help description
+    '''
+    settings = load_settings(args, desc)
+
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["path"], settings=settings, automatic_target_frame=False,
@@ -180,11 +263,4 @@ def run(settings):
 
 
 if __name__ == "__main__":
-    # Reads data from settings json file
-    if len(sys.argv) > 1:
-        settings_file_path = sys.argv[1]
-    else:
-        settings_file_path = "settings.json"
-
-    # Runs the server
-    run(settings_file_path)
+    run(sys.argv[1:], "Run optical gater on image data contained in tiff file")

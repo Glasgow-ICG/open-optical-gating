@@ -66,7 +66,7 @@ async def send_frame(websocket, frame=None, expect_echo=False):
 
 async def send_test_frame(uri, expect_echo=False):
     async with websockets.connect(uri) as websocket:
-        asyncio.get_event_loop().run_until_complete(send_frame(websocket, expect_echo))
+        response, timestamp = await send_frame(websocket, expect_echo=expect_echo)
 
 
 async def send_from_file(uri, settings, expect_echo=False):
@@ -81,8 +81,9 @@ async def send_from_file(uri, settings, expect_echo=False):
         times = []
         sent_trigger_times = []
         while not file_source.stop:
+            frame = file_source.next_frame(force_framerate=False)
             response, timestamp = await send_frame(
-                websocket, file_source.next_frame(force_framerate=True), expect_echo
+                websocket, frame, expect_echo
             )
             print("Got sync response: ", response)
             if "unwrapped_phase" in response["sync"]:
@@ -114,34 +115,24 @@ async def send_from_file(uri, settings, expect_echo=False):
         plt.ylabel("Phase (rad)")
         plt.show()
 
-def run(settings, uri="ws://localhost:8765", expect_echo=False):
-    if isinstance(settings, str):
-        # We have been passed a path - load the file as a settings file
-        logger.success("Loading settings file...")
-        settings_file_path = settings
-        with open(settings_file_path) as data_file:
-            settings = json.load(data_file)
+def run(args, desc):
+    '''
+        Run a websocket-based optical gater server, configured based on the .json file provided
         
-        # If a relative path to the data file is specified in the settings file,
-        # we will adjust it to be a path relative to the location of the settings file itself
-        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+        Params:   raw_args   list    Caller should normally pass sys.argv here
+        desc       str     Description to provide as command line help description
+        '''
+    def add_extra_args(parser):
+        parser.add_argument("-l", "--loopback", dest="loopback", action="store_true", help="expecting to interact with a loopback server")
+        parser.add_argument("-t", "--test-frame", dest="test_frame", action="store_true", help="just send a single test frame to the server")
+        parser.add_argument("-u", "--server-uri", dest="uri", default="ws://localhost:8765", help="URI for server to connect to")
+    settings = file_optical_gater.load_settings(args, desc, add_extra_args)
+    expect_echo = settings["parsed_args"].loopback
 
-    if (settings is not None):
-        asyncio.get_event_loop().run_until_complete(send_from_file(uri, settings, expect_echo))
+    if settings["parsed_args"].test_frame:
+        asyncio.get_event_loop().run_until_complete(send_test_frame(settings["parsed_args"].uri, expect_echo))
     else:
-        asyncio.get_event_loop().run_until_complete(send_test_frame(uri, expect_echo))
+        asyncio.get_event_loop().run_until_complete(send_from_file(settings["parsed_args"].uri, settings, expect_echo))
 
 if __name__ == "__main__":
-    settings_file_path = None
-    expect_echo = False
-    if sys.argv[1] == "file":
-        # Reads data from settings json file
-        if len(sys.argv) > 2:
-            settings_file_path = sys.argv[2]
-        else:
-            settings_file_path = "settings.json"
-    elif sys.argv[1] == "echo":
-        expect_echo = True
-
-    run(settings_file_path, expect_echo)
+    run(sys.argv[1:], "Run a websocket-based optical gater client, sending image data to a separate server instance for processing")
