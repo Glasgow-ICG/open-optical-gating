@@ -19,68 +19,84 @@ Our fully open-source system is able to perform prospective optical gating with 
 
 ## Installation
 
-The following instructions have been tested on a Raspberry Pi 3 with Raspberry Pi OS (release: 2020-08-20).
+The following instructions have been tested on:
+
+- Debian and CentOS Linux, Windows with Anaconda python, OS X with Anaconda python, Raspberry Pi 3 with Raspberry Pi OS (release: 2020-08-20).
+- Python 3.5-3.9
 
 ### Dependencies
 
-If you install this software through either of the following to methods, you should not need to install any extra dependencies.
-All dependencies are specified in the `pyproject.toml` file.
+If you install this software using the following methods, you should not need to manually install any extra dependencies - any required packages will be automatically installed.
 
 ### For users
 
-In future we are planning to build and publish this package to PyPi, so that you could install it using `pip`, as you would any other package: `python3 -m pip install --user open-optical-gating`.
-However, until that time, please use the developer instructions below.
+This package is not yet published to PyPi, but you can install it directly from our git respository using the instructions given here.
 
-### For developers
+On any platform *except* the Raspberry Pi, run the following command:
 
-We use Poetry, the popular python packaging and dependency management tool ([installation instructions](https://python-poetry.org/docs/#installation)).
-At time of testing we found we needed to first run `poetry self update --preview` to fix a temporary bug, this may not be necessary on your system.
+`python -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
-Once poetry is installed please use the following to install all dependencies and create a python environment for development.
+(Note: use `python3` in place of `python` if you have a Python 2.x version installed as well)
 
-1. `git clone https://github.com/Glasgow-ICG/open-optical-gating.git` (or clone with SSH),
-2. `cd open-optical-gating`,
-3. `poetry install --extras "rpi" --no-root` to install core dependencies and those required for the Raspberry Pi*,
-4. `poetry build; poetry install` to build and install this commit of the software,
-5. Develop and enjoy! Remembering to install new dependencies with `poetry add <package>` and pushing both the updated `pyproject.toml` and `poetry.lock` when you create a pull request.
+On the Raspberry Pi, run the following commands:
 
-\* **Note:** there are currently three 'extras':
+`sudo apt install libatlas-base-dev python3-gi-cairo`
+`python3 -m pip install --user picamera pybase64 git+https://github.com/abdrysdale/fastpins`
+`python3 -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
-1. `rpi` for Raspberry Pi-specific packages,
-2. `numba` for JIT compilation (not compatible with Raspberry Pi yet),
-3. `socket` for communicating with a microscope over websocket, instead of the using our own camera and GPIO (e.g. the PiCamera and GPIO pins).
+### Installation - troubleshooting
 
-You can install more than one 'extra' by separating them with space, *inside* the quotes, e.g. `"socket numba"`
+- `ERROR: Package u'open-optical-gating' requires a different Python: 2.7.13 not in '>=3.5,<4.0'`. 
+  Rerun the installation commands substituting `python3` in place of `python`.
+
+- Installation fails while installing dependency scikit-image:
+`ModuleNotFoundError: No module named 'numpy'`
+`ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.`
+Fix by running `python -m pip install numpy`, and then rerun the installation command.
+
+- `ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` when installing inside a virtual environment. 
+  Omit the `--user` flag on the `pip install` command, and rerun.
+
+- Installation appears to succeed, but error `No module named open_optical_gating` or `ImportError: No module named 'loguru'` encountered when running the code:
+    - If you are installing inside a virtual environment, rerun the install command but omit the `--user` flag. [A newer version of `pip` would have warned you about the problem - see above]
+    - If you have a *very* old version of pip installed, you will see this error after a suspiciously fast installation process. Run `python -m pip install --upgrade pip` and then repeat the original installation instructions.
+
 
 ## Testing an installation
 
 ### Testing the install by emulating on a file
 
-If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository, from within the repository folder run
+If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository. Run:
 
-    poetry run python open_optical_gating/cli/file_optical_gater.py examples/example_data_settings.json
-
-This should ask you to pick a period frame (try '10') and produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
+ `python -m open_optical_gating.cli.file_optical_gater optical_gating_data/example_data_settings.json`
+ 
+ The first time you run, this will prompt you to download some example video data. It will then run the optical gater code on that dataset. 
+During the analysis it will ask you to pick a period frame (try '10'). It will produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
 
 ### Testing the Raspberry Pi Triggers
 
 If this software is correctly installed and your hardware is correctly configured (see below), you should be able to run the PiOpticalGater using the example data in this repository, from within the repository folder run
 
-    poetry run python open_optical_gating/cli/check_trigger.py examples/default_settings.json
+`python -m open_optical_gating/cli/check_trigger optical_gating_data/default_settings.json`
 
 This should trigger your timing box/laser/camera depending on your configuration.
 If using this to test a camera trigger, you will need to set your camera ready to recieve external triggers (see below).
 
 ### Testing the websocket interface
 
-To test the websocket version of this software, from within the repository folder run two separate commands simultaneously:
+To test the websocket version of this software, from within the repository folder run two separate commands simultaneously (in separate terminal windows):
 
-    poetry run python open_optical_gating/cli/websocket_optical_gater.py examples/example_data_settings.json
-    poetry run python open_optical_gating/cli/websocket_example_client.py file examples/example_data_settings.json
+`python -m open_optical_gating.cli.websocket_optical_gater optical_gating_data/example_data_settings.json`
+`python -m open_optical_gating.cli.websocket_example_client optical_gating_data/example_data_settings.json`
 
-(Yes, that really is a command line parameter consisting of the word "file", rather than a path to a file on disk. The file from which the frames are served is specified in the .json file)
+This will perform a run similar to that with `file_optical_gater`, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
 
-This will perform a run similar to that with file_optical_gater, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
+
+## For developers - pip installation of source code
+
+Instead of the standard `pip install` command given above, run the following command from the directory where you want the source tree to be generated:
+
+`python -m pip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
 ### Tests for developers
 
@@ -140,15 +156,15 @@ After this, it would be best to check if the signals are being fired by the Ascl
 
 2. Ensure the zebrafish heart is the field of view of both the fluorescence camera and the brightfield camera (PiCam). The brightfield camera can be displayed for 60 seconds using the following command. To increase the time, replace 60000 with the desired time in milliseconds.
 
-       poetry run raspivid -t 60000
+       python -m raspivid -t 60000
 
     You can save the video output by using the `-o` flag, e.g.
    
-       poetry run raspivid -t 60000 -o file.h264
+       python -m raspivid -t 60000 -o file.h264
 
 3. Launching the cli program.
 
-       poetry run python cli/pi_optical_gater.py examples/default_settings.json
+       python -m open_optical_gating.cli.pi_optical_gater optical_gating_data/example_data_settings.json
 
 4. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 

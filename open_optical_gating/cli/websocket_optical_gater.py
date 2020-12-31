@@ -10,7 +10,7 @@ import websockets, asyncio
 
 # Local imports
 from . import optical_gater_server as server
-#from . import pixelarray
+from . import file_optical_gater
 from . import sockets_comms as comms
 
 
@@ -97,19 +97,15 @@ class WebSocketOpticalGater(server.OpticalGater):
         asyncio.get_event_loop().run_forever()
 
 
-def run(settings):
-    if isinstance(settings, str):
-        # We have been passed a path - load the file as a settings file
-        logger.success("Loading settings file...")
-        settings_file_path = settings
-        with open(settings_file_path) as data_file:
-            settings = json.load(data_file)
+def run(args, desc):
+    '''
+        Run a websocket-based optical gater server, configured based on the .json file provided
         
-        # If a relative path to the data file is specified in the settings file,
-        # we will adjust it to be a path relative to the location of the settings file itself
-        # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
-
+        Params:   raw_args   list    Caller should normally pass sys.argv here
+                  desc       str     Description to provide as command line help description
+        '''
+    settings = file_optical_gater.load_settings(args, desc)
+    
     logger.success("Initialising gater...")
     analyser = WebSocketOpticalGater(settings=settings)
     logger.success("Running server...")
@@ -117,11 +113,4 @@ def run(settings):
 
 
 if __name__ == "__main__":
-    # Reads data from settings json file
-    if len(sys.argv) > 1:
-        settings_file = sys.argv[1]
-    else:
-        settings_file = "settings.json"
-
-    # Runs the server
-    run(settings)
+    run(sys.argv[1:], "Run websocket-based optical gater server, configured based on the .json file provided")

@@ -1,11 +1,12 @@
+# Simple websocket server just sends back any frame message it receives,
+# along with information about the time taken to decode it
 import asyncio
 import websockets
 import time
 
-from pixelarray import PixelArray
 from . import sockets_comms as comms
 
-async def hello(websocket, path):
+async def loopback(websocket, path):
     frameMessage = await websocket.recv()
     t1 = time.time()
     arrayObject = comms.ParseFrameMessage(comms.DecodeMessage(frameMessage))
@@ -16,7 +17,7 @@ async def hello(websocket, path):
     returnMessage = comms.EncodeFrameMessage(arrayObject)
     await websocket.send(returnMessage)
 
-start_server = websockets.serve(hello, "localhost", 8765)
+start_server = websockets.serve(loopback, "localhost", 8765)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

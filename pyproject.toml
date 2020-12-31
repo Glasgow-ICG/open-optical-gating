@@ -2,7 +2,7 @@
 name = "open-optical-gating"
 version = "2.0.0"
 description = ""
-authors = ["Chas Nelson <chas.nelson@glasgow.ac.uk>"]
+authors = ["Chas Nelson <chas.nelson@glasgow.ac.uk>", "Jonathan Taylor <jonathan.taylor@glasgow.ac.uk>"]
 
 [tool.poetry.dependencies]
 python = "^3.5"
@@ -10,27 +10,35 @@ optical-gating-alignment = { git = "https://github.com/Glasgow-ICG/optical-gatin
 j_py_sad_correlation = { git = "https://bitbucket.org/jmtaylor/py_sad_correlation" }
 loguru = "^0.4.1"
 tqdm = "^4.45.0"
-tifffile = "^2019.7.26"
 serial = "^0.0.97"
 flask = "^1.1.2"
 
-# JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
+# On Windows, scikit-image does not install cleanly.
+# But on the RPi, tifffile does not install (dependency imagecodecs fails to find openjpeg.h).
+# JT: current workaround is to have platform-dependent installation here,
+#     and the source code will need to try importing both.
+#     TODO: It would be tidier to work out how to get tifffile to install on the RPi,
+#     or at least figure out how to specify to use tifffile one everything *except* the RPi
+tifffile = { version = "^2019.7.26", markers = "sys_platform == 'win32'"}
+scikit-image = { version = "^0.15", markers = "sys_platform != 'win32'"}
+# scipy is a dependency for scikit-image, but on RPi it is not automatically installed, for some reason.
+# That really seems like a bug somewhere - and this explicit dependency here is the fix.
+scipy = { version = ">=0.17", markers = "sys_platform != 'win32'"}
+
+# JT: On Windows, matplotlib 3.3 has some sort of incompatibility issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
 matplotlib = "<3.3.0"
 
 # JT: Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
-# I am not sure if/how I can specify a different version if *not* running Windows -
-# it seems to complain about a duplicate key. But fortunately numpy gets installed via
-# other dependencies, so hopefully that won't be an issue
 # Note that we have to be open to using 1.18 for back-compatibility with python 3.5 on Windows.
-numpy = {version = "<=1.19.3", platform = "win32"}
-#numpy = {version = "*", platform = "~Windows"}
+numpy = [{version = "<=1.19.3", markers = "sys_platform == 'win32'"},
+         {version = "^1.17.5", markers = "sys_platform != 'win32'"}]
 
 # Socket Specific
 #orjson = { version = "^3.4.5", optional = true }
 #  JT: note that orjson v2 seems to have problems on Windows (https://github.com/readthedocs/readthedocs.org/issues/7313)
 #      which may, from the sound of that issue report, go away with version 3.
-#      However, I don't actively use orjson at the moment, so I have instead worked around by just removing it as a 'socket' dependency, below.
+#      However, I don't actively use orjson at the moment, so I have instead worked around by just removing it as a dependency
 cbor = { version = "^1.0.0" }
 websockets = { version = "^7.0" }
 
