@@ -203,7 +203,15 @@ class PiOpticalGater(server.OpticalGater):
             )
 
 
-def run(settings):
+def run(args, desc):
+    '''
+        Run the Raspberry Pi optical gater, based on a settings.json file
+        
+        Params:   raw_args   list    Caller should normally pass sys.argv here
+                  desc       str     Description to provide as command line help description
+        '''
+    settings = load_settings(args, desc)
+
     logger.success("Initialising gater...")
     analyser = PiOpticalGater(settings=settings, automatic_target_frame=False)
 
@@ -218,14 +226,4 @@ def run(settings):
 
 
 if __name__ == "__main__":
-    # Reads data from settings json file
-    if len(sys.argv) > 1:
-        settings_file = sys.argv[1]
-    else:
-        settings_file = "settings.json"
-
-    with open(settings_file) as data_file:
-        settings = json.load(data_file)
-
-    # Runs the server
-    run(settings)
+    run(sys.argv[1:], "Run optical gater on image data contained in tiff file")
