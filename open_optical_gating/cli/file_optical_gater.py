@@ -62,7 +62,7 @@ class FileOpticalGater(server.OpticalGater):
             self.data = tiffio.imread(filename)
         except FileNotFoundError:
             if "source_url" in self.settings:
-                if (sys.platform == "win32")
+                if (sys.platform == "win32"):
                     os.system("color")  # Make ascii color codes work
                 response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(filename))
                 if (response.startswith("Y") or response.startswith("y") or (response == "")):
@@ -189,7 +189,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
             settings = json.load(data_file)
     except FileNotFoundError:
         if (os.path.basename(settings_file_path) == "example_data_settings.json"):
-            if (sys.platform == "win32")
+            if (sys.platform == "win32"):
                 os.system("color")  # Make ascii color codes work
             url = "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/examples/example_data_settings.json"
             response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(settings_file_path))
