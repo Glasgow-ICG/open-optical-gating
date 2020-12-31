@@ -18,7 +18,7 @@
     "live": 0,
     "log": 0,
     "path": "example_data.tif",
-    "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/examples/example_data.tif",
+    "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
     "period_dir": "period-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 10
