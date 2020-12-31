@@ -23,7 +23,7 @@ tifffile = { version = "^2019.7.26", markers = "sys_platform == 'win32'"}
 scikit-image = { version = "^0.15", markers = "sys_platform != 'win32'"}
 # scipy is a dependency for scikit-image, but on RPi it is not automatically installed, for some reason.
 # That really seems like a bug somewhere - and this explicit dependency here is the fix.
-scipy = { version = "^0.17", markers = "sys_platform != 'win32'"}
+scipy = { version = ">=0.17", markers = "sys_platform != 'win32'"}
 
 # JT: On Windows, matplotlib 3.3 has some sort of incompatibility issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)

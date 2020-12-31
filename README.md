@@ -46,11 +46,9 @@ On the Raspberry Pi, run the following commands:
 
 ### Installation - troubleshooting
 
-???? `python -m pip install --upgrade pip`
-
 - On some computers it may be necessary to run all commands using `python3` instead of `python` (e.g. if there is both a python 2 and a python 3 installed)
 
-- If you are installing in a virtual environment, the `--user` flag will lead to an error - in that case, just omit it.
+- If you are installing inside a virtual environment, you must omit the `--user` flag on the `pip install` command. Otherwise, depending on your version of `pip`, you may get an error or just a silent failure.
 
 - If you have a *very* old version of pip installed, you may find that the installation process is suspiciously fast and then when you try and run the code you get an error  `No module named open_optical_gating`. 
 In that case the solution is to run `pip install --upgrade pip` and then follow the installation instructions again.

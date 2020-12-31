@@ -11,10 +11,9 @@ if not '-m' in sys.argv:
     from . import file_optical_gater
     from . import websocket_optical_gater
     from . import websocket_example_client
-    from . import pi_optical_gater
-    from . import check_trigger
     try:
         # Will fail except on RPi
         from . import pi_optical_gater
+        from . import check_trigger
     except:
         pass
