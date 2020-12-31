@@ -21,15 +21,15 @@ flask = "^1.1.2"
 #     or at least figure out how to specify to use tifffile one everything *except* the RPi
 tifffile = { version = "^2019.7.26", markers = "sys_platform == 'win32'"}
 scikit-image = { version = "^0.15", markers = "sys_platform != 'win32'"}
+# scipy is a dependency for scikit-image, but on RPi it is not automatically installed, for some reason.
+# That really seems like a bug somewhere - and this explicit dependency here is the fix.
+scipy = { version = "^0.17", markers = "sys_platform != 'win32'"}
 
-# JT: On Windows, matplotlib 3.3 has some sort of incompatibilty issue related to the sip module.
+# JT: On Windows, matplotlib 3.3 has some sort of incompatibility issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
 matplotlib = "<3.3.0"
 
 # JT: Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)
-# I am not sure if/how I can specify a different version if *not* running Windows -
-# it seems to complain about a duplicate key. But fortunately numpy gets installed via
-# other dependencies, so hopefully that won't be an issue
 # Note that we have to be open to using 1.18 for back-compatibility with python 3.5 on Windows.
 numpy = [{version = "<=1.19.3", markers = "sys_platform == 'win32'"},
          {version = "^1.17.5", markers = "sys_platform != 'win32'"}]
