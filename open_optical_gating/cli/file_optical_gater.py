@@ -76,7 +76,7 @@ class FileOpticalGater(server.OpticalGater):
                 else:
                     raise
             else:
-                logger.error("File {0} not found".format(settings_file_path))
+                logger.error("File {0} not found".format(filename))
                 raise
             
 
