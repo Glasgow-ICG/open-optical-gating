@@ -41,7 +41,9 @@ On any platform *except* the Raspberry Pi, run the following command:
 On the Raspberry Pi, run the following commands:
 
 `sudo apt install libatlas-base-dev python3-gi-cairo`
+
 `python3 -m pip install --user picamera pybase64 git+https://github.com/abdrysdale/fastpins`
+
 `python3 -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
 ### Installation - troubleshooting
@@ -87,6 +89,7 @@ If using this to test a camera trigger, you will need to set your camera ready t
 To test the websocket version of this software, from within the repository folder run two separate commands simultaneously (in separate terminal windows):
 
 `python -m open_optical_gating.cli.websocket_optical_gater optical_gating_data/example_data_settings.json`
+
 `python -m open_optical_gating.cli.websocket_example_client optical_gating_data/example_data_settings.json`
 
 This will perform a run similar to that with `file_optical_gater`, but with frames being sent from the client, synchronization analysis being performed on the server, and triggers being received back by the client (which plots a crude graph at the end).
