@@ -12,15 +12,15 @@ from loguru import logger
 # Raspberry Pi-specific imports
 # Picamera
 import picamera
-from picamera.array import PiYUVAnalysis
+from picamera.array import PiYUVArray
 
 # Fastpins module
 import fastpins as fp
 
 # Local imports
-import optical_gater_server as server
-import pixelarray as pa
-
+from . import optical_gater_server as server
+from . import pixelarray as pa
+from . import file_optical_gater
 
 class PiOpticalGater(server.OpticalGater):
     """Extends the optical gater server for the Raspberry Pi.
@@ -147,10 +147,10 @@ class PiOpticalGater(server.OpticalGater):
                     )
                 )
 
-        output = np.empty((self.width, self.height, 3), dtype=np.uint8)
+        output = PiYUVArray(self.camera)  #np.empty((self.width, self.height, 3), dtype=np.uint8)
         self.camera.capture(output, "yuv")
         next = pa.PixelArray(
-            output[:, :, 0],  # Y channel
+            output.array[:, :, 0],  # Y channel
             metadata={
                 "timestamp": time.time() - self.start_time
             },  # relative to start_time to sanitise
@@ -210,7 +210,7 @@ def run(args, desc):
         Params:   raw_args   list    Caller should normally pass sys.argv here
                   desc       str     Description to provide as command line help description
         '''
-    settings = load_settings(args, desc)
+    settings = file_optical_gater.load_settings(args, desc)
 
     logger.success("Initialising gater...")
     analyser = PiOpticalGater(settings=settings, automatic_target_frame=False)

@@ -209,7 +209,8 @@ def load_settings(raw_args, desc, add_extra_args=None):
     # we will adjust it to be a path relative to the location of the settings file itself.
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-    settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+    if "path" in settings:
+        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
 
     # Provide the parsed arguments to the caller, as a way for them to access
     # any additional flags etc that they have specified
