@@ -1,4 +1,4 @@
-# aclePIus - Open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
+# Open Optical Gating: open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
 
 ## Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson
 
@@ -32,7 +32,9 @@ If you install this software using the following methods, you should not need to
 
 This package is not yet published to PyPi, but you can install it directly from our git respository using the instructions given here.
 
-On any platform *except* the Raspberry Pi, run the following command:
+On Windows, you will first need to install MS Visual C++ if it is not already installed on your system (see http://visualstudio.microsoft.com/visual-cpp-build-tools)
+
+Then, to install on any platform *except* the Raspberry Pi, run the following command:
 
 `python -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
@@ -71,6 +73,8 @@ Fix by running `python -m pip install numpy`, and then rerun the installation co
 If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository. Run:
 
  `python -m open_optical_gating.cli.file_optical_gater optical_gating_data/example_data_settings.json`
+ 
+ (Remember to change `python` to `python3` if you are on the Raspberry pi)
  
  The first time you run, this will prompt you to download some example video data. It will then run the optical gater code on that dataset. 
 During the analysis it will ask you to pick a period frame (try '10'). It will produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.

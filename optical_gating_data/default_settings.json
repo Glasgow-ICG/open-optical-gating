@@ -4,7 +4,7 @@
     "analyse_time": 1000,
     "awb_mode": "off",
     "exposure_mode": "off",
-    "shutter_speed": 2500,
+    "shutter_speed_us": 2500,
     "image_denoise": 0,
     "laser_trigger_pin": 22,
     "fluorescence_camera_pins": {
@@ -21,5 +21,5 @@
     "period_dir": "period-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 5,
-    "shutter_speed_us": 2500
+    "min_heart_rate_hz": 1.0
 }

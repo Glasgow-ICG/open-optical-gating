@@ -222,6 +222,8 @@ class OpticalGater:
             self.last_phase = current_phase
 
         # Evicts the oldest entry in frame_history if it exceeds the history length that we are meant to be retaining
+        # Note: deletion of first list element is potentially a performance issue,
+        # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
         if len(self.frame_history) >= self.settings["frame_buffer_length"]:
             del self.frame_history[0]
 
@@ -363,6 +365,18 @@ class OpticalGater:
 
         # Adds new frame to buffer
         self.ref_buffer.append(pixelArray)
+        # Impose an upper limit on the buffer length, to protect against performance degradation
+        # in cases where we are not succeeding in identifying a period
+        # Note: deletion of first list element is potentially a performance issue,
+        # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
+        ref_buffer_duration = (self.ref_buffer[-1].metadata["timestamp"]
+                               - self.ref_buffer[0].metadata["timestamp"])
+        if (
+            ("min_heart_rate_hz" in self.settings) and
+            (ref_buffer_duration > 1.0/self.settings["min_heart_rate_hz"])
+           ):
+            logger.debug("Trimming buffer to duration {0}".format(1.0/self.settings["min_heart_rate_hz"]))
+            del self.ref_buffer[0]
 
         # Calculate period from determine_reference_period.py
         logger.info("Attempting to determine new reference period.")
