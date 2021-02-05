@@ -1,4 +1,6 @@
 # Open Optical Gating: open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FGlasgow-ICG%2Fopen-optical-gating.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FGlasgow-ICG%2Fopen-optical-gating?ref=badge_shield)
+
 
 ## Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson
 
@@ -207,3 +209,7 @@ After this, it would be best to check if the signals are being fired by the Ascl
     "shutter_speed_us": 2500
 }
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FGlasgow-ICG%2Fopen-optical-gating.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FGlasgow-ICG%2Fopen-optical-gating?ref=badge_large)
