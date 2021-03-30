@@ -20,7 +20,7 @@ class WebSocketOpticalGater(server.OpticalGater):
 
     def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
-            settings      dict  Parameters affecting operation (see default_settings.json)
+            settings      dict  Parameters affecting operation (see json_format_description.md)
         """
 
         # Initialise parent

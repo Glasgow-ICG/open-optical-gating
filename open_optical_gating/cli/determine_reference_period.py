@@ -206,7 +206,7 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
 
 
 def save_period(reference_period, parent_dir="~/"):
-    """Function to save a reference period in am ISO format time-stamped folder with a parent_dir.
+    """Function to save a reference period in an ISO format time-stamped folder with a parent_dir.
         Parameters:
             reference_period    ndarray     t by x by y 3d array of reference frames
             parent_dir          string      parent directory within which to store the period

@@ -33,7 +33,7 @@ class FileOpticalGater(server.OpticalGater):
         automatic_target_frame=True,
     ):
         """Function inputs:
-            settings      dict  Parameters affecting operation (see default_settings.json)
+            settings      dict  Parameters affecting operation (see optical_gating_data/json_format_description.md)
         """
 
         # Get the assumed brightfield framerate from the settings
@@ -169,7 +169,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
                   add_extra_args  function  Function describing additional arguments that argparse should expect,
                                              given the specific needs of the caller
         
-        Note that in a settings file, if the key "path" is a relative path then this will be treated
+        Note that in a settings file, if the key "input_tiff_path" is a relative path then this will be treated
         as relative to the *settings file*, not the current working directory.
         That seems the only sane behaviour, since when writing the settings file we cannot know
         what the current working directory will be when it is used.
@@ -209,8 +209,8 @@ def load_settings(raw_args, desc, add_extra_args=None):
     # we will adjust it to be a path relative to the location of the settings file itself.
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-    if "path" in settings:
-        settings["path"] = os.path.join(os.path.dirname(settings_file_path), settings["path"])
+    if "input_tiff_path" in settings:
+        settings["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), settings["input_tiff_path"])
 
     # Provide the parsed arguments to the caller, as a way for them to access
     # any additional flags etc that they have specified
@@ -254,7 +254,7 @@ def run(args, desc):
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        source=settings["path"], settings=settings, automatic_target_frame=False,
+        source=settings["input_tiff_path"], settings=settings, automatic_target_frame=False,
     )
 
     logger.success("Running server...")

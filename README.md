@@ -83,7 +83,7 @@ During the analysis it will ask you to pick a period frame (try '10'). It will p
 
 If this software is correctly installed and your hardware is correctly configured (see below), you should be able to run the PiOpticalGater using the example data in this repository, from within the repository folder run
 
-`python -m open_optical_gating/cli/check_trigger optical_gating_data/default_settings.json`
+`python -m open_optical_gating/cli/check_trigger optical_gating_data/pi_default_settings.json`
 
 This should trigger your timing box/laser/camera depending on your configuration.
 If using this to test a camera trigger, you will need to set your camera ready to recieve external triggers (see below).

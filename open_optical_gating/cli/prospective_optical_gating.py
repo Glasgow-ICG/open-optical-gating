@@ -184,7 +184,8 @@ def phase_matching(frame, reference_frames, settings=None):
         "Reference frame dtypes: {0} and {1}", frame.dtype, reference_frames[0].dtype
     )
     logger.trace(
-        "Reference frame shapes: {0} and {1}", frame.shape, reference_frames[0].shape
+        "Reference frame shapes: {0}->{1} and {2}->{3}", frame.shape, frame_cropped.shape,
+        reference_frames[0].shape, reference_frames_cropped[0].shape
     )
     SADs = jps.sad_with_references(frame_cropped, reference_frames_cropped)
     logger.trace(SADs)
@@ -223,7 +224,11 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
         return -1
 
     # Deal with the barrier frame logic (if fitBackToBarrier is True):
-    # Rather than fitting to a number of frames that depends on how far forward we are predicting, fit to a number that depends on where in the cycle we are. We try not to fit to the refractory period unless there really is no other data. The intention of this is to fit to as much data as possible but only in the parts of the cycle where the phase progression is highly predictable and linear with time.
+    # Rather than fitting to a number of frames that depends on how far forward we are predicting,
+    # fit to a number that depends on where in the cycle we are.
+    # We try not to fit to the refractory period unless there really is no other data.
+    # The intention of this is to fit to as much data as possible but only in the parts of the cycle
+    # where the phase progression is highly predictable and linear with time.
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(
@@ -252,7 +257,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
             "Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero)."
         )
 
-    # Use our linear fit to get a 'fitted' unwraped phase for the latest frame
+    # Use our linear fit to get a 'fitted' unwrapped phase for the latest frame
     # This should not rescue cases where, for some reason, the image-based
     # phase matching is erroneous.
     thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec
@@ -263,7 +268,9 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
         settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
     )
     # c.f. function triggerAnticipationProcessing in SyncAnalyzer.mm
-    # essentially this fixes for small backtracks in phase due to SAD imperfections
+    # essentially this fixes for small backtracks in phase due to SAD imperfections.
+    # If our computations so far suggest that our target phase is in the past, then
+    # we add multiples of 2pi until we are targeting the same phase point in a future heartbeat.
     while phaseToWait < 0:
         phaseToWait += 2 * np.pi
 
@@ -408,6 +415,10 @@ def pick_target_and_barrier_frames(reference_frames, settings):
             settings            dict        updated settings
     """
 
+    # TODO: JT: it's a bit odd that we rely on settings["reference_period"]
+    # but pass reference_frames as a standalone variable.
+    # Might be more consistent to have both in one single dictionary containing sync state information...
+    
     # First compare each frame in our list with the previous one
     # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     deltas_without_padding = np.zeros(
@@ -541,7 +552,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
         "prediction_latency_s"
     ]:
-        # We don't expect to have time to wait for an updated prediction... so schuedule the trigger now!
+        # We don't expect to have time to wait for an updated prediction... so schedule the trigger now!
         logger.success(
             "We don't expect to have time to wait for an updated prediction... so trigger scheduled now!"
         )

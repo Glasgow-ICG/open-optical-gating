@@ -27,6 +27,8 @@ scipy = { version = ">=0.17", markers = "sys_platform != 'win32'"}
 
 # JT: On Windows, matplotlib 3.3 has some sort of incompatibility issue related to the sip module.
 # I haven't managed to specify "not 3.3.*", so I have had to restrict to <3.3.0 for now (on all platforms)
+# TODO: Chas wondered if you can write !=3.3.* or perhaps more likely !3.3
+#       We should investigate this once I can bear to revisit all this packaging stuff again!
 matplotlib = "<3.3.0"
 
 # JT: Work around a serious bug on Windows (http://tinyurl.com/y3dm3h86)

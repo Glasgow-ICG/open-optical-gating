@@ -17,9 +17,9 @@
     "laser_trigger_pin": 22,
     "live": 0,
     "log": 0,
-    "path": "example_data.tif",
+    "input_tiff_path": "example_data.tif",
     "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
-    "period_dir": "period-data/",
+    "reference_sequence_dir": "reference-sequence-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 10,
     "min_heart_rate_hz": 1.0

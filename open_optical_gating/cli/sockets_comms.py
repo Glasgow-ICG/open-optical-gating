@@ -36,9 +36,22 @@
                              in that same timebase.
                              
     Synchronization metadata (after analysing the most recent frame)
-            "send_trigger"   int [0,1]     Our code has decided that a synchronization trigger should be generated
-            "trigger_time"   float         Future time prediction (in frame timebase) for the next synchronization trigger.
-            "phase"          float [0,2pi) Our computed phase (0 to 2pi) for the most recent frame
+        "trigger_type_sent"         int [0,1,2]   Whether our code has decided that a synchronization trigger should be generated:
+                                                    0: trigger not advised
+                                                    1: trigger advised at specified time. It may be too late to send the trigger,
+                                                       but we should try.
+                                                    2: trigger advised at specified time
+        "predicted_trigger_time_s"  float         Future time prediction (in frame timebase) for the next synchronization trigger.
+        "unwrapped_phase"           float         Our computed phase for the most recent frame.
+                                                  This is a monotonically increasing quantity in radians,
+                                                  but take modulo 2pi to get the phase within the heartbeat.
+        "optical_gating_state"      str           For information: current optical gating state
+                                                    "reset":     Resetting
+                                                    "determine": Determining new reference frames (single-heartbeat sequence)
+                                                    "sync":      Analyzing and generating trigger predictions
+                                                    "adapt":     Computing alignment to maintain phase of synchronization between
+                                                                  previous reference sequence and new reference sequence
+
 """
 
 from . import pixelarray

@@ -72,11 +72,11 @@ async def send_test_frame(uri, expect_echo=False):
 async def send_from_file(uri, settings, expect_echo=False):
     """Emulated data capture for a set of sample brightfield frames."""
     async with websockets.connect(uri) as websocket:
-        source = settings["path"]
+        source = settings["input_tiff_path"]
 
         # We do instantiate a FileOpticalGater object, but actually all we use it for is to get frames from the file.
         # We don't then ask it to analyze those frames, we just send them on to the server.
-        file_source = file_optical_gater.FileOpticalGater(source=settings["path"], settings=settings)
+        file_source = file_optical_gater.FileOpticalGater(source=settings["input_tiff_path"], settings=settings)
         phases = []
         times = []
         sent_trigger_times = []

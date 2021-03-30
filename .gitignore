@@ -1,5 +1,5 @@
 **/local-data/**
-**/period-data/**
+**/reference-sequence-data/**
 output.log
 **/triggers.png
 **/accuracy.png

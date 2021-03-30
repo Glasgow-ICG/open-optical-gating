@@ -34,7 +34,7 @@ class PiOpticalGater(server.OpticalGater):
         automatic_target_frame=True,
     ):
         """Function inputs:
-            settings      dict  Parameters affecting operation (see default_settings.json)
+            settings      dict  Parameters affecting operation (see json_format_description.md)
         """
 
         # Initialise parent
@@ -147,7 +147,7 @@ class PiOpticalGater(server.OpticalGater):
                     )
                 )
 
-        output = PiYUVArray(self.camera)  #np.empty((self.width, self.height, 3), dtype=np.uint8)
+        output = PiYUVArray(self.camera)
         self.camera.capture(output, "yuv")
         next = pa.PixelArray(
             output.array[:, :, 0],  # Y channel

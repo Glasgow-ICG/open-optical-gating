@@ -18,7 +18,7 @@
     "frame_num": 0,
     "live": 1,
     "log": 0,
-    "period_dir": "period-data/",
+    "reference_sequence_dir": "reference-sequence-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 5,
     "min_heart_rate_hz": 1.0

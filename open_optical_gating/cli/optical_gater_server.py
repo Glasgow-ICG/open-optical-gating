@@ -46,7 +46,7 @@ class OpticalGater:
 
     def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
-            settings - a dictionary of settings (see default_settings.json)
+            settings - a dictionary of settings (see json_format_description.md)
         """
 
         # store the whole settings dict
@@ -145,7 +145,10 @@ class OpticalGater:
         # else:
         #     logger.critical('Frame of unknown type passed to analyze.')
 
-        if self.trigger_num >= self.settings["update_after_n_triggers"]:
+        if (
+            ("update_after_n_triggers" in self.settings) and
+            (self.trigger_num >= self.settings["update_after_n_triggers"])
+           ):
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num will be reset
@@ -265,9 +268,6 @@ class OpticalGater:
                 fitBackToBarrier=True,
             )
             logger.trace("Time to wait: {0} s.".format(time_to_wait_seconds))
-            # frame_history is an nx3 array of [timestamp, phase, argmin(SAD)]
-            # phase (i.e. frame_history[:,1]) should be cumulative 2Pi phase
-            # targetSyncPhase should be in [0,2pi]
 
             this_predicted_trigger_time_s = (
                 self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
@@ -338,8 +338,8 @@ class OpticalGater:
         # sort of way of figuring out why this reset was initiated in the first place.
         # Not sure yet what the best solution is, but I'm flagging it for a rethink.
         if (
-            self.settings["update_after_n_triggers"] > 0
-            and self.trigger_num >= self.settings["update_after_n_triggers"]
+            ("update_after_n_triggers" in self.settings) and
+            (self.trigger_num >= self.settings["update_after_n_triggers"])
         ):
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
@@ -401,8 +401,9 @@ class OpticalGater:
             # Determine barrier frames
             self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
 
-            # Save the period
-            ref.save_period(self.ref_frames, self.settings["period_dir"])
+            if "reference_sequence_dir" in self.settings:
+                # Save the reference sequence to disk, for debug purposes
+                ref.save_period(self.ref_frames, self.settings["reference_sequence_dir"])
             logger.success("Period determined.")
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
 
