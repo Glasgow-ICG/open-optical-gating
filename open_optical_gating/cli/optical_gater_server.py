@@ -1,9 +1,8 @@
 """Parent Open Optical Gating Class"""
 
 # Python imports
-import sys
+import sys, time
 import json
-import time
 
 # Module imports
 import numpy as np
@@ -251,12 +250,6 @@ class OpticalGater:
             and self.pog_settings["phase_stamp_only"] != True
         ):
             logger.debug("Predicting trigger...")
-
-            # TODO: JT writes: this seems as good a place as any to highlight the general issue that the code is not doing a great job of precise timing.
-            # It determines a delay time before sending the trigger, but then executes a bunch more code.
-            # Oh and, more importantly, that delay time is then treated relative to “current_time_s”, which is set *after* doing the phase-matching.
-            # That is going to reduce accuracy and precision, and also makes me even more uncomfortable in terms of future-proofing.
-            # I think it would be much better to pass around absolute times, not deltas.
 
             # Gets the trigger response
             logger.trace("Predicting next trigger.")
@@ -528,7 +521,7 @@ class OpticalGater:
             # Commit to using this reference frame
             self.start_sync_with_ref_frame(ref_frame_number)
 
-    def trigger_fluorescence_image_capture(self, delay):
+    def trigger_fluorescence_image_capture(self, trigger_time_s):
         """As this is the base server, this function just outputs a log that a trigger would have been sent."""
         logger.success("A fluorescence image would be triggered now.")
 

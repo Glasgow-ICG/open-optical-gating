@@ -159,7 +159,7 @@ class PiOpticalGater(server.OpticalGater):
         self.last_frame_wallclock_time = time.time()
         return next
 
-    def trigger_fluorescence_image_capture(self, delay_us):
+    def trigger_fluorescence_image_capture(self, trigger_time_s):
         """ Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
             IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
             and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware
@@ -167,7 +167,7 @@ class PiOpticalGater(server.OpticalGater):
             in the meantime. If all is going well, though, the delay should only be a for a couple of frames.
 
             Function inputs:
-         		delay_us = delay time (in microseconds) before the image is captured
+         		trigger_time_s = time (in seconds) at which the trigger should be sent
         
             Relevant class variables:
               # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
@@ -184,7 +184,7 @@ class PiOpticalGater(server.OpticalGater):
         if self.trigger_mode == "edge":
             # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
-                delay_us,
+                (trigger_time_s - time.time()) * 1e6,
                 self.settings["laser_trigger_pin"],
                 self.settings["fluorescence_camera_pins"]["trigger"],
                 self.settings["fluorescence_camera_pins"]["SYNC-B"],
@@ -192,7 +192,7 @@ class PiOpticalGater(server.OpticalGater):
         elif self.trigger_mode != "expose":
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
-                delay_us,
+                (trigger_time_s - time.time()) * 1e6,
                 self.duration_us,
                 self.settings["laser_trigger_pin"],
                 self.settings["fluorescence_camera_pins"]["trigger"],

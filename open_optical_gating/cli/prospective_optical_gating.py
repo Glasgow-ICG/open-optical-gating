@@ -11,13 +11,6 @@ import j_py_sad_correlation as jps
 # Local imports
 from . import parameters as parameters
 
-try:
-    _ = jps.windows_fallback
-    logger.warning("Using fallback code for temporary Windows support (slower - not suitable for realtime operation")
-except:
-    # Standard code
-    pass
-
 # TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
 # Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
 # In the C code it is declared as a const int.
@@ -216,7 +209,8 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
                                                  targetSyncPhase is expected to be in [0,2pi]
             fitBackToBarrier        bool        Should we use the "barrier frame" logic? (see determine_barrier_frames)
         Returns:
-            Time delay (or phase delay) before trigger would need to be sent in seconds.
+            Time delay (in seconds) between when the current frame was acquired
+             and when the trigger would need to be sent.
         """
 
     if frame_history.shape[0] < settings["minFramesForFit"]:
