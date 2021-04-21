@@ -22,6 +22,26 @@ from . import optical_gater_server as server
 from . import pixelarray as pa
 from . import file_optical_gater
 
+class PiWrapper(picamera.array.PiYUVAnalysis):
+    # This wrapper exists because we need something to be a subclass of PiYUVAnalysis,
+    # whereas the main PiOpticalGater class needs to be a subclass of OpticalGater
+    # This is just a very lightweight stub, and all the camera configuration etc is
+    # still dealt with by PiOpticalGater
+    def __init__(self, gater):
+        self.gater = gater
+        self.picamera = picamera.PiCamera()
+    
+    def analyze(self, array):
+        # Callback from picamera.array.PiYUVAnalysis
+        pixelarray = pa.PixelArray(
+                                   output.array[:, :, 0],  # Y channel
+                                   metadata={
+                                   "timestamp": time.time() - self.start_time
+                                   },  # relative to start_time to sanitise
+                                   )
+        # Call through to the analysis method of PiOpticalGater
+        self.gater.analyze_pixelarray(pixelarray)
+
 class PiOpticalGater(server.OpticalGater):
     """Extends the optical gater server for the Raspberry Pi.
     """
@@ -55,7 +75,8 @@ class PiOpticalGater(server.OpticalGater):
         # Initialise PiCamera
         logger.success("Initialising camera...")
         # Camera settings from settings.json
-        camera = picamera.PiCamera()
+        self.camera = PiWrapper(self)
+        camera = self.camera.picamera
         camera.framerate = self.settings["brightfield_framerate"]
         camera.resolution = (
             self.settings["brightfield_resolution"],
@@ -105,6 +126,12 @@ class PiOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
+    def run_camera_until_stopped(self):
+        camera.start_recording(self, format="yuv")
+        while not self.stop:
+            camera.wait_recording(0.001)  # s
+        camera.stop_recording()
+    
     def run_server(self, force_framerate=False):
         """ Run the OpticalGater server, acting on the in-file data.
             Function inputs:
@@ -114,7 +141,7 @@ class PiOpticalGater(server.OpticalGater):
             logger.success("Determining reference period...")
             while self.state != "sync":
                 while not self.stop:
-                    self.analyze_pixelarray(self.next_frame(force_framerate=True))
+                    self.run_until_stopped()
                 logger.info("Requesting user input...")
                 self.user_select_ref_frame()
             logger.success(
@@ -125,39 +152,7 @@ class PiOpticalGater(server.OpticalGater):
 
         logger.success("Emulating...")
         while not self.stop:
-            self.analyze_pixelarray(self.next_frame(force_framerate=force_framerate))
-
-    def next_frame(self, force_framerate=False):
-        """This function gets the next frame from the data source, which can be passed to analyze()"""
-        # Force framerate to match the brightfield_framerate in the settings
-        # This gives accurate timings and plots
-        if force_framerate and (self.last_frame_wallclock_time is not None):
-            wait_s = (1 / self.settings["brightfield_framerate"]) - (
-                time.time() - self.last_frame_wallclock_time
-            )
-            if wait_s > 1e-9:
-                # the 1e-9 is a very small time to allow for the calculation
-                time.sleep(wait_s - 1e-9)
-            else:
-                logger.warning(
-                    "Failing to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
-                        self.settings["brightfield_framerate"],
-                        self.next_frame_index,
-                        wait_s,
-                    )
-                )
-
-        output = PiYUVArray(self.camera)
-        self.camera.capture(output, "yuv")
-        next = pa.PixelArray(
-            output.array[:, :, 0],  # Y channel
-            metadata={
-                "timestamp": time.time() - self.start_time
-            },  # relative to start_time to sanitise
-        )
-        self.next_frame_index += 1
-        self.last_frame_wallclock_time = time.time()
-        return next
+            self.run_until_stopped()
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """ Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
