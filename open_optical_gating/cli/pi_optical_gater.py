@@ -22,9 +22,31 @@ from . import optical_gater_server as server
 from . import pixelarray as pa
 from . import file_optical_gater
 
+
+class PiAnalysisWrapper(picamera.array.PiYUVAnalysis):
+    # This wrapper exists because we need something to be a subclass of PiYUVAnalysis,
+    # whereas the main PiOpticalGater class needs to be a subclass of OpticalGater
+    # This is just a very lightweight stub, and all the camera configuration etc is
+    # still dealt with by PiOpticalGater
+    def __init__(self, camera, size=None, gater=None):
+        super().__init__(camera, size=size)
+        self.gater = gater
+
+    def analyze(self, array):
+        # Callback from picamera.array.PiYUVAnalysis
+        if self.gater is not None:
+            pixelarray = pa.PixelArray(
+                array[:, :, 0],  # Y channel
+                metadata={
+                    "timestamp": time.time() - self.gater.start_time
+                },  # relative to start_time to sanitise
+            )
+            # Call through to the analysis method of PiOpticalGater
+            self.gater.analyze_pixelarray(pixelarray)
+
+
 class PiOpticalGater(server.OpticalGater):
-    """Extends the optical gater server for the Raspberry Pi.
-    """
+    """Extends the optical gater server for the Raspberry Pi."""
 
     def __init__(
         self,
@@ -34,12 +56,14 @@ class PiOpticalGater(server.OpticalGater):
         automatic_target_frame=True,
     ):
         """Function inputs:
-            settings      dict  Parameters affecting operation (see json_format_description.md)
+        settings      dict  Parameters affecting operation (see json_format_description.md)
         """
 
         # Initialise parent
         super(PiOpticalGater, self).__init__(
-            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
+            settings=settings,
+            ref_frames=ref_frames,
+            ref_frame_period=ref_frame_period,
         )
 
         # Set-up the Raspberry Pi hardware
@@ -50,8 +74,7 @@ class PiOpticalGater(server.OpticalGater):
         self.automatic_target_frame = automatic_target_frame
 
     def setup_pi(self):
-        """Initialise Raspberry Pi hardware I/O interfaces.
-        """
+        """Initialise Raspberry Pi hardware I/O interfaces."""
         # Initialise PiCamera
         logger.success("Initialising camera...")
         # Camera settings from settings.json
@@ -69,6 +92,9 @@ class PiOpticalGater(server.OpticalGater):
         self.height, self.width = camera.resolution
         self.framerate = camera.framerate
         self.camera = camera
+
+        # store the array analysis object for later output processing
+        self.analysis = PiAnalysisWrapper(camera, gater=self)
 
         # Initialise Pins for Triggering
         logger.success("Initialising triggering hardware...")
@@ -105,16 +131,22 @@ class PiOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
+    def run_until_stopped(self):
+        self.camera.start_recording(self.analysis, format="yuv")
+        while not self.stop:
+            self.camera.wait_recording(0.001)  # s
+        self.camera.stop_recording()
+
     def run_server(self, force_framerate=False):
-        """ Run the OpticalGater server, acting on the in-file data.
-            Function inputs:
-                force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
+        """Run the OpticalGater server, acting on the in-file data.
+        Function inputs:
+            force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
         """
         if self.automatic_target_frame == False:
             logger.success("Determining reference period...")
             while self.state != "sync":
                 while not self.stop:
-                    self.analyze_pixelarray(self.next_frame(force_framerate=True))
+                    self.run_until_stopped()
                 logger.info("Requesting user input...")
                 self.user_select_ref_frame()
             logger.success(
@@ -125,57 +157,25 @@ class PiOpticalGater(server.OpticalGater):
 
         logger.success("Emulating...")
         while not self.stop:
-            self.analyze_pixelarray(self.next_frame(force_framerate=force_framerate))
-
-    def next_frame(self, force_framerate=False):
-        """This function gets the next frame from the data source, which can be passed to analyze()"""
-        # Force framerate to match the brightfield_framerate in the settings
-        # This gives accurate timings and plots
-        if force_framerate and (self.last_frame_wallclock_time is not None):
-            wait_s = (1 / self.settings["brightfield_framerate"]) - (
-                time.time() - self.last_frame_wallclock_time
-            )
-            if wait_s > 1e-9:
-                # the 1e-9 is a very small time to allow for the calculation
-                time.sleep(wait_s - 1e-9)
-            else:
-                logger.warning(
-                    "Failing to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
-                        self.settings["brightfield_framerate"],
-                        self.next_frame_index,
-                        wait_s,
-                    )
-                )
-
-        output = PiYUVArray(self.camera)
-        self.camera.capture(output, "yuv")
-        next = pa.PixelArray(
-            output.array[:, :, 0],  # Y channel
-            metadata={
-                "timestamp": time.time() - self.start_time
-            },  # relative to start_time to sanitise
-        )
-        self.next_frame_index += 1
-        self.last_frame_wallclock_time = time.time()
-        return next
+            self.run_until_stopped()
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
-        """ Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
-            IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
-            and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware
-            that this means everything will hang until the trigger is sent. It also means that camera frames may be dropped
-            in the meantime. If all is going well, though, the delay should only be a for a couple of frames.
+        """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
+        IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
+        and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware
+        that this means everything will hang until the trigger is sent. It also means that camera frames may be dropped
+        in the meantime. If all is going well, though, the delay should only be a for a couple of frames.
 
-            Function inputs:
-         		trigger_time_s = time (in seconds) at which the trigger should be sent
-        
-            Relevant class variables:
-              # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
-              # and the different dictionary entries should be documented somewhere suitable
-          		laser_trigger_pin         the GPIO pin number (int) of the laser trigger
-          		fluorescence_camera_pins  a dict containg the "trigger", "SYNC-A" and "SYNC-B" pin numbers for the fluorescence camera
-          		edge_trigger              [see inline comments below at point of use]
-          		duration_us               the duration (in microseconds) of the pulse (only applies to pulse mode [edge_trigger=False])
+        Function inputs:
+                    trigger_time_s = time (in seconds) at which the trigger should be sent
+
+        Relevant class variables:
+          # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
+          # and the different dictionary entries should be documented somewhere suitable
+                    laser_trigger_pin         the GPIO pin number (int) of the laser trigger
+                    fluorescence_camera_pins  a dict containg the "trigger", "SYNC-A" and "SYNC-B" pin numbers for the fluorescence camera
+                    edge_trigger              [see inline comments below at point of use]
+                    duration_us               the duration (in microseconds) of the pulse (only applies to pulse mode [edge_trigger=False])
         """
 
         logger.success(
@@ -204,12 +204,12 @@ class PiOpticalGater(server.OpticalGater):
 
 
 def run(args, desc):
-    '''
-        Run the Raspberry Pi optical gater, based on a settings.json file
-        
-        Params:   raw_args   list    Caller should normally pass sys.argv here
-                  desc       str     Description to provide as command line help description
-        '''
+    """
+    Run the Raspberry Pi optical gater, based on a settings.json file
+
+    Params:   raw_args   list    Caller should normally pass sys.argv here
+              desc       str     Description to provide as command line help description
+    """
     settings = file_optical_gater.load_settings(args, desc)
 
     logger.success("Initialising gater...")
