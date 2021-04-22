@@ -36,7 +36,7 @@ class PiAnalysisWrapper(picamera.array.PiYUVAnalysis):
         # Callback from picamera.array.PiYUVAnalysis
         if self.gater is not None:
             pixelarray = pa.PixelArray(
-                output.array[:, :, 0],  # Y channel
+                array[:, :, 0],  # Y channel
                 metadata={
                     "timestamp": time.time() - self.gater.start_time
                 },  # relative to start_time to sanitise
@@ -131,11 +131,11 @@ class PiOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
-    def run_camera_until_stopped(self):
-        camera.start_recording(self.analysis, format="yuv")
+    def run_until_stopped(self):
+        self.camera.start_recording(self.analysis, format="yuv")
         while not self.stop:
-            camera.wait_recording(0.001)  # s
-        camera.stop_recording()
+            self.camera.wait_recording(0.001)  # s
+        self.camera.stop_recording()
 
     def run_server(self, force_framerate=False):
         """Run the OpticalGater server, acting on the in-file data.
