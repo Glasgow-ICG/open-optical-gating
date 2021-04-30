@@ -153,7 +153,7 @@ If the microscope is not being triggered, please check the connections.
 If the microscope is connected properly check all the required modules have been installed.
 After this, it would be best to check if the signals are being fired by the AsclePius pins and proceed accordingly.
 
-### Operating the timing box
+### Generating heartbeat-synchronization trigger signals
 
 1. Ensure that the settings are set to the correct values (in the `settings.json` file) specifically that
 
@@ -171,7 +171,7 @@ After this, it would be best to check if the signals are being fired by the Ascl
 
 3. Launching the cli program.
 
-       python -m open_optical_gating.cli.pi_optical_gater optical_gating_data/example_data_settings.json
+       python -m open_optical_gating.cli.pi_optical_gater optical_gating_data/pi_default_settings.json
 
 4. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 
