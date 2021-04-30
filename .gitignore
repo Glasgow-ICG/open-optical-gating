@@ -5,6 +5,7 @@ output.log
 **/accuracy.png
 **/running.png
 **/prediction.png
+**/period-data/**
 
 # Caches
 **/.ipynb_checkpoints/**
