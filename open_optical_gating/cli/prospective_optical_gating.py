@@ -9,29 +9,22 @@ from loguru import logger
 import j_py_sad_correlation as jps
 
 # Local imports
-from . import parameters as parameters
+from . import pog_settings as ps
 
-# TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
-# Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
-# In the C code it is declared as a const int.
-
-
-def update_drift(frame0, bestMatch0, settings):
-    """ Updates the 'settings' dictionary to reflect our latest estimate of the sample drift.
+def update_drift(frame0, bestMatch0, pog_settings):
+    """ Updates the 'pog_settings' dictionary to reflect our latest estimate of the sample drift.
         We do this by trying variations on the relative shift between frame0 and the best-matching frame in the reference sequence.
         
         Parameters:
-            frame0      array-like      2D frame pixel data for our most recently-received frame
-            bestMatch0  array-like      2D frame pixel data for the best match within our reference sequence
-            settings    dict            Parameters controlling the sync algorithms
-        Returns:
-            updated settings dictionary
+            frame0         array-like      2D frame pixel data for our most recently-received frame
+            bestMatch0     array-like      2D frame pixel data for the best match within our reference sequence
+            pog_settings   dict            Parameters controlling the sync algorithms
         """
     # frame0 and bestMatch0 must be numpy arrays of the same size
     assert frame0.shape == bestMatch0.shape
 
     # Start with the existing drift parameters in the settings dictionary
-    dx, dy = settings["drift"]
+    dx, dy = pog_settings["drift"]
 
     # Identify region within bestMatch that we will use for comparison.
     # The logic here basically follows that in phase_matching, but allows for extra slop space
@@ -65,29 +58,27 @@ def update_drift(frame0, bestMatch0, settings):
     sad = jps.sad_with_references(bestMatch, frames)
     best = np.argmin(sad)
 
-    settings["drift"][0] = dx + candidateShifts[best][0]
-    settings["drift"][1] = dy + candidateShifts[best][1]
-
-    return settings
+    pog_settings["drift"] = [ dx + candidateShifts[best][0],
+                              dy + candidateShifts[best][1] ]
 
 
-def subframe_fitting(diffs, settings):
+def subframe_fitting(diffs, pog_settings):
     """ Identify the location of the minimum value (to sub-frame accuracy) within a list of diffs (including padding frames).
         The aim is to find the position of the minimum within the "main" frames,
         but we may have to extend to the padding frames if the minimum is right at one end of the "main" frames.
         
         Parameters:
-            diffs       list/array-like  Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict             Parameters controlling the sync algorithms
+            diffs          list/array-like  Sequence of recently-received frame pixel arrays (in chronological order)
+            pog_settings   dict             Parameters controlling the sync algorithms
         Returns:
             float coordinate for location of minimum in 'diffs' (including padding frames)
     """
     # Search for lowest value within the "main" frames.
     # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     bestScorePos = np.argmin(
-        diffs[settings["numExtraRefFrames"] : -settings["numExtraRefFrames"]]
+        diffs[pog_settings["numExtraRefFrames"] : -pog_settings["numExtraRefFrames"]]
     )
-    bestScorePos = bestScorePos + settings["numExtraRefFrames"]
+    bestScorePos = bestScorePos + pog_settings["numExtraRefFrames"]
 
     # Sub-pixel fitting
     if diffs[bestScorePos - 1] < diffs[bestScorePos]:  # If no V is found
@@ -100,7 +91,7 @@ def subframe_fitting(diffs, settings):
         # We just return a reference phase that corresponds to a phase of 0
         # JT TODO: surely we should also test for this condition at the upper end of the reference sequence,
         # as well as the lower end (which is what we test here)
-        thisFrameReferencePos = settings["numExtraRefFrames"]
+        thisFrameReferencePos = pog_settings["numExtraRefFrames"]
         logger.warning("No minimum found - defaulting to phase=0")
     else:
         # A minimum exists - do sub-frame interpolation on it
@@ -125,23 +116,23 @@ def v_fitting(y_1, y_2, y_3):
     return x, y
 
 
-def phase_matching(frame, reference_frames, settings=None):
-    """Phase match a new frame based on a reference period.
+def identify_phase_with_drift(frame, reference_frames, pog_settings=None):
+    """ Phase match a new frame based on a reference period.
+        Note that this function has the side-effect of modifying pog_settings["drift"]
         
         Parameters:
             frame               array-like      2D frame pixel data for our most recently-received frame
             reference_frames    array-like      3D (t by x by y) frame pixel data for our reference period
-            settings            dict            Parameters controlling the sync algorithms
+            pog_settings        dict            Parameters controlling the sync algorithms
         Returns:
-            phase               float           phase matching results
+            best_match          float           Best matching location in the reference frames array (including padding)
             SADs                ndarray         1D sum of absolute differences between frame and each reference_frames[t,...]
-            settings            dict            updated parameters controlling the sync algorithms
     """
-    if settings == None:
+    if pog_settings == None:
         logger.warning("No settings provided. Using sensible defaults.")
-        settings = parameters.initialise()
+        pog_settings = ps.POGSettings()
 
-    dx, dy = settings["drift"]
+    dx, dy = pog_settings["drift"]
 
     # Apply drift correction, identifying a crop rect for the frame and/or reference frames,
     # representing the area intersection between them once drift is accounted for.
@@ -184,28 +175,28 @@ def phase_matching(frame, reference_frames, settings=None):
     logger.trace(SADs)
 
     # Identify best match between 'frame' and the reference frame sequence
-    phase = subframe_fitting(SADs, settings)
-    logger.debug("Found frame phase to be {0}", phase)
+    best_match = subframe_fitting(SADs, pog_settings)
+    logger.debug("Found best matching frame position to be {0}", best_match)
 
     # Update current drift estimate in the settings dictionary
-    settings = update_drift(frame, reference_frames[np.argmin(SADs)], settings)
+    update_drift(frame, reference_frames[np.argmin(SADs)], pog_settings)
     logger.info(
         "Drift correction updated to ({0},{1})",
-        settings["drift"][0],
-        settings["drift"][1],
+        pog_settings["drift"][0],
+        pog_settings["drift"][1],
     )
 
-    # Note: still includes padding frames (on purpose)   [TODO: JT writes: what does!? I presume the SAD array. Can the comment explain *why* this is done on purpose?]
-    return (phase, SADs, settings)
+    # Note: best_match value includes padding frames
+    return (best_match, SADs)
 
 
-def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
+def predict_trigger_wait(frame_history, pog_settings, fitBackToBarrier=True):
     """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
         
         Parameters:
             frame_history           array-like  Nx3 array of [timestamp in seconds, phase, argmin(SAD)]
                                                  Phase (i.e. frame_history[:,1]) should be cumulative (i.e. phase-UNwrapped) phase in radians
-            settings                dict        Parameters controlling the sync algorithms
+            pog_settings            dict        Parameters controlling the sync algorithms
                                                  targetSyncPhase is expected to be in [0,2pi]
             fitBackToBarrier        bool        Should we use the "barrier frame" logic? (see determine_barrier_frames)
         Returns:
@@ -213,7 +204,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
              and when the trigger would need to be sent.
         """
 
-    if frame_history.shape[0] < settings["minFramesForFit"]:
+    if frame_history.shape[0] < pog_settings["minFramesForFit"]:
         logger.debug("Fit failed due to too few frames...")
         return -1
 
@@ -226,12 +217,12 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     if fitBackToBarrier:
         allowedToExtendNumberOfFittedPoints = False
         framesForFit = min(
-            settings["frameToUseArray"][int(frame_history[-1, 2])],
+            pog_settings["framesForFitLookup"][int(frame_history[-1, 2])],
             frame_history.shape[0],
         )
         logger.debug("Consider {0} past frames for prediction;", framesForFit)
     else:
-        framesForFit = settings["minFramesForFit"]
+        framesForFit = pog_settings["minFramesForFit"]
         allowedToExtendNumberOfFittedPoints = True
     pastPhases = frame_history[-int(framesForFit):, :]
 
@@ -259,7 +250,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     multiPhaseCounter = thisFramePhase // (2 * np.pi)
     # Determine how much of a cardiac cycle we have to wait till our target phase
     phaseToWait = (
-        settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
+        pog_settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
     )
     # c.f. function triggerAnticipationProcessing in SyncAnalyzer.mm
     # essentially this fixes for small backtracks in phase due to SAD imperfections.
@@ -281,7 +272,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     )
     logger.debug(
         "Target phase:{0};\tPredicted phase:{1};",
-        settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi),
+        pog_settings["targetSyncPhase"] + (multiPhaseCounter * 2 * np.pi),
         thisFramePhase + phaseToWait,
     )
 
@@ -289,7 +280,7 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     if (
         thisFramePhase
         + phaseToWait
-        - settings["targetSyncPhase"]
+        - pog_settings["targetSyncPhase"]
         - (multiPhaseCounter * 2 * np.pi)
         > 2 * np.pi + 1e-3
     ):
@@ -297,10 +288,10 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
             "Phase discrepency, trigger aborted. At {0} with wait {1} for target {2} [{3}]",
             thisFramePhase % (2 * np.pi),
             phaseToWait,
-            settings["targetSyncPhase"],
+            pog_settings["targetSyncPhase"],
             thisFramePhase
             + phaseToWait
-            - settings["targetSyncPhase"]
+            - pog_settings["targetSyncPhase"]
             - (multiPhaseCounter * 2 * np.pi),
         )
         time_to_wait_seconds = 0.0
@@ -308,30 +299,32 @@ def predict_trigger_wait(frame_history, settings, fitBackToBarrier=True):
     # This logic catches cases where we are predicting a long way into the future using only a small number of datapoints.
     # That is likely to be error-prone, so (unless using the "barrier frame" logic) we may increase
     # the number of frames we use for prediction.
-    frameInterval = 1.0 / settings["framerate"]
+    frameInterval = 1.0 / pog_settings["framerate"]
     if allowedToExtendNumberOfFittedPoints and time_to_wait_seconds > (
-        settings["extrapolationFactor"] * settings["minFramesForFit"] * frameInterval
+        pog_settings["extrapolationFactor"] * pog_settings["minFramesForFit"] * frameInterval
     ):
-        # TODO: JT writes: this approach of editing settings[minFramesForFit] and then changing it back again feels really messy to me.
+        # TODO: JT writes: this approach of editing pog_settings[minFramesForFit] and then changing it back again feels really messy to me.
         # We should hold off changing it for now, though, because I think we may want to refactor how settings is used
         # Once that is complete, a better solution here may present itself naturally.
-        settings["minFramesForFit"] *= 2
+        pog_settings["minFramesForFit"] *= 2
         if (
-            settings["minFramesForFit"] <= pastPhases.shape[0]
-            and settings["minFramesForFit"] <= settings["maxFramesForFit"]
+            pog_settings["minFramesForFit"] <= pastPhases.shape[0]
+            and pog_settings["minFramesForFit"] <= pog_settings["maxFramesForFit"]
         ):
             logger.info("Increasing number of frames to use")
             #  Recurse, using a larger number of frames, to obtain an improved predicted time
             time_to_wait_seconds = predict_trigger_wait(
-                frame_history, settings, fitBackToBarrier=False
+                frame_history, pog_settings, fitBackToBarrier=False
             )
-        settings["minFramesForFit"] = settings["minFramesForFit"] // 2
+        pog_settings["minFramesForFit"] = pog_settings["minFramesForFit"] // 2
 
     # Return our prediction
     return time_to_wait_seconds
 
 
-def determine_barrier_frames(settings):
+# JT TODO: does this function make more sense somewhere else? Almost belongs as part of the pog_settings object itself,
+# although it would be a faff to make it auto-update if any of the dependent values change on the fly
+def determine_barrier_frame_lookup(pog_settings):
     """ Identifies which past frame phases to use for forward-prediction of heart phase,
         depending on what our current frame phase is.
         This is empirical code replicated from the spim-interface project.
@@ -343,45 +336,42 @@ def determine_barrier_frames(settings):
         of high variability in the heart cycle.
         
         Parameters:
-            settings    dict            Parameters controlling the sync algorithms
-        Returns:
-            updated settings dictionary
+            pog_settings    dict            Parameters controlling the sync algorithms
         """
     # frames to consider based on reference point and no padding
     numToUseNoPadding = list(
-        range(settings["referenceFrameCount"] - (2 * settings["numExtraRefFrames"]))
+        range(pog_settings["referenceFrameCount"] - (2 * pog_settings["numExtraRefFrames"]))
     )
     numToUseNoPadding = np.asarray(
-        numToUseNoPadding[-int(settings["barrierFrame"] - 3) :]
-        + numToUseNoPadding[: -int(settings["barrierFrame"] - 3)]
+        numToUseNoPadding[-int(pog_settings["barrierFrame"] - 3) :]
+        + numToUseNoPadding[: -int(pog_settings["barrierFrame"] - 3)]
     )
 
     # Account for padding by setting extra frames equal to last/first unpadded number
-    numToUsePadding = numToUseNoPadding[-1] * np.ones(settings["referenceFrameCount"])
+    numToUsePadding = numToUseNoPadding[-1] * np.ones(pog_settings["referenceFrameCount"])
     numToUsePadding[
-        settings["numExtraRefFrames"] : (
-            settings["referenceFrameCount"] - settings["numExtraRefFrames"]
+        pog_settings["numExtraRefFrames"] : (
+            pog_settings["referenceFrameCount"] - pog_settings["numExtraRefFrames"]
         )
     ] = numToUseNoPadding
 
-    # Consider min and max number of frames to use, as configured in the settings.
+    # Consider min and max number of frames to use, as configured in the pog_settings.
     # This overrides any barrier frame considerations.
     numToUsePadding = np.maximum(
         numToUsePadding,
-        settings["minFramesForFit"] * np.ones(settings["referenceFrameCount"]),
+        pog_settings["minFramesForFit"] * np.ones(pog_settings["referenceFrameCount"]),
     )
     numToUsePadding = np.minimum(
         numToUsePadding,
-        settings["maxFramesForFit"] * np.ones(settings["referenceFrameCount"]),
+        pog_settings["maxFramesForFit"] * np.ones(pog_settings["referenceFrameCount"]),
     )
 
-    # Update settings and return
-    settings["frameToUseArray"] = numToUsePadding
-    return settings
+    # Update pog_settings and return
+    pog_settings["framesForFitLookup"] = numToUsePadding
 
 
-def pick_target_and_barrier_frames(reference_frames, settings):
-    """Function to automatically identify a stable target phase and barrier frame.
+def pick_target_and_barrier_frames(reference_frames, pog_settings):
+    """ Function to automatically identify a stable target phase and barrier frame.
         Looks through 'reference_frames' to identify a consistent point in the
         heart cycle (i.e. attempt to identify approximately the same absolute
         phase every time we establish sync, rather than just picking a random
@@ -404,24 +394,22 @@ def pick_target_and_barrier_frames(reference_frames, settings):
 
         Parameters:
             reference_frames    array-like  3D (t by x by y) frame pixel data for our reference period
-            settings            dict        parameters controlling the sync algorithms
-        Returns:
-            settings            dict        updated settings
+            pog_settings        dict        parameters controlling the sync algorithms
     """
 
-    # TODO: JT: it's a bit odd that we rely on settings["reference_period"]
+    # TODO: JT: it's a bit odd that we rely on pog_settings["reference_period"]
     # but pass reference_frames as a standalone variable.
     # Might be more consistent to have both in one single dictionary containing sync state information...
     
     # First compare each frame in our list with the previous one
     # Note that this code assumes "numExtraRefFrames">0 (which it certainly should be!)
     deltas_without_padding = np.zeros(
-        (len(reference_frames) - 2 * settings["numExtraRefFrames"]), dtype=np.int64,
+        (len(reference_frames) - 2 * pog_settings["numExtraRefFrames"]), dtype=np.int64,
     )
-    for i in np.arange(len(reference_frames) - 2 * settings["numExtraRefFrames"],):
+    for i in np.arange(len(reference_frames) - 2 * pog_settings["numExtraRefFrames"],):
         deltas_without_padding[i] = jps.sad_correlation(
-            reference_frames[i + settings["numExtraRefFrames"]],
-            reference_frames[i + settings["numExtraRefFrames"] + 1],
+            reference_frames[i + pog_settings["numExtraRefFrames"]],
+            reference_frames[i + pog_settings["numExtraRefFrames"] + 1],
         )
 
     min_pos_without_padding = np.argmin(deltas_without_padding)
@@ -448,8 +436,8 @@ def pick_target_and_barrier_frames(reference_frames, settings):
 
     # Now shift that forwards by 1/3 of a period but wrap if this is in the next beat
     target_frame_without_padding = (
-        target_frame_without_padding + (settings["reference_period"] / 3.0)
-    ) % settings["reference_period"]
+        target_frame_without_padding + (pog_settings["reference_period"] / 3.0)
+    ) % pog_settings["reference_period"]
 
     # We also identify a point soon after the region of minimum change ends. We look for the diffs to rise past their midpoint between min and max (which is expected to happen soon). We should try not to fit our history back beyond that, in order to avoid trying to fit to the (unpredictable) refractory period of the heart
     barrier_frame_without_padding = min_pos_without_padding
@@ -458,7 +446,7 @@ def pick_target_and_barrier_frames(reference_frames, settings):
         < (min_delta + max_delta) / 2
     ):
         barrier_frame_without_padding = (barrier_frame_without_padding + 1) % int(
-            settings["reference_period"]
+            pog_settings["reference_period"]
         )
         if barrier_frame_without_padding == min_pos_without_padding:
             # This means I have done a complete loop and found no delta less than the average of the min and max deltas
@@ -471,27 +459,22 @@ def pick_target_and_barrier_frames(reference_frames, settings):
                 max_delta,
                 target_frame_without_padding,
                 barrier_frame_without_padding,
-                settings["reference_period"],
-                settings["numExtraRefFrames"],
+                pog_settings["reference_period"],
+                pog_settings["numExtraRefFrames"],
             )
             break
 
-    # Update settings with new target_phase and barrier_frame
+    # Update pog_settings with new target_phase and barrier_frame
     logger.success(
         "Updating parameters with new target frame of {0} and barrier frame of {1} (both without padding).",
         target_frame_without_padding,
         barrier_frame_without_padding,
     )
-    settings = parameters.update(
-        settings,
-        referenceFrame=target_frame_without_padding,
-        barrierFrame=barrier_frame_without_padding,
-    )
-
-    return settings
+    pog_settings["referenceFrame"] = target_frame_without_padding
+    pog_settings["barrierFrame"] = barrier_frame_without_padding
 
 
-def decide_trigger(timestamp, timeToWaitInSeconds, settings):
+def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings):
     """ Potentially schedules a synchronization trigger for the fluorescence camera.
         We will do this if the trigger is due fairly soon in the future,
         and we are not confident we will have time to make an updated prediction
@@ -500,13 +483,12 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
         Parameters:
             timestamp               float   Time associated with current frame (seconds)
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
-            settings                dict    Parameters controlling the sync algorithms
+            pog_settings            dict    Parameters controlling the sync algorithms
         Returns:
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
                                              Note that this return value may be modified from its input value (see code below).
             sendIt                  int     Nonzero indicates that a trigger for the fluorescence camera should be scheduled now,
                                              for a time timeToWaitInSeconds into the future.
-            settings                dict    Updated settings dictionary
         """
     sendIt = 0
     # 'framerateFactor' (in units of frames) is an emprical constant affecting the logic below.
@@ -517,18 +499,20 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
     logger.debug(
         "Time to wait: {0} s; with latency: {1} s;",
         timeToWaitInSeconds,
-        settings["prediction_latency_s"],
+        pog_settings["prediction_latency_s"],
     )
 
-    # The settings parameter 'prediction_latency_s' represents how much time we *expect* to need
+    # The pog_settings parameter 'prediction_latency_s' represents how much time we *expect* to need
     # between scheduling a trigger and actually being able to send it.
     # That influences whether we commit to this trigger time, or wait for an updated prediction based on the next brightfield frame due to arrive soon
-    if timeToWaitInSeconds < settings["prediction_latency_s"]:
+    if timeToWaitInSeconds < pog_settings["prediction_latency_s"]:
         logger.info(
             "Trigger due very soon, but if haven't already sent one this period then we may as well give it a shot..."
         )
-        if settings["lastSent"] < timestamp - (
-            settings["reference_period"] / settings["framerate"]
+        # JT TODO: does this "lastSent" logic make sense? At a glance, it looks like there should be a factor of 0.5 or something,
+        # as I think we might *just* fail this test on the next heartbeat...?
+        if pog_settings["lastSent"] < timestamp - (
+            pog_settings["reference_period"] / pog_settings["framerate"]
         ):
             # Haven't sent a trigger on this heartbeat. Give it a go and cross our fingers we schedule it in time
             logger.success("Trigger will be sent")
@@ -542,8 +526,8 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
             logger.info(
                 "Trigger already sent recently. Will not send another - extending the prediction to the next cycle."
             )
-            timeToWaitInSeconds += settings["reference_period"] / settings["framerate"]
-    elif (timeToWaitInSeconds - (framerateFactor / settings["framerate"])) < settings[
+            timeToWaitInSeconds += pog_settings["reference_period"] / pog_settings["framerate"]
+    elif (timeToWaitInSeconds - (framerateFactor / pog_settings["framerate"])) < pog_settings[
         "prediction_latency_s"
     ]:
         # We don't expect to have time to wait for an updated prediction... so schedule the trigger now!
@@ -555,8 +539,8 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
         # We expect to have time to wait for an updated prediction, so we do nothing for now.
         pass
 
-    if sendIt > 0 and settings["lastSent"] > (
-        timestamp - ((settings["reference_period"] / settings["framerate"]) / 2)
+    if sendIt > 0 and pog_settings["lastSent"] > (
+        timestamp - ((pog_settings["reference_period"] / pog_settings["framerate"]) / 2)
     ):
         # If we've done any triggering in the last half a cycle, don't trigger again.
         # This is quite different from JTs approach,
@@ -568,7 +552,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, settings):
         )
         sendIt = 0
     elif sendIt > 0:
-        logger.success("Trigger scheduled to be sent, updating `settings['lastSent']`.")
-        settings["lastSent"] = timestamp
+        logger.success("Trigger scheduled to be sent, updating `pog_settings['lastSent']`.")
+        pog_settings["lastSent"] = timestamp
 
-    return timeToWaitInSeconds, sendIt, settings
+    return timeToWaitInSeconds, sendIt

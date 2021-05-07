@@ -30,7 +30,7 @@ class FileOpticalGater(server.OpticalGater):
         ref_frames=None,
         ref_frame_period=None,
         repeats=1,
-        automatic_target_frame=True,
+        automatic_target_frame_selection=True,
     ):
         """Function inputs:
             settings      dict  Parameters affecting operation (see optical_gating_data/json_format_description.md)
@@ -50,9 +50,9 @@ class FileOpticalGater(server.OpticalGater):
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
 
-        # By default we will take a guess at a goof target frame (True)
+        # By default we will take a guess at a good target frame (True)
         # rather than ask user for their preferred initial target frame (False)
-        self.automatic_target_frame = automatic_target_frame
+        self.automatic_target_frame_selection = automatic_target_frame_selection
 
     def load_data(self, filename):
         """Load data file"""
@@ -94,7 +94,7 @@ class FileOpticalGater(server.OpticalGater):
             Function inputs:
                 force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
         """
-        if self.automatic_target_frame == False:
+        if self.automatic_target_frame_selection == False:
             logger.success("Determining reference period...")
             while self.state != "sync":
                 while not self.stop:
@@ -254,7 +254,7 @@ def run(args, desc):
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        source=settings["input_tiff_path"], settings=settings, automatic_target_frame=False,
+        source=settings["input_tiff_path"], settings=settings, automatic_target_frame_selection=False,
     )
 
     logger.success("Running server...")

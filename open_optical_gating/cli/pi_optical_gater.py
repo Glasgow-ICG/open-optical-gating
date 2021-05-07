@@ -53,7 +53,7 @@ class PiOpticalGater(server.OpticalGater):
         settings=None,
         ref_frames=None,
         ref_frame_period=None,
-        automatic_target_frame=True,
+        automatic_target_frame_selection=True,
     ):
         """Function inputs:
         settings      dict  Parameters affecting operation (see optical_gating_data/json_format_description.md)
@@ -69,9 +69,9 @@ class PiOpticalGater(server.OpticalGater):
         # Set-up the Raspberry Pi hardware
         self.setup_pi()
 
-        # By default we will take a guess at a goof target frame (True)
+        # By default we will take a guess at a good target frame (True)
         # rather than ask user for their preferred initial target frame (False)
-        self.automatic_target_frame = automatic_target_frame
+        self.automatic_target_frame_selection = automatic_target_frame_selection
 
     def setup_pi(self):
         """Initialise Raspberry Pi hardware I/O interfaces."""
@@ -121,8 +121,6 @@ class PiOpticalGater(server.OpticalGater):
                 fp.setpin(fluorescence_camera_pins["trigger"], 1, 0)
                 fp.setpin(fluorescence_camera_pins["SYNC-A"], 0, 0)
                 fp.setpin(fluorescence_camera_pins["SYNC-B"], 0, 0)
-                self.trigger_mode = self.settings["fluorescence_trigger_mode"]
-                self.duration_us = self.settings["fluorescence_exposure_us"]
             except Exception as inst:
                 logger.critical("Error setting up fluorescence camera pins. {0}", inst)
 
@@ -137,12 +135,10 @@ class PiOpticalGater(server.OpticalGater):
             self.camera.wait_recording(0.001)  # s
         self.camera.stop_recording()
 
-    def run_server(self, force_framerate=False):
-        """Run the OpticalGater server, acting on the in-file data.
-        Function inputs:
-            force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
+    def run_server(self):
+        """ Run the PiOpticalGater, processing frames from the Pi camera.
         """
-        if self.automatic_target_frame == False:
+        if self.automatic_target_frame_selection == False:
             logger.success("Determining reference period...")
             while self.state != "sync":
                 while not self.stop:
@@ -155,7 +151,7 @@ class PiOpticalGater(server.OpticalGater):
                 self.pog_settings["referenceFrame"],
             )
 
-        logger.success("Emulating...")
+        logger.success("Generating sync triggers...")
         while not self.stop:
             self.run_until_stopped()
 
@@ -168,20 +164,13 @@ class PiOpticalGater(server.OpticalGater):
 
         Function inputs:
                     trigger_time_s = time (in seconds) at which the trigger should be sent
-
-        Relevant class variables:
-          # TODO: JT writes: these should probably be in a RPi-specific settings dictionary,
-          # and the different dictionary entries should be documented somewhere suitable
-                    laser_trigger_pin         the GPIO pin number (int) of the laser trigger
-                    fluorescence_camera_pins  a dict containg the "trigger", "SYNC-A" and "SYNC-B" pin numbers for the fluorescence camera
-                    edge_trigger              [see inline comments below at point of use]
-                    duration_us               the duration (in microseconds) of the pulse (only applies to pulse mode [edge_trigger=False])
         """
 
         logger.success(
             "Sending RPi camera trigger after delay of {0:.1f}us".format(delay_us)
         )
-        if self.trigger_mode == "edge":
+        trigger_mode = self.settings["fluorescence_trigger_mode"]
+        if trigger_mode == "edge":
             # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
                 (trigger_time_s - time.time()) * 1e6,
@@ -189,17 +178,17 @@ class PiOpticalGater(server.OpticalGater):
                 self.settings["fluorescence_camera_pins"]["trigger"],
                 self.settings["fluorescence_camera_pins"]["SYNC-B"],
             )
-        elif self.trigger_mode != "expose":
+        elif trigger_mode == "expose":
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
                 (trigger_time_s - time.time()) * 1e6,
-                self.duration_us,
+                self.settings["fluorescence_exposure_us"],
                 self.settings["laser_trigger_pin"],
                 self.settings["fluorescence_camera_pins"]["trigger"],
             )
         else:
             logger.critical(
-                "Ignoring unknown trigger mode {0}".format(self.trigger_mode)
+                "Ignoring unknown trigger mode {0}".format(trigger_mode)
             )
 
 
@@ -213,10 +202,10 @@ def run(args, desc):
     settings = file_optical_gater.load_settings(args, desc)
 
     logger.success("Initialising gater...")
-    analyser = PiOpticalGater(settings=settings, automatic_target_frame=False)
+    analyser = PiOpticalGater(settings=settings, automatic_target_frame_selection=False)
 
     logger.success("Running server...")
-    analyser.run_server(force_framerate=True)
+    analyser.run_server()
 
     logger.success("Plotting summaries...")
     analyser.plot_triggers()

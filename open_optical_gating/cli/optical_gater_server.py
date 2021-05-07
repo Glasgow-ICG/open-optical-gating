@@ -16,7 +16,7 @@ import optical_gating_alignment.optical_gating_alignment as oga
 from . import pixelarray as pa
 from . import determine_reference_period as ref
 from . import prospective_optical_gating as pog
-from . import parameters as parameters
+from . import pog_settings as ps
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
@@ -60,7 +60,7 @@ class OpticalGater:
         self.ref_frame_period = ref_frame_period
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
-        self.automatic_target_frame = True
+        self.automatic_target_frame_selection = True
         self.justRefreshedRefFrames = False
 
     def initialise_internal_parameters(self):
@@ -87,9 +87,7 @@ class OpticalGater:
                 "No reference frames found, resetting before switching to determine period mode."
             )
             self.state = "reset"
-            self.pog_settings = parameters.initialise(
-                framerate=self.settings["brightfield_framerate"]
-            )
+            self.pog_settings = ps.POGSettings({"framerate": self.settings["brightfield_framerate"]})
         else:
             logger.info(
                 "Using existing reference frames with integer period, setting to prospective optical gating mode."
@@ -103,11 +101,10 @@ class OpticalGater:
                 # Use the reference period provided when this object was constructed.
                 rp = self.ref_frame_period
 
-            self.pog_settings = parameters.initialise(
-                framerate=self.settings["brightfield_framerate"], reference_period=rp,
-            )
-            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
-
+            self.pog_settings = ps.POGSettings({ "framerate": self.settings["brightfield_framerate"],
+                                                           "reference_period": rp })
+            pog.determine_barrier_frame_lookup(self.pog_settings)
+    
         # Start experiment timer
         self.initial_process_time_s = time.time()
 
@@ -196,9 +193,9 @@ class OpticalGater:
         """
         logger.debug("Processing frame in prospective optical gating mode.")
 
-        # Gets the phase (in frames) and arrays of SADs between the current frame and the referencesequence
-        currentPhaseInFrames, sad, self.pog_settings = pog.phase_matching(
-            pixelArray, self.ref_frames, settings=self.pog_settings
+        # Gets the phase (in frames) and arrays of SADs between the current frame and the reference sequence
+        currentPhaseInFrames, sad = pog.identify_phase_with_drift(
+            pixelArray, self.ref_frames, self.pog_settings
         )
         logger.trace(sad)
 
@@ -272,8 +269,7 @@ class OpticalGater:
 
                 (
                     time_to_wait_seconds,
-                    sendTriggerNow,
-                    self.pog_settings,
+                    sendTriggerNow
                 ) = pog.decide_trigger(
                     self.frame_history[-1].metadata["timestamp"],
                     time_to_wait_seconds,
@@ -373,26 +369,26 @@ class OpticalGater:
 
         # Calculate period from determine_reference_period.py
         logger.info("Attempting to determine new reference period.")
-        self.ref_frames, self.pog_settings = ref.establish(
+        self.ref_frames, periodToUse = ref.establish(
             self.ref_buffer, self.period_guesses, self.pog_settings
         )
 
         if self.ref_frames is not None:
             # We were provided with ref_frames as a list, and this is helpful because it means we could still access
             # the PixelArray metadata at this point if we wished.
-
-            # However, long-term we want to store a 3D array because that is what oga expects to work with.
+            # However, long-term we want to store a 3D array because that is what OGA expects to work with.
             # We therefore make that conversion here
             self.ref_frames = np.array(self.ref_frames)
+            self.pog_settings["reference_period"] = periodToUse
 
             # Automatically select a target frame and barrier
             # This can be overriden by the user/controller later
-            self.pog_settings = pog.pick_target_and_barrier_frames(
+            pog.pick_target_and_barrier_frames(
                 self.ref_frames, self.pog_settings
             )
 
             # Determine barrier frames
-            self.pog_settings = pog.determine_barrier_frames(self.pog_settings)
+            pog.determine_barrier_frame_lookup(self.pog_settings)
 
             if "reference_sequence_dir" in self.settings:
                 # Save the reference sequence to disk, for debug purposes
@@ -400,12 +396,12 @@ class OpticalGater:
             logger.success("Period determined.")
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
 
-            if self.automatic_target_frame:
+            if self.automatic_target_frame_selection:
                 logger.info(
                     "Period determined and target frame automatically selected; switching to prospective optical gating mode."
                 )
                 # Automatically switch to the "sync" state, using the default reference frame.
-                # The user is expected to change the reference frame later, via a GUI, if they wish to
+                # The user might choose to change the reference frame later, via a GUI.
                 self.start_sync_with_ref_frame(self.pog_settings["referenceFrame"])
                 self.state = "sync"
             else:
@@ -430,13 +426,14 @@ class OpticalGater:
 
         if self.ref_frames is not None:
             # Align the current reference sequence relative to previous ones (adaptive update)
+            # Note that the ref_seq_phase parameter for process_sequence is in units
             (
                 self.sequence_history,
                 self.period_history,
                 self.drift_history,
                 self.shift_history,
                 self.global_solution,
-                self.target,
+                self.pog_settings["oga_reference_value"],
             ) = oga.process_sequence(
                 self.ref_frames,
                 self.pog_settings["reference_period"],
@@ -449,15 +446,9 @@ class OpticalGater:
                 max_offset=3,
                 ref_seq_id=0,
                 ref_seq_phase=self.pog_settings["referenceFrame"],
+                resampled_period=self.pog_settings["oga_resampled_period"]
             )
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
-            self.pog_settings = parameters.update(
-                self.pog_settings,
-                referenceFrame=(
-                    self.pog_settings["reference_period"] * self.target / 80
-                )  # TODO 80 here should be a user-defined variable; we tend not to change it but let's give them the option
-                % self.pog_settings["reference_period"],
-            )
             logger.success(
                 "Reference period updated. New period of length {0} with reference frame at {1}",
                 self.pog_settings["reference_period"],
@@ -471,7 +462,7 @@ class OpticalGater:
             self.state = "sync"
 
     def start_sync_with_ref_frame(self, ref_frame_number):
-        self.pog_settings = parameters.update(self.pog_settings, referenceFrame=ref_frame_number)
+        self.pog_settings["referenceFrame"] = ref_frame_number
         # add to periods history for adaptive updates
         (
          self.sequence_history,
@@ -479,20 +470,21 @@ class OpticalGater:
          self.drift_history,
          self.shift_history,
          self.global_solution,
-         self.target,
+         self.pog_settings["oga_reference_value"],
          ) = oga.process_sequence(
                                   self.ref_frames,
                                   self.pog_settings["reference_period"],
                                   self.pog_settings["drift"],
                                   max_offset=3,
                                   ref_seq_id=0,
-                                  ref_seq_phase=ref_frame_number,
+                                  ref_seq_phase=self.pog_settings["oga_reference_value"],
+                                  resampled_period=self.pog_settings["oga_resampled_period"]
                                   )
 
         # Turn recording back on for rest of run
         self.stop = False
         # Turn automatic target frames on for future adaptive updates
-        self.automatic_target_frame = True
+        self.automatic_target_frame_selection = True
         # Switch to "sync" state, in which we send camera triggers
         logger.info(
                     "Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."

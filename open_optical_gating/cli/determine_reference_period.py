@@ -14,39 +14,30 @@ except:
     import tifffile as tiffio
 
 # Local
-from . import parameters
 from . import prospective_optical_gating as pog
 
 
-def establish(sequence, period_history, settings, require_stable_history=True):
-    # TODO: JT writes: here and elsewhere, why does this return settings back again?
-    # I’m 99% sure the original settings object will be modified, so returning a new object seems confusing to me.
-    # I can see that returning it could be a reminder that it is changed by the function, but equally it implies to me that
-    # if the caller saved the return value into a *different* variable, the *original* object would be unmodified (which is not the case).
-    # (We can't resolve this by doing a deep copy(), because the object is a large one that contains frame data.
-    #  I would be wary of a shallow copy, because that's just storing up confusion for the future).
-    # I will have a think and try and come up with a solution I like for this general issue.
-    # -> UPDATE: actually, this is bonkers. As far as I can see, all that is updated is the reference period.
-    # We should just return that value from this function, and the caller can do something with it.
+def establish(sequence, period_history, pog_settings, require_stable_history=True):
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
             sequence        list of PixelArray objects  Sequence of recently-received frame pixel arrays (in chronological order)
             period_history  list of float               Values of period calculated for previous frames (which we will append to)
-            settings        dict                        Parameters controlling the sync algorithms
+            pog_settings    dict                        Parameters controlling the sync algorithms
             require_stable_history  bool                Do we require a stable history of similar periods before we consider accepting this one?
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
+            Exact (noninteger) period for the reference sequence
     """
-    start, stop, settings = establish_indices(sequence, period_history, settings, require_stable_history)
-    if start is not None and stop is not None:
+    start, stop, periodToUse = establish_indices(sequence, period_history, pog_settings, require_stable_history)
+    if (start is not None) and (stop is not None):
         referenceFrames = sequence[start:stop]
     else:
         referenceFrames = None
 
-    return referenceFrames, settings
+    return referenceFrames, periodToUse
 
 
-def establish_indices(sequence, period_history, settings, require_stable_history=True):
+def establish_indices(sequence, period_history, pog_settings, require_stable_history=True):
     """ Establish the list indices representing a reference period, from a given input sequence.
         Parameters: see header comment for establish(), above
         Returns:
@@ -61,7 +52,7 @@ def establish_indices(sequence, period_history, settings, require_stable_history
         diffs = jps.sad_with_references(frame, pastFrames)
 
         # Calculate Period based on these Diffs
-        period = calculate_period_length(diffs, settings["minPeriod"], settings["lowerThresholdFactor"], settings["upperThresholdFactor"])
+        period = calculate_period_length(diffs, pog_settings["minPeriod"], pog_settings["lowerThresholdFactor"], pog_settings["upperThresholdFactor"])
         if period != -1:
             period_history.append(period)
 
@@ -76,33 +67,32 @@ def establish_indices(sequence, period_history, settings, require_stable_history
         #  That logic could definitely be improved and tidied up - we should probably just
         #  look for a period starting numExtraRefFrames from the end of the sequence...
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
-        history_stable = (len(period_history) >= (5 + (2 * settings["numExtraRefFrames"]))
-                            and (len(period_history) - 1 - settings["numExtraRefFrames"]) > 0
-                            and (period_history[-1 - settings["numExtraRefFrames"]]) > 6)
+        history_stable = (len(period_history) >= (5 + (2 * pog_settings["numExtraRefFrames"]))
+                            and (len(period_history) - 1 - pog_settings["numExtraRefFrames"]) > 0
+                            and (period_history[-1 - pog_settings["numExtraRefFrames"]]) > 6)
         if (
             period != -1
             and period > 6
             and ((require_stable_history == False) or (history_stable))
         ):
-            periodToUse = period_history[-1 - settings["numExtraRefFrames"]]
+            # ****** JT TODO: why are we subtracting numExtraRefFrames here? That doesn't look right to me!
+            periodToUse = period_history[-1 - pog_settings["numExtraRefFrames"]]
             logger.success("Found a period I'm happy with: {0}".format(periodToUse))
 
-            settings = parameters.update(
-                settings, reference_period=periodToUse
-            )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
-            numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
+            numRefs = int(periodToUse + 1) + (2 * pog_settings["numExtraRefFrames"])
 
-            # return start, stop, settings
+            # return start, stop, period
             logger.debug(
-                "Start index: {0}; Stop index: {1};",
+                "Start index: {0}; Stop index: {1}; Period {2}",
                 len(pastFrames) - numRefs,
                 len(pastFrames),
+                periodToUse
             )
-            return len(pastFrames) - numRefs, len(pastFrames), settings
+            return len(pastFrames) - numRefs, len(pastFrames), periodToUse
 
     logger.info("I didn't find a period I'm happy with!")
-    return None, None, settings
+    return None, None, None
 
 
 def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperThresholdFactor=0.75):
