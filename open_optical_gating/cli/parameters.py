@@ -22,27 +22,31 @@ def save():
 def initialise(
     drift=[0, 0],
     framerate=80,
-    referencePeriod=0.0,
+    reference_period=0.0,
     barrierFrame=0.0,
     extrapolationFactor=1.5,
-    maxReceivedFramesToStore=260,
+    maxReceivedFramesToStore=1000,
     maxFramesForFit=32,
     minFramesForFit=3,
     prediction_latency_s=0.015,
     referenceFrame=0.0,
     numExtraRefFrames=2,
+    phase_stamp_only=False,
+    minPeriod=5,
+    lowerThresholdFactor=0.5,
+    upperThresholdFactor=0.75,
 ):
     """Function to initialise our custom settings dict with sensible pre-sets."""
     parameters = {}
     parameters.update({"drift": drift})  # starting drift corrections
     parameters.update({"framerate": framerate})  # starting est frame rate
     parameters.update(
-        {"referencePeriod": referencePeriod}
+        {"reference_period": reference_period}
     )  # reference period in frames
     if barrierFrame > 0.0:
         parameters.update(
             {
-                "barrierFrame": ((barrierFrame - numExtraRefFrames) % referencePeriod)
+                "barrierFrame": ((barrierFrame - numExtraRefFrames) % reference_period)
                 + numExtraRefFrames
             }
         )  # barrier frame in frames
@@ -65,26 +69,30 @@ def initialise(
     )  # prediction latency in seconds
     if referenceFrame > 0.0:
         parameters.update(
-            {"referenceFrame": referenceFrame % referencePeriod}
+            {"referenceFrame": referenceFrame % reference_period}
         )  # target phase in frames
     else:
         parameters.update({"referenceFrame": referenceFrame})
     parameters.update({"numExtraRefFrames": numExtraRefFrames})  # padding number
+    parameters.update({"phase_stamp_only": phase_stamp_only})
+    parameters.update({"minPeriod": minPeriod})
+    parameters.update({"lowerThresholdFactor": lowerThresholdFactor})
+    parameters.update({"upperThresholdFactor": upperThresholdFactor})
 
     # automatically added keys
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
     parameters.update(
         {
-            "referenceFrameCount": int(parameters["referencePeriod"] + 1)
+            "referenceFrameCount": int(parameters["reference_period"] + 1)
             + (2 * parameters["numExtraRefFrames"])
         }
     )  # number of reference frames including padding
-    if referencePeriod > 0.0:
+    if reference_period > 0.0:
         parameters.update(
             {
                 "targetSyncPhase": 2
                 * np.pi
-                * (parameters["referenceFrame"] / parameters["referencePeriod"])
+                * (parameters["referenceFrame"] / parameters["reference_period"])
             }
         )  # target phase in rads
     else:
@@ -99,7 +107,7 @@ def update(
     parameters,
     drift=None,
     framerate=None,
-    referencePeriod=None,
+    reference_period=None,
     barrierFrame=None,
     extrapolationFactor=None,
     maxReceivedFramesToStore=None,
@@ -108,6 +116,10 @@ def update(
     prediction_latency_s=None,
     referenceFrame=None,
     numExtraRefFrames=None,
+    phase_stamp_only=None,
+    minPeriod=None,
+    lowerThresholdFactor=None,
+    upperThresholdFactor=None,
 ):
     """Function to update our custom settings dict with sensible pre-sets.
     Note: users should not use parameters.update(), i.e. a dictionary update
@@ -121,14 +133,23 @@ def update(
         parameters["drift"] = drift
     if framerate is not None:
         parameters["framerate"] = framerate
-    if referencePeriod is not None:
-        parameters["referencePeriod"] = referencePeriod
+    if reference_period is not None:
+        parameters["reference_period"] = reference_period
     if numExtraRefFrames is not None:
         parameters["numExtraRefFrames"] = numExtraRefFrames
+    if phase_stamp_only is not None:
+        parameters["phase_stamp_only"] = phase_stamp_only
+    if minPeriod is not None:
+        parameters["minPeriod"] = minPeriod
+    if lowerThresholdFactor is not None:
+        parameters["lowerThresholdFactor"] = lowerThresholdFactor
+    if upperThresholdFactor is not None:
+        parameters["upperThresholdFactor"] = upperThresholdFactor
+
     if barrierFrame is not None:
         parameters["barrierFrame"] = (
             (barrierFrame - parameters["numExtraRefFrames"])
-            % parameters["referencePeriod"]
+            % parameters["reference_period"]
         ) + parameters["numExtraRefFrames"]
     if extrapolationFactor is not None:
         parameters["extrapolationFactor"] = extrapolationFactor
@@ -141,13 +162,13 @@ def update(
     if prediction_latency_s is not None:
         parameters["prediction_latency_s"] = prediction_latency_s
     if referenceFrame is not None:
-        parameters["referenceFrame"] = referenceFrame % parameters["referencePeriod"]
+        parameters["referenceFrame"] = referenceFrame % parameters["reference_period"]
 
     # automatically added keys
     # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
     parameters.update(
         {
-            "referenceFrameCount": int(parameters["referencePeriod"] + 1)
+            "referenceFrameCount": int(parameters["reference_period"] + 1)
             + (2 * parameters["numExtraRefFrames"])
         }
     )  # number of reference frames including padding
@@ -156,7 +177,7 @@ def update(
         {
             "targetSyncPhase": 2
             * np.pi
-            * (parameters["referenceFrame"] / parameters["referencePeriod"])
+            * (parameters["referenceFrame"] / parameters["reference_period"])
         }
     )  # target phase in rads
 

@@ -4,17 +4,21 @@ as used from prospective optical gating."""
 # Module imports
 import os
 import numpy as np
-from skimage import io
-import j_py_sad_correlation as jps
 from loguru import logger
 from datetime import datetime
+import j_py_sad_correlation as jps
+# See comment in pyproject.toml for why we have to try both of these
+try:
+    import skimage.io as tiffio
+except:
+    import tifffile as tiffio
 
 # Local
 from . import parameters
 from . import prospective_optical_gating as pog
 
 
-def establish(sequence, settings):
+def establish(sequence, period_history, settings, require_stable_history=True):
     # TODO: JT writes: here and elsewhere, why does this return settings back again?
     # I’m 99% sure the original settings object will be modified, so returning a new object seems confusing to me.
     # I can see that returning it could be a reminder that it is changed by the function, but equally it implies to me that
@@ -26,43 +30,45 @@ def establish(sequence, settings):
     # We should just return that value from this function, and the caller can do something with it.
     """ Attempt to establish a reference period from a sequence of recently-received frames.
         Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict             Parameters controlling the sync algorithms
+            sequence        list of PixelArray objects  Sequence of recently-received frame pixel arrays (in chronological order)
+            period_history  list of float               Values of period calculated for previous frames (which we will append to)
+            settings        dict                        Parameters controlling the sync algorithms
+            require_stable_history  bool                Do we require a stable history of similar periods before we consider accepting this one?
         Returns:
             List of frame pixel arrays that form the reference sequence (or None).
     """
-    referenceFrameIdx, settings = establish_indices(sequence, settings)
-    logger.trace("Idx: {0}", sequence[referenceFrameIdx].shape)
-    return sequence[referenceFrameIdx], settings
+    start, stop, settings = establish_indices(sequence, period_history, settings, require_stable_history)
+    if start is not None and stop is not None:
+        referenceFrames = sequence[start:stop]
+    else:
+        referenceFrames = None
+
+    return referenceFrames, settings
 
 
-def establish_indices(sequence, settings):
+def establish_indices(sequence, period_history, settings, require_stable_history=True):
     """ Establish the list indices representing a reference period, from a given input sequence.
-        Parameters:
-            sequence    list of ndarrays Sequence of recently-received frame pixel arrays (in chronological order)
-            settings    dict             Parameters controlling the sync algorithms
+        Parameters: see header comment for establish(), above
         Returns:
             List of indices that form the reference sequence (or None).
     """
-
-    periods = []
-    for i in range(1, len(sequence)):
-        frame = sequence[i, :, :]
-        pastFrames = sequence[: (i - 1), :, :]
-        logger.trace("Running for frame {0}", i)
+    logger.debug("Attempting to determine reference period.")
+    if len(sequence) > 1:
+        frame = sequence[-1]
+        pastFrames = sequence[:-1]
 
         # Calculate Diffs between this frame and previous frames in the sequence
         diffs = jps.sad_with_references(frame, pastFrames)
 
         # Calculate Period based on these Diffs
-        period = calculate_period_length(diffs)
+        period = calculate_period_length(diffs, settings["minPeriod"], settings["lowerThresholdFactor"], settings["upperThresholdFactor"])
         if period != -1:
-            periods.append(period)
+            period_history.append(period)
 
         # If we have a valid period, extract the frame indices associated with this period, and return them
         # The conditions here are empirical ones to protect against glitches where the heuristic
         # period-determination algorithm finds an anomalously short period.
-        # JT TODO: The four conditions seem to be pretty similar/redundant. I wrote these many years ago,
+        # JT TODO: The three conditions on the period history seem to be pretty similar/redundant. I wrote these many years ago,
         #  and have just left them as they "ain't broke". They should really be tidied up though.
         #  One thing I can say is that the reason for the *two* tests for >6 have to do with the fact that
         #  we are establishing the period based on looking back from the *most recent* frame, but then actually
@@ -70,28 +76,36 @@ def establish_indices(sequence, settings):
         #  That logic could definitely be improved and tidied up - we should probably just
         #  look for a period starting numExtraRefFrames from the end of the sequence...
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
+        history_stable = (len(period_history) >= (5 + (2 * settings["numExtraRefFrames"]))
+                            and (len(period_history) - 1 - settings["numExtraRefFrames"]) > 0
+                            and (period_history[-1 - settings["numExtraRefFrames"]]) > 6)
         if (
             period != -1
-            and len(periods) >= (5 + (2 * settings["numExtraRefFrames"]))
             and period > 6
-            and (len(periods) - 1 - settings["numExtraRefFrames"]) > 0
-            and (periods[len(periods) - 1 - settings["numExtraRefFrames"]]) > 6
+            and ((require_stable_history == False) or (history_stable))
         ):
-            periodToUse = periods[len(periods) - 1 - settings["numExtraRefFrames"]]
+            periodToUse = period_history[-1 - settings["numExtraRefFrames"]]
             logger.success("Found a period I'm happy with: {0}".format(periodToUse))
 
             settings = parameters.update(
-                settings, referencePeriod=periodToUse
+                settings, reference_period=periodToUse
             )  # automatically does referenceFrameCount an targetSyncPhase
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * settings["numExtraRefFrames"])
-            return np.arange(len(pastFrames) - numRefs, len(pastFrames)), settings
 
-    logger.critical("I didn't find a period I'm happy with!")
-    return None, settings
+            # return start, stop, settings
+            logger.debug(
+                "Start index: {0}; Stop index: {1};",
+                len(pastFrames) - numRefs,
+                len(pastFrames),
+            )
+            return len(pastFrames) - numRefs, len(pastFrames), settings
+
+    logger.info("I didn't find a period I'm happy with!")
+    return None, None, settings
 
 
-def calculate_period_length(diffs):
+def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperThresholdFactor=0.75):
     """ Attempt to determine the period of one heartbeat, from the diffs array provided. The period will be measured backwards from the most recent frame in the array
         Parameters:
             diffs    ndarray    Diffs between latest frame and previously-received frames
@@ -120,7 +134,7 @@ def calculate_period_length(diffs):
     numScores = 1
     got = False
 
-    for d in range(2, diffs.size):
+    for d in range(minPeriod, diffs.size+1):
         logger.trace(d)
         score = diffs[diffs.size - d]
         # got, values = gotScoreForDelta(score, d, values)
@@ -128,8 +142,8 @@ def calculate_period_length(diffs):
         totalScore += score
         numScores += 1
 
-        lowerThresholdScore = minScore + (maxScore - minScore) / 2
-        upperThresholdScore = minScore + (maxScore - minScore) * 3 / 4
+        lowerThresholdScore = minScore + (maxScore - minScore) * lowerThresholdFactor
+        upperThresholdScore = minScore + (maxScore - minScore) * upperThresholdFactor
         logger.debug(
             "Lower Threshold:\t{0:.4f};\tUpper Threshold:\t{1:.4f}",
             lowerThresholdScore,
@@ -192,7 +206,7 @@ def calculate_period_length(diffs):
 
 
 def save_period(reference_period, parent_dir="~/"):
-    """Function to save a reference period in am ISO format time-stamped folder with a parent_dir.
+    """Function to save a reference period in an ISO format time-stamped folder with a parent_dir.
         Parameters:
             reference_period    ndarray     t by x by y 3d array of reference frames
             parent_dir          string      parent directory within which to store the period
@@ -202,5 +216,4 @@ def save_period(reference_period, parent_dir="~/"):
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        io.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
-
+        tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
