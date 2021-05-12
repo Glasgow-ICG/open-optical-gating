@@ -67,20 +67,24 @@ def establish_indices(sequence, period_history, pog_settings, require_stable_his
         #  That logic could definitely be improved and tidied up - we should probably just
         #  look for a period starting numExtraRefFrames from the end of the sequence...
         # TODO: JT writes: logically these tests should probably be in calculate_period_length, rather than here
-        history_stable = (len(period_history) >= (5 + (2 * pog_settings["numExtraRefFrames"]))
-                            and (len(period_history) - 1 - pog_settings["numExtraRefFrames"]) > 0
-                            and (period_history[-1 - pog_settings["numExtraRefFrames"]]) > 6)
+        history_stable = (len(period_history) >= (5 + (2 * pog.numExtraRefFrames))
+                            and (len(period_history) - 1 - pog.numExtraRefFrames) > 0
+                            and (period_history[-1 - pog.numExtraRefFrames]) > 6)
         if (
             period != -1
             and period > 6
             and ((require_stable_history == False) or (history_stable))
         ):
-            # ****** JT TODO: why are we subtracting numExtraRefFrames here? That doesn't look right to me!
-            periodToUse = period_history[-1 - pog_settings["numExtraRefFrames"]]
+            # We pick out a recent period from period_history.
+            # Note that we don't use the very most recent value, because when we pick our reference frames
+            # we will pad them with numExtraRefFrames at either end. We pick the period value that
+            # pertains to the range of frames that we will actually use
+            # for the central "unpadded" range of our reference frames.
+            periodToUse = period_history[-1 - pog.numExtraRefFrames]
             logger.success("Found a period I'm happy with: {0}".format(periodToUse))
 
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
-            numRefs = int(periodToUse + 1) + (2 * pog_settings["numExtraRefFrames"])
+            numRefs = int(periodToUse + 1) + (2 * pog.numExtraRefFrames)
 
             # return start, stop, period
             logger.debug(

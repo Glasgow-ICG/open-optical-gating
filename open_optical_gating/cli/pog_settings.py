@@ -1,21 +1,22 @@
-"""Settings functions for open optical gating system."""
+""" An object encapsulating state for the open optical gating system.
+    
+    Note that at the moment this contains both user-accessible parameters that affect algorithm behaviour,
+    and actual *state* (e.g. the current reference frames).
+    There is also some conceptual overlap between this object and e.g. the prospective_optical_gating.py module.
+    Note that some pog.xxx functions need to be passed a settings object, while others are standalone.
+    The structure of all this would probably benefit from some further refactoring and encapsulation...
+    """
 
-# TODO: JT writes: Needs a more extensive comment on what “parameters” actually are. They are a mix of config parameters and current status (e.g. reference frames)...
-# What is the relationship between these and the other "settings" dictionary that gets passed around?
-# Might make sense to rename this "pog_settings.py" or similar, to be consistent with the variable name that is used for them, and to help avoid confusion
-# ... but I expect to tackle all of this in a refactor, so probably just leave this comment as a reminder for now.
-
-# TODO: JT writes: should also consider whether this makes sense as a separate object rather than just properties of optical_gater_server.
-# ... or conversely perhaps prospective_optical_gating should be methods on this POGSettings object...!?
-# Should I *remove* any variables from this such as lastSent, referenceFrame, reference_period, barrierFrameLookup(?) etc? I need to think about all this...
-
-# TODO: JT writes: numExtraRefFrames should really be a global constant, not a parameter in settings.
-# Really the only reason that parameter exists at all in the C code is to self-document all the +-2 arithmetic that would otherwise appear.
-# In the C code it is declared as a const int.
-
-## Imports
+## Python imports
 import numpy as np
 
+# Local imports
+#
+# This is only required for a couple of accesses to numExtraRefFrames.
+# It's possible that that is a hint that things should be refactored slightly,
+# so that this current module doesn't need to know about that.
+# It's only really used as a safety check, anyway.
+from . import prospective_optical_gating as pog
 
 def load():
     """Function to load settings from a json file into our custom dict."""
@@ -31,6 +32,7 @@ class POGSettings(dict):
         defaults = {
                     "drift": [0, 0],
                     "framerate": 80,
+                    "ref_frames": None,
                     "reference_period": 0.0,
                     # barrier frame in frames
                     "barrierFrame": 0.0,
@@ -44,7 +46,6 @@ class POGSettings(dict):
                     "minFramesForFit": 3,
                     "prediction_latency_s": 0.015,
                     "referenceFrame": 0.0,
-                    "numExtraRefFrames": 2,
                     "phase_stamp_only": False,
                     "minPeriod": 5,
                     "lowerThresholdFactor": 0.5,
@@ -58,6 +59,7 @@ class POGSettings(dict):
         # Replace default values with anything specified in the settings dictionary passed to our constructor
         if params is not None:
             dict.update(params)
+
         # These are read-only parameters that we handle as derived quantities
         self.special_list = [ "referenceFrameCount", "targetSyncPhase", "oga_reference_value" ]
     
@@ -65,9 +67,7 @@ class POGSettings(dict):
         if key in self.special_list:
             if key == "referenceFrameCount":
                 # Number of reference frames including padding
-                # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
-                return int(self["reference_period"] + 1) \
-                       + (2 * self["numExtraRefFrames"])
+                return self["ref_frames"].shape[0]
             elif key == "targetSyncPhase":
                 # Target phase in rads
                 if self["reference_period"] > 0.0:
@@ -95,9 +95,9 @@ class POGSettings(dict):
         if (key == "barrierFrame") and (val > 0.0):
             # Impose a similar range limitation on barrierFrame
             val = (
-                   (val - self["numExtraRefFrames"])
+                   (val - pog.numExtraRefFrames)
                    % self["reference_period"]
-                   ) + self["numExtraRefFrames"]
+                   ) + pog.numExtraRefFrames
 
         return val
     
@@ -113,3 +113,21 @@ class POGSettings(dict):
             raise KeyError("Attempting to set read-only parameter '{0}'".format(key))
         else:
             dict.__setitem__(self, key, val)
+
+    def set_reference_frames(self, ref_frames, period_to_use):
+        # Note that we may be passed ref_frames as a list, and this is helpful because it means we could still access
+        # the PixelArray metadata at this point if we wished.
+        # However, long-term we want to store a 3D array because that is what OGA expects to work with.
+        # We therefore make that conversion here
+        ref_frames = np.array(ref_frames)
+        
+        self["ref_frames"] = ref_frames
+        self["reference_period"] = period_to_use
+
+        # Automatically select a target frame and barrier
+        # This can be overriden by the user/controller later
+        self["referenceFrame"], self["barrierFrame"] = \
+                    pog.pick_target_and_barrier_frames(ref_frames, period_to_use)
+
+        # Precalculate a lookup of the barrier frames
+        self["framesForFitLookup"] = pog.determine_barrier_frame_lookup(self)
