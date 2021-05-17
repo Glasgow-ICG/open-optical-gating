@@ -31,13 +31,24 @@ class FileOpticalGater(server.OpticalGater):
         ref_frame_period=None,
         repeats=1,
         automatic_target_frame_selection=True,
+        force_framerate=True
+
     ):
         """Function inputs:
             settings      dict  Parameters affecting operation (see optical_gating_data/json_format_description.md)
+            ref_frames                        arraylike   If not Null, this is a sequence of reference frames that
+                                                       the caller is telling us to use from the start (rather than
+                                                       optical_gater_server determining a reference sequence from the
+                                                       supplied input data
+            ref_frame_period                  float   Noninteger period for supplied ref frames
+            repeats                           int     Number of times to play through the frames in the source .tif file
+            automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
+            force_framerate                   bool    Whether or not to slow down the compute time to emulate real-world speeds
         """
 
         # Get the assumed brightfield framerate from the settings
         self.framerate = settings["brightfield_framerate"]
+        self.force_framerate = force_framerate
 
         # Initialise parent
         super(FileOpticalGater, self).__init__(
@@ -89,33 +100,15 @@ class FileOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
-    def run_server(self, force_framerate=False):
-        """ Run the OpticalGater server, acting on the in-file data.
-            Function inputs:
-                force_framerate bool    Whether or not to slow down the compute time to emulate real-world speeds
-        """
-        if self.automatic_target_frame_selection == False:
-            logger.success("Determining reference period...")
-            while self.state != "sync":
-                while not self.stop:
-                    self.analyze_pixelarray(self.next_frame(force_framerate=True))
-                logger.info("Requesting user input...")
-                self.user_select_ref_frame()
-            logger.success(
-                "Period determined ({0} frames long) and user has selected frame {1} as target.",
-                self.pog_settings["reference_period"],
-                self.pog_settings["referenceFrame"],
-            )
-
-        logger.success("Emulating...")
+    def run_and_analyze_until_stopped(self):
         while not self.stop:
-            self.analyze_pixelarray(self.next_frame(force_framerate=force_framerate))
+            self.analyze_pixelarray(self.next_frame())
 
-    def next_frame(self, force_framerate=False):
+    def next_frame(self):
         """This function gets the next frame from the data source, which can be passed to analyze()"""
         # Force framerate to match the brightfield_framerate in the settings
         # This gives accurate timings and plots
-        if force_framerate and (self.last_frame_wallclock_time is not None):
+        if self.force_framerate and (self.last_frame_wallclock_time is not None):
             wait_s = (1 / self.settings["brightfield_framerate"]) - (
                 time.time() - self.last_frame_wallclock_time
             )
@@ -188,10 +181,11 @@ def load_settings(raw_args, desc, add_extra_args=None):
         with open(settings_file_path) as data_file:
             settings = json.load(data_file)
     except FileNotFoundError:
-        if (os.path.basename(settings_file_path) == "example_data_settings.json"):
+        basename = os.path.basename(settings_file_path)
+        if (basename in ["example_data_settings.json", "pi_default_settings.json"]):
             if (sys.platform == "win32"):
                 os.system("color")  # Make ascii color codes work
-            url = "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data_settings.json"
+            url = os.path.join("https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data", basename)
             response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(settings_file_path))
             if (response.startswith("Y") or response.startswith("y") or (response == "")):
                 # Download from github
@@ -254,11 +248,14 @@ def run(args, desc):
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        source=settings["input_tiff_path"], settings=settings, automatic_target_frame_selection=False,
+        source=settings["input_tiff_path"],
+        settings=settings,
+        automatic_target_frame_selection=False,
+        force_framerate=True
     )
 
     logger.success("Running server...")
-    analyser.run_server(force_framerate=True)
+    analyser.run_server()
 
     logger.success("Plotting summaries...")
     analyser.plot_triggers()

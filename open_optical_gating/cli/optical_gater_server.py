@@ -101,6 +101,33 @@ class OpticalGater:
         # It is assumed that the user/app controls what this interaction is
         self.stop = False
 
+    def run_server(self):
+        """ Run the OpticalGater server, acting on the supplied frame images.
+            run_and_analyze_until_stopped() is implemented by subclasses, which call back into
+            analyze_pixelarray() with the appropriate frame data to be analyzed
+        """
+        if self.automatic_target_frame_selection == False:
+            logger.success("Determining reference period...")
+            while self.state != "sync":
+                # JT TODO: the current code does not quite work in the case where the user rejects the references by typing -1.
+                # It sets state to "reset" but self.stop will be True *until* we go through the reset state action...
+                # but we don't do anything here if self.stop is True!
+                # I suspect the best fix would be a proper state machine that understands when we are acquiring a period,
+                # but where some of the current "states" such as reset are actually state machine actions that take place
+                # on certain state transitions.
+                # For now this is a workaround that forces analyze_pixelarray to run the first time
+                self.stop = False
+                self.run_and_analyze_until_stopped()
+                logger.info("Requesting user input for ref frame selection...")
+                self.user_select_ref_frame()
+            logger.success(
+                "Period determined ({0} frames long) and user has selected frame {1} as target.",
+                self.pog_settings["reference_period"],
+                self.pog_settings["referenceFrame"],
+            )
+        logger.success("Synchronizing...")
+        self.run_and_analyze_until_stopped()
+    
     def analyze_pixelarray(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
             The documentation explains that this must be fast, since it is running within the encoder's callback,
@@ -113,21 +140,6 @@ class OpticalGater:
 
         # For logging processing time
         time_init = time.perf_counter()
-
-        # TODO: These lines need to be moved into the eventual
-        # pi_optical_gater analyze (inherited from picamera) method
-        # If we're passed a colour image, take the first channel (Y; luma)
-        # if isinstance(frame, pa.PixelArray):
-        #     logger.info('PixelArray object passed to analyze.')
-        #     pixelArray = frame
-        # elif isinstance(frame, np.ndarray) and len(pixelArray.shape) == 3:
-        #     logger.info('Colour frame (LUV) passed to analyze, only using luma (Y) channel in PixelArray object.')
-        #     pixelArray = pa.PixelArray(frame[:, :, 0], metadata={'timestamp':time_init})
-        # elif isinstance(frame, np.ndarray) and len(pixelArray.shape) == 2:
-        #     logger.info('Greyscale frame passed to analyze, converting to PixelArray object.')
-        #     pixelArray = pa.PixelArray(frame, metadata={'timestamp':time_init})
-        # else:
-        #     logger.critical('Frame of unknown type passed to analyze.')
 
         if (
             ("update_after_n_triggers" in self.settings) and

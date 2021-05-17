@@ -129,33 +129,13 @@ class PiOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
-    def run_until_stopped(self):
+    def run_and_analyze_until_stopped(self):
         self.camera.start_recording(self.analysis, format="yuv")
         while not self.stop:
             self.camera.wait_recording(0.001)  # s
         self.camera.stop_recording()
 
-    def run_server(self):
-        """ Run the PiOpticalGater, processing frames from the Pi camera.
-        """
-        if self.automatic_target_frame_selection == False:
-            logger.success("Determining reference period...")
-            while self.state != "sync":
-                while not self.stop:
-                    self.run_until_stopped()
-                logger.info("Requesting user input...")
-                self.user_select_ref_frame()
-            logger.success(
-                "Period determined ({0} frames long) and user has selected frame {1} as target.",
-                self.pog_settings["reference_period"],
-                self.pog_settings["referenceFrame"],
-            )
-
-        logger.success("Generating sync triggers...")
-        while not self.stop:
-            self.run_until_stopped()
-
-    def trigger_fluorescence_image_capture(self, trigger_time_s):
+     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
         IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
         and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware
@@ -167,7 +147,7 @@ class PiOpticalGater(server.OpticalGater):
         """
 
         logger.success(
-            "Sending RPi camera trigger after delay of {0:.1f}us".format(delay_us)
+            "Sending RPi camera trigger at {0:.6f}s".format(trigger_time_s)
         )
         trigger_mode = self.settings["fluorescence_trigger_mode"]
         if trigger_mode == "edge":
