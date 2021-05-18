@@ -181,7 +181,7 @@ class OpticalGater:
         else:
             logger.critical("Unknown state {0}.", self.state)
 
-        # take a note of our processing rate (useful for deciding what framerate to set)
+        # take a note of our processing rate (useful for deciding what camera framerate is viable to use)
         time_fin = time.perf_counter()
         pixelArray.metadata["processing_rate_fps"] = 1 / (
                 time_fin - time_init
@@ -244,7 +244,7 @@ class OpticalGater:
 
             # Gets the trigger response
             logger.trace("Predicting next trigger.")
-            time_to_wait_seconds = pog.predict_trigger_wait(
+            time_to_wait_seconds, heartRateRadsPerSec = pog.predict_trigger_wait(
                 pa.get_metadata_from_list(
                     self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
                 ),
@@ -268,6 +268,7 @@ class OpticalGater:
                     self.frame_history[-1].metadata["timestamp"],
                     time_to_wait_seconds,
                     self.pog_settings,
+                    heartRateRadsPerSec
                 )
                 if sendTriggerNow != 0:
                     logger.success(
@@ -310,6 +311,10 @@ class OpticalGater:
         self.pog_settings["ref_frames"] = None
         self.ref_buffer = []
         self.period_guesses = []
+        # lastSent is used as part of the logic in prospective_optical_gating.py
+        # TODO: it's not ideal that the reset logic is here but the variable is used in prospective_optical_gating.
+        # A future refactor may want to think about tidying that up...
+        self.pog_settings["lastSent"] = 0
 
         # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
         # Also, update_after_n_triggers is one reason why we might want to reset the sync,

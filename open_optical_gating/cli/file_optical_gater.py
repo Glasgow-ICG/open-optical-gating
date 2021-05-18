@@ -1,4 +1,4 @@
-"""Extension of CLI Open Optical Gating System for emulating gating with saved brightfield data"""
+"""Extension of optical_gater_server for emulating gating with saved brightfield data"""
 
 # Python imports
 import sys, os, time, argparse
@@ -35,19 +35,20 @@ class FileOpticalGater(server.OpticalGater):
 
     ):
         """Function inputs:
-            settings      dict  Parameters affecting operation (see optical_gating_data/json_format_description.md)
-            ref_frames                        arraylike   If not Null, this is a sequence of reference frames that
+            settings                          dict    Parameters affecting operation
+                                                      (see optical_gating_data/json_format_description.md)
+            ref_frames                        arraylike
+                                                      If not Null, this is a sequence of reference frames that
                                                        the caller is telling us to use from the start (rather than
                                                        optical_gater_server determining a reference sequence from the
                                                        supplied input data
             ref_frame_period                  float   Noninteger period for supplied ref frames
             repeats                           int     Number of times to play through the frames in the source .tif file
             automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
-            force_framerate                   bool    Whether or not to slow down the compute time to emulate real-world speeds
+            force_framerate                   bool    Whether or not to slow down the rate at which new frames
+                                                       are delivered, such that we emulate real-world speeds
         """
 
-        # Get the assumed brightfield framerate from the settings
-        self.framerate = settings["brightfield_framerate"]
         self.force_framerate = force_framerate
 
         # Initialise parent
@@ -105,9 +106,12 @@ class FileOpticalGater(server.OpticalGater):
             self.analyze_pixelarray(self.next_frame())
 
     def next_frame(self):
-        """This function gets the next frame from the data source, which can be passed to analyze()"""
-        # Force framerate to match the brightfield_framerate in the settings
-        # This gives accurate timings and plots
+        """ This function gets the next frame from the data source, which can be passed to analyze().
+            If force_framerate is True, we will impose a delay to ensure that frames are provided
+            at the rate indicated by the settings key "brightfield_framerate".
+            That ensures that timings and the timestamps in plots etc are a realistic emulation
+            of what would happen on a real system.
+        """
         if self.force_framerate and (self.last_frame_wallclock_time is not None):
             wait_s = (1 / self.settings["brightfield_framerate"]) - (
                 time.time() - self.last_frame_wallclock_time

@@ -1,11 +1,15 @@
-""" An object encapsulating state for the open optical gating system.
+""" An object encapsulating state for the optical gating algorithms
     
     Note that at the moment this contains both user-accessible parameters that affect algorithm behaviour,
     and actual *state* (e.g. the current reference frames).
     There is also some conceptual overlap between this object and e.g. the prospective_optical_gating.py module.
     Note that some pog.xxx functions need to be passed a settings object, while others are standalone.
     The structure of all this would probably benefit from some further refactoring and encapsulation...
-    """
+"""
+
+# TODO: framerate is currently used in POG logic, but duplicates the "brightfield_framerate" information in the gating server.
+# We should think about whether we want the duplication, and indeed whether it needs to be kept updated when it changes,
+# and/or whether we would be better off just deducing the framerate from the timestamps of recently-received frames
 
 ## Python imports
 import numpy as np

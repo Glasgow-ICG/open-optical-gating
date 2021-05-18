@@ -90,7 +90,6 @@ class PiOpticalGater(server.OpticalGater):
         camera.image_denoise = self.settings["image_denoise"]
         # Store key variables for later
         self.height, self.width = camera.resolution
-        self.framerate = camera.framerate
         self.camera = camera
 
         # store the array analysis object for later output processing

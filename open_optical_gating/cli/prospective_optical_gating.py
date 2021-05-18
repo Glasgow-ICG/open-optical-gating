@@ -205,8 +205,9 @@ def predict_trigger_wait(frame_history, pog_settings, fitBackToBarrier=True, fra
             framesForFit            int         Optional override value to fit to a specific number of frames from the past history.
                                                 Note that the main purpose of this parameter is for use when we recursively call ourselves
         Returns:
-            Time delay (in seconds) between when the current frame was acquired
-             and when the trigger would need to be sent.
+            Time delay (in seconds) between when the current frame was
+             acquired and when the trigger would need to be sent.
+            Current heart rate (radians/sec), for information
         """
 
     # Deal with the barrier frame logic (if fitBackToBarrier is True):
@@ -321,12 +322,12 @@ def predict_trigger_wait(frame_history, pog_settings, fitBackToBarrier=True, fra
             logger.info("Increasing number of frames to use")
             #  Recurse, using a larger number of frames, to obtain an improved predicted time
             # (Note that if we get to this code branch, fitBackToBarrier will in fact definitely be False)
-            time_to_wait_seconds = predict_trigger_wait(
+            time_to_wait_seconds, radsPerSec = predict_trigger_wait(
                 frame_history, pog_settings, fitBackToBarrier=fitBackToBarrier, framesForFit=extendedFramesForFit
             )
 
     # Return our prediction
-    return time_to_wait_seconds
+    return time_to_wait_seconds, radsPerSec
 
 def determine_barrier_frame_lookup(pog_settings):
     """ Identifies which past frame phases to use for forward-prediction of heart phase,
@@ -468,7 +469,7 @@ def pick_target_and_barrier_frames(reference_frames, reference_period):
     return target_frame_without_padding, barrier_frame_without_padding
 
 
-def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings):
+def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings, heartRateRadsPerSec):
     """ Potentially schedules a synchronization trigger for the fluorescence camera.
         We will do this if the trigger is due fairly soon in the future,
         and we are not confident we will have time to make an updated prediction
@@ -478,6 +479,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings):
             timestamp               float   Time associated with current frame (seconds)
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
             pog_settings            dict    Parameters controlling the sync algorithms
+            heartRateRadsPerSec     float   Heart rate in radians per sec
         Returns:
             timeToWaitInSeconds     float   Time delay before trigger would need to be sent.
                                              Note that this return value may be modified from its input value (see code below).
@@ -485,7 +487,7 @@ def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings):
                                              for a time timeToWaitInSeconds into the future.
         """
     sendIt = 0
-    # 'framerateFactor' (in units of frames) is an emprical constant affecting the logic below.
+    # 'framerateFactor' (in units of frames) is an empirical constant affecting the logic below.
     # Its value should ideally depend on the actual observed variability in the time estimates
     # as successive frame data is received
     framerateFactor = 1.6  # in frames
@@ -513,14 +515,10 @@ def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings):
             sendIt = 1
         else:
             # We have already sent a trigger on this heartbeat, so we consider that we are now making predictions for the *next* cycle.
-            # The value added to timeToWaitInSeconds is a rather crude method to extend the prediction to the next cycle (it assumes
-            # that the heart rate is the same as with the reference sequence). However, this prediction is not crucial because
-            # clearly we will get much better estimates nearer the time. Really we are just returning this as something vaguely sensible,
-            # for cosmetic reasons.
             logger.info(
                 "Trigger already sent recently. Will not send another - extending the prediction to the next cycle."
             )
-            timeToWaitInSeconds += pog_settings["reference_period"] / pog_settings["framerate"]
+            timeToWaitInSeconds += 2*np.pi / heartRateRadsPerSec
     elif (timeToWaitInSeconds - (framerateFactor / pog_settings["framerate"])) < pog_settings[
         "prediction_latency_s"
     ]:
