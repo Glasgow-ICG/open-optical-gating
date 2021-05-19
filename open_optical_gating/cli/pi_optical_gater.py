@@ -134,7 +134,7 @@ class PiOpticalGater(server.OpticalGater):
             self.camera.wait_recording(0.001)  # s
         self.camera.stop_recording()
 
-     def trigger_fluorescence_image_capture(self, trigger_time_s):
+    def trigger_fluorescence_image_capture(self, trigger_time_s):
         """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
         IMPORTANT: this function call is a blocking call, i.e. it will not return until the specified delay has elapsed
         and the trigger has been sent. This is probably acceptable for the RPi implementation, but we should be aware

@@ -34,19 +34,16 @@ This package is not yet published to PyPi, but you can install it directly from 
 
 On Windows, you will first need to install MS Visual C++ if it is not already installed on your system (see http://visualstudio.microsoft.com/visual-cpp-build-tools)
 
-Then, to install on any platform *except* the Raspberry Pi, run the following command:
+On the Raspberry Pi, you will first need to run the following two commands:
 
-`python -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
-
-(Note: use `python3` in place of `python` if you have a Python 2.x version installed as well)
-
-On the Raspberry Pi, run the following commands:
-
-`sudo apt install libatlas-base-dev python3-gi-cairo`
-
+`sudo apt install libatlas-base-dev libffi-dev libssl-dev python3-gi-cairo`
 `python3 -m pip install --user picamera pybase64 git+https://github.com/abdrysdale/fastpins`
 
+Then, to install on any platform, run the following command:
+
 `python3 -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
+
+(Note: if you get the error  `python3: command not found`, substitute `python` for `python3` throughout these instructions)
 
 ### Installation - troubleshooting
 
@@ -55,15 +52,15 @@ On the Raspberry Pi, run the following commands:
 
 - Installation fails while installing dependency scikit-image:
 `ModuleNotFoundError: No module named 'numpy'`
-`ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.`
-Fix by running `python -m pip install numpy`, and then rerun the installation command.
+`ERROR: Command errored out with exit status 1: python3 setup.py egg_info Check the logs for full command output.`
+Fix by running `python3 -m pip install numpy`, and then rerun the installation command.
 
 - `ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` when installing inside a virtual environment. 
   Omit the `--user` flag on the `pip install` command, and rerun.
 
 - Installation appears to succeed, but error `No module named open_optical_gating` or `ImportError: No module named 'loguru'` encountered when running the code:
     - If you are installing inside a virtual environment, rerun the install command but omit the `--user` flag. [A newer version of `pip` would have warned you about the problem - see above]
-    - If you have a *very* old version of pip installed, you will see this error after a suspiciously fast installation process. Run `python -m pip install --upgrade pip` and then repeat the original installation instructions.
+    - If you have a *very* old version of pip installed, you will see this error after a suspiciously fast installation process. Run `python3 -m pip install --upgrade pip` and then repeat the original installation instructions.
 
 
 ## Testing an installation
@@ -72,9 +69,9 @@ Fix by running `python -m pip install numpy`, and then rerun the installation co
 
 If this software is correctly installed, it should be able to run the FileOpticalGater using the example data in this repository. Run:
 
- `python -m open_optical_gating.cli.file_optical_gater optical_gating_data/example_data_settings.json`
+ `python3 -m open_optical_gating.cli.file_optical_gater optical_gating_data/example_data_settings.json`
  
- (Remember to change `python` to `python3` if you are on the Raspberry pi)
+ (Again, substitute `python` for `python3` if you need to)
  
  The first time you run, this will prompt you to download some example video data. It will then run the optical gater code on that dataset. 
 During the analysis it will ask you to pick a period frame (try '10'). It will produce four output plots showing the triggers that would be sent, the predicted trigger time as the emulation went on, the accuracy of those emulated triggers and the frame processing rates.
@@ -83,7 +80,7 @@ During the analysis it will ask you to pick a period frame (try '10'). It will p
 
 If this software is correctly installed and your hardware is correctly configured (see below), you should be able to run the PiOpticalGater using the example data in this repository, from within the repository folder run
 
-`python -m open_optical_gating/cli/check_trigger optical_gating_data/pi_default_settings.json`
+`python3 -m open_optical_gating.cli.check_trigger optical_gating_data/pi_default_settings.json`
 
 This should trigger your timing box/laser/camera depending on your configuration.
 If using this to test a camera trigger, you will need to set your camera ready to recieve external triggers (see below).
@@ -92,7 +89,7 @@ If using this to test a camera trigger, you will need to set your camera ready t
 
 Instead of the standard `pip install` command given above, run the following command from the directory where you want the source tree to be generated:
 
-`python -m pip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
+`python3 -m pip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
 ### Tests for developers
 
@@ -152,15 +149,15 @@ After this, it would be best to check if the signals are being fired by the Ascl
 
 2. Ensure the zebrafish heart is the field of view of both the fluorescence camera and the brightfield camera (PiCam). The brightfield camera can be displayed for 60 seconds using the following command. To increase the time, replace 60000 with the desired time in milliseconds.
 
-       python -m raspivid -t 60000
+       raspivid -t 60000
 
     You can save the video output by using the `-o` flag, e.g.
    
-       python -m raspivid -t 60000 -o file.h264
+       raspivid -t 60000 -o file.h264
 
 3. Launching the cli program.
 
-       python -m open_optical_gating.cli.pi_optical_gater optical_gating_data/pi_default_settings.json
+       python3 -m open_optical_gating.cli.pi_optical_gater optical_gating_data/pi_default_settings.json
 
 4. Ensure the image capture software (QIClick for example) is ready to acquire a stack of images.
 

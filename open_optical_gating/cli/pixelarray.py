@@ -21,8 +21,8 @@ class PixelArray(np.ndarray):
     # See explanations at https://numpy.org/doc/stable/user/basics.subclassing.html
     def __new__(cls, input_array, metadata=dict()):
         # Input array is an already formed ndarray (or subclass) instance
-        # We first cast to be our class type
-        obj = np.asarray(input_array).view(cls)
+        # We first cast to be our class type, and force the array to be contiguous
+        obj = np.ascontiguousarray(input_array).view(cls)
 
         # TODO: I would like to do the following test here:
         # if (isinstance(input_array, PixelArray)):
