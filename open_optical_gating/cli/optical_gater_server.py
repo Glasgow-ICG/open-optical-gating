@@ -76,6 +76,7 @@ class OpticalGater:
         """Defines all internal parameters not already initialised"""
         # Defines an empty list to store past frames with timestamp, phase and argmin(sad) metadata
         self.frame_history = []
+        self.frames_to_save = []
         self.automatic_target_frame_selection = True
         self.justRefreshedRefFrames = False
 
@@ -155,6 +156,15 @@ class OpticalGater:
             self.state = "reset"
 
         pixelArray.metadata["optical_gating_state"] = self.state
+        
+        if (
+            ("save_first_n_frames" in self.settings) and
+            (len(self.frames_to_save) < self.settings["save_first_n_frames"])
+           ):
+            self.frames_to_save.append(pixelArray)
+            if len(self.frames_to_save) == self.settings["save_first_n_frames"]:
+                ref.save_period(self.frames_to_save, self.settings["reference_sequence_dir"], prefix="VID-")
+
 
         if self.state == "sync":
             # Using previously-determined reference period, analyse brightfield frames

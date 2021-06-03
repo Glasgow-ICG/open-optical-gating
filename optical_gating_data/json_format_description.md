@@ -5,6 +5,7 @@
 - "frame_buffer_length" (int): Maximum number of recent frames to retain as part of the sync analysis. Should be enough frames to cover at least one heartbeat; can be longer for debug purposes.  
 - "min_heart_rate_hz" (float): Minimum heart rate we are expecting. This is used while establishing a reference heartbeat, and it caps the amount of computational work we will do. This is especially important to maintain performance in cases where a clear heartbeat is not visible in the provided images.
 - "reference_sequence_dir" (str, optional): Path to directory where a TIFF will be saved containing the reference heartbeat images.
+- "save_first_n_frames" (int, optional): The first N frames received will be saved to disk in the same way that reference sequences are. This may be useful for debug purposes.
 
 ### File optical gater specific settings
 - "input_tiff_path" (str): Path to TIFF file containing a sequence of brightfield images to analyze. If this is a relative path, it will be treated as relative to the settings.json file (*not* the working directory from which the code has been run)

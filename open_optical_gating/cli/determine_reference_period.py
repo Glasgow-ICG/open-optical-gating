@@ -199,15 +199,18 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
     return diffs.size - interpolatedMatchEntry
 
 
-def save_period(reference_period, parent_dir="~/"):
+def save_period(reference_period, parent_dir="~/", prefix="REF-"):
     """Function to save a reference period in an ISO format time-stamped folder with a parent_dir.
         Parameters:
             reference_period    ndarray     t by x by y 3d array of reference frames
             parent_dir          string      parent directory within which to store the period
     """
-    dt = datetime.now().strftime("%Y-%m-%dT%H%M%S")
+    dt = datetime.now().strftime(prefix+"%Y-%m-%dT%H%M%S")
     os.makedirs(os.path.join(parent_dir, dt), exist_ok=True)
 
     # Saves the period
     for i, frame in enumerate(reference_period):
         tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
+
+    logger.warning("Saved frames to \"{0}\"", dt)
+
