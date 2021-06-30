@@ -50,6 +50,7 @@ def establish_indices(sequence, period_history, pog_settings, require_stable_his
 
         # Calculate Diffs between this frame and previous frames in the sequence
         diffs = jps.sad_with_references(frame, pastFrames)
+        logger.trace("SADs: {0}", diffs)
 
         # Calculate Period based on these Diffs
         period = calculate_period_length(diffs, pog_settings["minPeriod"], pog_settings["lowerThresholdFactor"], pog_settings["upperThresholdFactor"])
@@ -113,7 +114,7 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
     # Unlike JTs codes, the following currently only supports determining the period for a *one* beat sequence.
     # It therefore also only supports determining a period which ends with the final frame in the diffs sequence.
     if diffs.size < 2:
-        logger.debug("Not enough diffs, returning -1")
+        logger.trace("Not enough diffs, returning -1")
         return -1
 
     # initialise search parameters for last diff
@@ -129,7 +130,6 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
     got = False
 
     for d in range(minPeriod, diffs.size+1):
-        logger.trace(d)
         score = diffs[diffs.size - d]
         # got, values = gotScoreForDelta(score, d, values)
 
@@ -138,19 +138,20 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
 
         lowerThresholdScore = minScore + (maxScore - minScore) * lowerThresholdFactor
         upperThresholdScore = minScore + (maxScore - minScore) * upperThresholdFactor
-        logger.debug(
-            "Lower Threshold:\t{0:.4f};\tUpper Threshold:\t{1:.4f}",
+        logger.trace(
+            "d:{0};\tLower Threshold:\t{1:.4f};\tUpper Threshold:\t{2:.4f}",
+            d,
             lowerThresholdScore,
             upperThresholdScore,
         )
 
         if score < lowerThresholdScore and stage == 1:
-            logger.info("Stage 1: Under lower threshold; Moving to stage 2")
+            logger.trace("Stage 1: Under lower threshold; Moving to stage 2")
             stage = 2
 
         if score > upperThresholdScore and stage == 2:
             # TODO: speak to JT about the 'final condition'
-            logger.info(
+            logger.trace(
                 "Stage 2: Above upper threshold; Returning period of {0}",
                 deltaForMinSinceMax,
             )
@@ -159,7 +160,7 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
             break
 
         if score > maxScore:
-            logger.info(
+            logger.trace(
                 "New max score: {0} > {1}. Resetting to stage 1.", score, maxScore
             )
             maxScore = score
@@ -167,11 +168,11 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
             deltaForMinSinceMax = d
             stage = 1
         elif score != 0 and (minScore == 0 or score < minScore):
-            logger.debug("New minimum score of {0}", score)
+            logger.trace("New minimum score of {0}", score)
             minScore = score
 
         if score < minSinceMax:
-            logger.debug(
+            logger.trace(
                 "New minimum score ({0}) since maximum of {1}", score, maxScore
             )
             minSinceMax = score

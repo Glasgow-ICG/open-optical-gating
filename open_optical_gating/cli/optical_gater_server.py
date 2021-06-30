@@ -111,14 +111,16 @@ class OpticalGater:
             logger.success("Determining reference period...")
             while self.state != "sync":
                 # JT TODO: the current code does not quite work in the case where the user rejects the references by typing -1.
-                # It sets state to "reset" but self.stop will be True *until* we go through the reset state action...
-                # but we don't do anything here if self.stop is True!
+                # It sets state to "reset" but self.stop will be non-False *until* we go through the reset state action...
+                # but we don't do anything here if self.stop is non-False!
                 # I suspect the best fix would be a proper state machine that understands when we are acquiring a period,
                 # but where some of the current "states" such as reset are actually state machine actions that take place
                 # on certain state transitions.
                 # For now this is a workaround that forces analyze_pixelarray to run the first time
                 self.stop = False
                 self.run_and_analyze_until_stopped()
+                if self.stop == 'out-of-frames':
+                    raise RuntimeError("Ran out of frames without managing to establish a period")
                 logger.info("Requesting user input for ref frame selection...")
                 self.user_select_ref_frame()
             logger.success(
@@ -209,7 +211,6 @@ class OpticalGater:
                                                            self.pog_settings["ref_frames"],
                                                            self.pog_settings["reference_period"],
                                                            self.pog_settings["drift"])
-        logger.trace(sad)
 
         # Calculate cumulative phase (phase) from delta phase (current_phase - last_phase)
         if len(self.frame_history) == 0:  # i.e. first frame
@@ -405,7 +406,7 @@ class OpticalGater:
                 # The user/app can then select a target frame
                 # The user/app will also need to call the adaptive system
                 # see user_select_ref_frame()
-                self.stop = True
+                self.stop = 'select'
 
 
     def adapt_state(self, pixelArray):

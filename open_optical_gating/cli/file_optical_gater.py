@@ -49,13 +49,13 @@ class FileOpticalGater(server.OpticalGater):
                                                        are delivered, such that we emulate real-world speeds
         """
 
-        self.force_framerate = force_framerate
-
         # Initialise parent
         super(FileOpticalGater, self).__init__(
             settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
         )
 
+        self.force_framerate = force_framerate
+        
         # Load the data
         self.load_data(source)
 
@@ -141,16 +141,30 @@ class FileOpticalGater(server.OpticalGater):
             self.repeats_remaining -= 1
             if self.repeats_remaining <= 0:
                 # If this is our last frame we set the stop flag for the user/app to know
-                self.stop = True
+                self.stop = 'out-of-frames'
             else:
                 # Start again at the first frame in the file
                 self.next_frame_index = 0
 
+        if self.force_framerate:
+            # We are being asked to follow the specified framerate exactly.
+            # We will do the best we can, but there will inevitably be a slight jitter in
+            # the actual timings. In the spirit of real-time testing, we use the actual
+            # wallclock time as the frame timestamp.
+            # (We normalise by the start time, to avoid unnecessarily large numbers)
+            this_frame_timestamp = time.time() - self.start_time
+        else:
+            # We are not being asked to follow the specified framerate exactly,
+            # we are just running at whatever speed we can manage.
+            # Since the analysis code may be looking at the timestamps,
+            # we need to make sure they contain sane numbers
+            this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield_framerate"])
+        
         next = pa.PixelArray(
             self.data[self.next_frame_index, :, :],
             metadata={
-                "timestamp": time.time() - self.start_time
-            },  # relative to start_time to sanitise
+                "timestamp": this_frame_timestamp
+            },
         )
         self.next_frame_index += 1
         self.last_frame_wallclock_time = time.time()

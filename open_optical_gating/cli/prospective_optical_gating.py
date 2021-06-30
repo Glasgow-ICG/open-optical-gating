@@ -180,7 +180,7 @@ def identify_phase_with_drift(frame, reference_frames, reference_period, drift):
         reference_frames[0].shape, reference_frames_cropped[0].shape
     )
     SADs = jps.sad_with_references(frame_cropped, reference_frames_cropped)
-    logger.trace(SADs)
+    logger.trace("SADs: {0}", SADs)
 
     # Identify best match between 'frame' and the reference frame sequence
     matched_phase = subframe_phase_fitting(SADs, reference_period)
