@@ -1,7 +1,8 @@
 """Extension of optical_gater_server for emulating gating with saved brightfield data"""
 
 # Python imports
-import sys, os, time, argparse
+import sys, os, time, argparse, glob
+import numpy as np
 import json
 import urllib.request
 
@@ -70,9 +71,17 @@ class FileOpticalGater(server.OpticalGater):
         """Load data file"""
         # Load
         logger.success("Loading image data...")
-        try:
-            self.data = tiffio.imread(filename)
-        except FileNotFoundError:
+        self.data = None
+        for fn in sorted(glob.glob(filename)):
+            logger.debug("Loading image data from file {0}", fn)
+            imageData = tiffio.imread(fn)
+            if self.data is None:
+                self.data = imageData
+            else:
+                self.data = np.append(self.data, imageData, axis=0)
+    
+        if self.data is None:
+            # No files found matching the pattern 'filename'
             if "source_url" in self.settings:
                 if (sys.platform == "win32"):
                     os.system("color")  # Make ascii color codes work
@@ -91,8 +100,7 @@ class FileOpticalGater(server.OpticalGater):
                     raise
             else:
                 logger.error("File {0} not found".format(filename))
-                raise
-            
+                raise FileNotFoundError("File {0} not found".format(filename))
 
         self.height, self.width = self.data[0].shape
 
