@@ -9,7 +9,7 @@ import urllib.request
 # Module imports
 from loguru import logger
 from tqdm.auto import tqdm
-# See comment in pyproject.toml for why we have to try both of these
+# See comment in pyproject.toml for why we have to try both of these:
 try:
     import skimage.io as tiffio
 except:
@@ -32,8 +32,8 @@ class FileOpticalGater(server.OpticalGater):
         ref_frame_period=None,
         repeats=1,
         automatic_target_frame_selection=True,
-        force_framerate=True
-
+        force_framerate=True,
+        show_progress_bar=False
     ):
         """Function inputs:
             settings                          dict    Parameters affecting operation
@@ -48,6 +48,8 @@ class FileOpticalGater(server.OpticalGater):
             automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
             force_framerate                   bool    Whether or not to slow down the rate at which new frames
                                                        are delivered, such that we emulate real-world speeds
+            show_progress_bar                 bool    Whether or not to show a progress bar when analyzing frames
+
         """
 
         # Initialise parent
@@ -56,25 +58,29 @@ class FileOpticalGater(server.OpticalGater):
         )
 
         self.force_framerate = force_framerate
+        self.progress_bar = None  # May be updated during load_data
         
-        # Load the data
-        self.load_data(source)
-
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
+
+        # Load the data
+        self.load_data(source, show_progress_bar)
 
         # By default we will take a guess at a good target frame (True)
         # rather than ask user for their preferred initial target frame (False)
         self.automatic_target_frame_selection = automatic_target_frame_selection
 
-    def load_data(self, filename):
+    def load_data(self, filename, show_progress_bar):
         """Load data file"""
         # Load
         logger.success("Loading image data...")
         self.data = None
-        for fn in sorted(glob.glob(filename)):
+        for fn in tqdm(sorted(glob.glob(filename)), desc='Loading image data'):
             logger.debug("Loading image data from file {0}", fn)
             imageData = tiffio.imread(fn)
+            if len(imageData.shape) == 2:
+                # Cope with loading a single image - convert it to a 1xMxN array
+                imageData = imageData[np.newaxis,:,:]
             if self.data is None:
                 self.data = imageData
             else:
@@ -102,7 +108,15 @@ class FileOpticalGater(server.OpticalGater):
                 logger.error("File {0} not found".format(filename))
                 raise FileNotFoundError("File {0} not found".format(filename))
 
+        if "decimate" in self.settings:
+            # Process just every nth frame.
+            # Note that I do this after all the data has loaded. While that is temporarily wasteful of memory,
+            # it's the easiest way to ensure equal decimation even when the data is split across multiple files of unknown length
+            self.data = self.data[::self.settings["decimate"]]
+    
         self.height, self.width = self.data[0].shape
+        if show_progress_bar:
+            self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
 
         # Initialise frame iterator and time tracker
         self.next_frame_index = 0
@@ -145,6 +159,9 @@ class FileOpticalGater(server.OpticalGater):
                     )
                 )
 
+        if self.progress_bar is not None:
+            self.progress_bar.update(1)
+        
         if self.next_frame_index == self.data.shape[0] - 1:
             self.repeats_remaining -= 1
             if self.repeats_remaining <= 0:
