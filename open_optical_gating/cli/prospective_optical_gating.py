@@ -4,6 +4,7 @@ These codes are equivalent to the Objective-C codes in spim-interface."""
 # Python imports
 import numpy as np
 from loguru import logger
+import scipy.optimize
 
 # Module imports
 import j_py_sad_correlation as jps
@@ -125,6 +126,27 @@ def v_fitting(y_1, y_2, y_3):
 
     return x, y
 
+def u_fitting(y_1, y_2, y_3):
+    # Fit using a symmetric 'U' function, to find the interpolated minimum for three datapoints y_1, y_2, y_3,
+    # which are considered to be at coordinates x=-1, x=0 and x=+1
+    c = y_2
+    a = (y_1 + y_3 - 2*y_2) / 2
+    b = y_3 - a - c
+    x = -b / (2*a)
+    y = a*x**2 + b*x + c
+    return x, y, a, b, c
+
+def u_fittingN(y):
+    # Quadratic best fit to N datapoints, which [** inconsistently with respect to u/v_fitting() **]
+    # are considered to be at coordinates x=0, 1, ...
+    x = np.arange(len(y))
+    def quadratic(x, a, b, c):
+        return a*x**2 + b*x + c
+    (a, b, c), cov = scipy.optimize.curve_fit(quadratic, x, y, p0=[0, 0, np.average(y)])
+    x = -b / (2*a)
+    y = quadratic(x, a, b, c)
+    #    return x, y, *popt
+    return x, y, a, b, c
 
 def identify_phase_with_drift(frame, reference_frames, reference_period, drift):
     """ Phase match a new frame based on a reference period.
