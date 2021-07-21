@@ -1,7 +1,7 @@
 """Extension of optical_gater_server for emulating gating with saved brightfield data"""
 
 # Python imports
-import sys, os, time, argparse, glob
+import sys, os, time, argparse, glob, warnings
 import numpy as np
 import json
 import urllib.request
@@ -32,8 +32,7 @@ class FileOpticalGater(server.OpticalGater):
         ref_frame_period=None,
         repeats=1,
         automatic_target_frame_selection=True,
-        force_framerate=True,
-        show_progress_bar=False
+        force_framerate=True
     ):
         """Function inputs:
             settings                          dict    Parameters affecting operation
@@ -48,7 +47,6 @@ class FileOpticalGater(server.OpticalGater):
             automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
             force_framerate                   bool    Whether or not to slow down the rate at which new frames
                                                        are delivered, such that we emulate real-world speeds
-            show_progress_bar                 bool    Whether or not to show a progress bar when analyzing frames
 
         """
 
@@ -58,19 +56,19 @@ class FileOpticalGater(server.OpticalGater):
         )
 
         self.force_framerate = force_framerate
-        self.progress_bar = None  # May be updated during load_data
+        self.progress_bar = None  # May be updated during run_server
         
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
 
         # Load the data
-        self.load_data(source, show_progress_bar)
+        self.load_data(source)
 
         # By default we will take a guess at a good target frame (True)
         # rather than ask user for their preferred initial target frame (False)
         self.automatic_target_frame_selection = automatic_target_frame_selection
 
-    def load_data(self, filename, show_progress_bar):
+    def load_data(self, filename):
         """Load data file"""
         # Load
         logger.success("Loading image data...")
@@ -81,6 +79,17 @@ class FileOpticalGater(server.OpticalGater):
             if len(imageData.shape) == 2:
                 # Cope with loading a single image - convert it to a 1xMxN array
                 imageData = imageData[np.newaxis,:,:]
+            if (((imageData.shape[-1] == 3) or (imageData.shape[-1] == 4))
+                and (imageData.strides[-1] != 1)):
+                # skimage.io.imread() seems to automatically reinterpret a 3xMxN array as a colour array,
+                # and reorder it as MxNx3. We don't want that! I can't find a way to tell imread not to
+                # do that (as_grayscale does *not* do what I want...). For now I just detect it empirically
+                # and undo it.
+                # The test of 'strides' is an empirical one - clearly imread tweaks that to
+                # reinterpret the original data in a different way to what was intended, but that
+                # makes it easy to spot
+                warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
+                imageData = np.moveaxis(imageData, -1, 0)
             if self.data is None:
                 self.data = imageData
             else:
@@ -115,13 +124,16 @@ class FileOpticalGater(server.OpticalGater):
             self.data = self.data[::self.settings["decimate"]]
     
         self.height, self.width = self.data[0].shape
-        if show_progress_bar:
-            self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
 
         # Initialise frame iterator and time tracker
         self.next_frame_index = 0
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
+
+    def run_server(self, show_progress_bar=False):
+        if show_progress_bar:
+            self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
+        super().run_server()
 
     def run_and_analyze_until_stopped(self):
         while not self.stop:
