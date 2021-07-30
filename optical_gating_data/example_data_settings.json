@@ -22,5 +22,16 @@
     "reference_sequence_dir": "reference-sequence-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 10,
-    "min_heart_rate_hz": 1.0
+    "min_heart_rate_hz": 1.0,
+    "kalman_filter": {
+        "use_kalman_filter_y/n": "y",
+        "var_m_factor": 0.5,
+        "var_a_factor": 1,
+        "baseline_var": 0.05,
+        "phase_cache_length": 50,
+        "var_m_cache_length": 3,
+        "init_v": 0,
+        "init_var_x": 10,
+        "init_var_a": 0.5
+    }
 }

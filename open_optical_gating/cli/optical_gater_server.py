@@ -17,6 +17,7 @@ from . import pixelarray as pa
 from . import determine_reference_period as ref
 from . import prospective_optical_gating as pog
 from . import pog_settings as ps
+from . import kalman_filter as kf
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
@@ -96,6 +97,24 @@ class OpticalGater:
 
         # Start experiment timer
         self.initial_process_time_s = time.time()
+
+        # Start Kalman filter if user has indicated to do so
+        if "kalman_filter" in self.settings:
+            self.use_kalman_filter = True
+            kf_settings = self.settings["kalman_filter"]
+            self.kalman_filter = kf.KalmanFilter2D(
+                var_m_factor=kf_settings["var_m_factor"], 
+                var_a_factor=kf_settings["var_a_factor"], 
+                baseline_var=kf_settings["baseline_var"], 
+                phase_cache_length=kf_settings["phase_cache_length"], 
+                var_m_cache_length=kf_settings["var_m_cache_length"],
+                init_v=kf_settings["init_v"], 
+                init_var_x=kf_settings["init_var_x"], 
+                init_var_a=kf_settings["init_var_a"],
+                delta_t=1/self.settings["brightfield_framerate"]
+            )
+        else:
+            self.use_kalman_filter = False
 
         # Flag for interrupting the program at key points
         # E.g. when user-input is needed
@@ -244,6 +263,13 @@ class OpticalGater:
             self.frame_history[-1].metadata["sad_min"],
         )
 
+        if self.use_kalman_filter:
+            # Give new timestamp and phase measurement to Kalman filter
+            self.kalman_filter.process_measurement(
+                z=self.frame_history[-1].metadata["unwrapped_phase"], 
+                timestamp=self.frame_history[-1].metadata["timestamp"]
+            )
+
         # If we have at least one period of phase history, have a go at predicting a future trigger time
         # (Note that this prediction can be disabled by enabling "phase_stamp_only" in pog_settings
         this_predicted_trigger_time_s = None
@@ -255,13 +281,22 @@ class OpticalGater:
 
             # Gets the trigger response
             logger.trace("Predicting next trigger.")
-            time_to_wait_seconds, heartRateRadsPerSec = pog.predict_trigger_wait(
-                pa.get_metadata_from_list(
-                    self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
-                ),
-                self.pog_settings,
-                fitBackToBarrier=True,
-            )
+            if self.use_kalman_filter:
+                time_to_wait_seconds, heartRateRadsPerSec = self.kalman_filter.kalman_predict_trigger_wait(
+                    pa.get_metadata_from_list(
+                        self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
+                    ),
+                    self.pog_settings
+                )
+            else:
+                time_to_wait_seconds, heartRateRadsPerSec = pog.predict_trigger_wait(
+                    pa.get_metadata_from_list(
+                        self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
+                    ),
+                    self.pog_settings,
+                    fitBackToBarrier=True,
+                )
+
             logger.trace("Time to wait: {0} s.".format(time_to_wait_seconds))
 
             this_predicted_trigger_time_s = (
@@ -385,6 +420,10 @@ class OpticalGater:
 
         if ref_frames is not None:
             self.pog_settings.set_reference_frames(ref_frames, period_to_use)
+
+            # Give period to Kalman filter
+            if self.use_kalman_filter:
+                self.kalman_filter.prepare_to_sync()
 
             if "reference_sequence_dir" in self.settings:
                 # Save the reference sequence to disk, for debug purposes
