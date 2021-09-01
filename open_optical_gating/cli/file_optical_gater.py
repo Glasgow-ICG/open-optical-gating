@@ -240,7 +240,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
         if (basename in ["example_data_settings.json", "pi_default_settings.json"]):
             if (sys.platform == "win32"):
                 os.system("color")  # Make ascii color codes work
-            url = os.path.join("https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data", basename)
+            url = "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/" + basename
             response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(settings_file_path))
             if (response.startswith("Y") or response.startswith("y") or (response == "")):
                 # Download from github
