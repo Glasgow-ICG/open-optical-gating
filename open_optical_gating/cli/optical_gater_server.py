@@ -20,7 +20,7 @@ from . import pog_settings as ps
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
-# logger.add("oog_{time}.log", level="DEBUG")
+logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
 # TODO create a time-stamped copy of the settings file after this
@@ -212,18 +212,21 @@ class OpticalGater:
                                                            self.pog_settings["reference_period"],
                                                            self.pog_settings["drift"])
 
-        # Calculate cumulative phase (phase) from delta phase (current_phase - last_phase)
-        if len(self.frame_history) == 0:  # i.e. first frame
+        # Calculate the unwrapped phase.
+        # Normally this is fairly straightforward - calculate (current_phase - previous_phase)
+        # and add that to the unwrapped phase of the previous frame.
+        # But some care is needed to handle the case where the current phase has just wrapped,
+        # or there is a slight backward step from e.g. 0.01 to 2π-0.01.
+        if len(self.frame_history) == 0:  # i.e. this is our first frame
             logger.debug("First frame, using current phase as cumulative phase.")
             delta_phase = 0
             phase = current_phase
-            self.last_phase = current_phase
         else:
-            delta_phase = current_phase - self.last_phase
+            delta_phase = current_phase - self.previous_phase
+            # Handle phase wraps in the most sensible way possible
             while delta_phase < -np.pi:
                 delta_phase += 2 * np.pi
             phase = self.frame_history[-1].metadata["unwrapped_phase"] + delta_phase
-            self.last_phase = current_phase
 
         # Evicts the oldest entry in frame_history if it exceeds the history length that we are meant to be retaining
         # Note: deletion of first list element is potentially a performance issue,
@@ -244,6 +247,7 @@ class OpticalGater:
             self.frame_history[-1].metadata["sad_min"],
         )
 
+        # === The main purpose of this function: generating synchronization triggers ===
         # If we have at least one period of phase history, have a go at predicting a future trigger time
         # (Note that this prediction can be disabled by enabling "phase_stamp_only" in pog_settings
         this_predicted_trigger_time_s = None
@@ -253,7 +257,7 @@ class OpticalGater:
         ):
             logger.debug("Predicting trigger...")
 
-            # Gets the trigger response
+            # Make a future prediction
             logger.trace("Predicting next trigger.")
             time_to_wait_seconds, heartRateRadsPerSec = pog.predict_trigger_wait(
                 pa.get_metadata_from_list(
@@ -262,33 +266,43 @@ class OpticalGater:
                 self.pog_settings,
                 fitBackToBarrier=True,
             )
-            logger.trace("Time to wait: {0} s.".format(time_to_wait_seconds))
+            logger.trace("Time to wait to trigger: {0} s.".format(time_to_wait_seconds))
 
             this_predicted_trigger_time_s = (
                 self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
             )
 
-            # Captures the image
+            # If we have a prediction, consider actually sending the trigger
             if time_to_wait_seconds > 0:
                 logger.info("Possible trigger after: {0}s", time_to_wait_seconds)
-
+                # Decide whether the current candidate trigger time should actually be used,
+                # or whether we should wait for an improved prediction from the next brightfield frame.
+                # Note that time_to_wait_seconds might be updated by this call (to change the value to
+                # refer to the next heart cycle) if we have already committed to a trigger in the current cycle.
+                #
+                # JT TODO: I would like to refactor that logic. I think that better belongs
+                # in the prediction code itself. More generally, pog_settings should be refactored
+                # to just be actual settings, and *state* (e.g. "lastSent") should be encapsulated
+                # in a class. That structure would also mesh better with Ross's Kalman code.
                 (
                     time_to_wait_seconds,
                     sendTriggerNow
-                ) = pog.decide_trigger(
+                ) = pog.decide_whether_to_trigger(
                     self.frame_history[-1].metadata["timestamp"],
                     time_to_wait_seconds,
                     self.pog_settings,
                     heartRateRadsPerSec
                 )
                 if sendTriggerNow != 0:
+                    # Actually send the electrical trigger signal
                     logger.success(
                         "Sending trigger (reason: {0}) at time ({1} plus {2}) s",
                         sendTriggerNow,
                         self.frame_history[-1].metadata["timestamp"],
                         time_to_wait_seconds,
                     )
-                    # Trigger only
+                    # Note that the following call may block on some platforms
+                    # (its exact implementation is for the subclass to determine)
                     self.trigger_fluorescence_image_capture(
                         this_predicted_trigger_time_s
                     )
@@ -309,7 +323,7 @@ class OpticalGater:
         )
 
         # store this phase now to calculate the delta phase for the next frame
-        self.last_phase = float(current_phase)
+        self.previous_phase = float(current_phase)
 
     def reset_state(self):
         """ Code to run when in "reset" state
@@ -561,7 +575,6 @@ class OpticalGater:
 
         triggeredPhase = []
         for i in range(len(sent_trigger_times)):
-
             triggeredPhase.append(
                 wrapped_phase[
                     (

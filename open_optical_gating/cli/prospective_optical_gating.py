@@ -491,8 +491,9 @@ def pick_target_and_barrier_frames(reference_frames, reference_period):
     return target_frame_without_padding, barrier_frame_without_padding
 
 
-def decide_trigger(timestamp, timeToWaitInSeconds, pog_settings, heartRateRadsPerSec):
-    """ Potentially schedules a synchronization trigger for the fluorescence camera.
+def decide_whether_to_trigger(timestamp, timeToWaitInSeconds, pog_settings, heartRateRadsPerSec):
+    """ Potentially schedules a synchronization trigger for the fluorescence camera,
+        based on the caller-supplied candidate trigger time described by timeToWaitInSeconds.
         We will do this if the trigger is due fairly soon in the future,
         and we are not confident we will have time to make an updated prediction
         based on the next incoming frame from the brightfield camera.
