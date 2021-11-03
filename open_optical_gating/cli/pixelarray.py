@@ -78,7 +78,7 @@ def ArrayJSONDecode(arrayDict):
     return result
 
 
-def get_metadata_from_list(pixelArrayList, metadataKey):
+def get_metadata_from_list(pixelArrayList, metadataKey, onlyIfKeyPresent=None):
     """ Given a list of PixelArray objects, returns a numpy array containing the
         value associated with the metadata entry for 'metadataKey' (e.g. 'timestamp')
         for each of the objects in the list. i.e. return an array containing the
@@ -87,12 +87,19 @@ def get_metadata_from_list(pixelArrayList, metadataKey):
         Function inputs:
          pixelArrayList   list          List of PixelArray objects
          metadataKey      str or list   Metadata key to extract.
-                                        Must be present for all objects in pixelArrayList.
+                                        By default, this must be present for all objects in pixelArrayList.
                                         If a list, returns an array with n columns.
+         onlyIfKeyPresent str or None   If provided, we only consider entries in pixelArrayList that contain this key/value pair
+                                        This is useful e.g. for selecting out only frames where a trigger was sent
         """
     if isinstance(metadataKey, str):
-        return np.array([i.metadata[metadataKey] for i in pixelArrayList])
+        if onlyIfKeyPresent is not None:
+            return np.array([i.metadata[metadataKey] for i in pixelArrayList if onlyIfKeyPresent in i.metadata])
+        else:
+            return np.array([i.metadata[metadataKey] for i in pixelArrayList])
     elif isinstance(metadataKey, list):
+        if onlyIfKeyPresent is not None:
+            raise ValueError('onlyIfKeyPresent is not supported in combination with key lists')
         return np.array(
             [[i.metadata[m] for i in pixelArrayList] for m in metadataKey]
         ).T
