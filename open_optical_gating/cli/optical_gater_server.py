@@ -20,7 +20,7 @@ from . import pog_settings as ps
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
-logger.add("oog_{time}.log", level="DEBUG")
+logger.add("testing_logs/oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
 # TODO create a time-stamped copy of the settings file after this
@@ -79,7 +79,8 @@ class OpticalGater:
         self.frames_to_save = []
         self.automatic_target_frame_selection = True
         self.justRefreshedRefFrames = False
-
+        self.latestTriggerPredictFrame = None
+        
         # Variables for adaptive algorithm
         self.trigger_num = 0
         self.sequence_history = None
@@ -109,6 +110,11 @@ class OpticalGater:
         """
         if self.automatic_target_frame_selection == False:
             logger.success("Determining reference period...")
+            
+            # Prompt for a target frame if reference frames are provided
+            if self.pog_settings["ref_frames"] is not None:
+                self.user_select_ref_frame()
+            
             while self.state != "sync":
                 # JT TODO: the current code does not quite work in the case where the user rejects the references by typing -1.
                 # It sets state to "reset" but self.stop will be non-False *until* we go through the reset state action...
@@ -123,18 +129,19 @@ class OpticalGater:
                     raise RuntimeError("Ran out of frames without managing to establish a period")
                 logger.info("Requesting user input for ref frame selection...")
                 self.user_select_ref_frame()
+                
             logger.success(
                 "Period determined ({0} frames long) and user has selected frame {1} as target.",
                 self.pog_settings["reference_period"],
                 self.pog_settings["referenceFrame"],
             )
+                
         logger.success("Synchronizing...")
         self.run_and_analyze_until_stopped()
     
     def analyze_pixelarray(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
-            The documentation explains that this must be fast, since it is running within the encoder's callback,
-            and so must return before the next frame is produced.
+            Note that this analysis must take place fast enough that we return before the next frame arrives.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
         logger.debug(
             "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
@@ -143,7 +150,7 @@ class OpticalGater:
 
         # For logging processing time
         time_init = time.perf_counter()
-
+        
         if (
             ("update_after_n_triggers" in self.settings) and
             (self.trigger_num >= self.settings["update_after_n_triggers"])
@@ -155,7 +162,7 @@ class OpticalGater:
                 "At least {0} triggers have been sent; resetting before switching to adaptive mode.",
                 self.settings["update_after_n_triggers"],
             )
-            self.state = "reset"
+            self.state = "reset" 
 
         pixelArray.metadata["optical_gating_state"] = self.state
         
@@ -198,6 +205,52 @@ class OpticalGater:
         pixelArray.metadata["processing_rate_fps"] = 1 / (
                 time_fin - time_init
             )
+
+    def live_phase_interpolation(self): 
+        """
+        Fluorescence triggers will rarely (if ever) overlap exactly in time with brightfield frames. 
+        To achieve an accurate phase estimate at the time a fluorescence image was captured, it is necessary to interpolated between times of known phase. 
+        
+        This function interpolates phase between the TWO CLOSEST brightfield frames to a given sent trigger time in order to the estimate phase
+        at the exact time a fluorescence frame was captured. 
+        """
+        
+        # If a trigger was previously scheduled and will have fired just before the frame we are now processing,
+        # perform phase interpolation to estimate what the heart phase actually was when the trigger fired
+        if (self.latestTriggerPredictFrame is not None     # Ensures there is at least one sent trigger to analyse
+            and len(self.frame_history) > 1):              # Ensures there are two frames to interpolate between
+            
+            aheadTime = self.frame_history[-1].metadata["timestamp"]
+            behindTime = self.frame_history[-2].metadata["timestamp"]
+            triggerTime = self.latestTriggerPredictFrame.metadata["predicted_trigger_time_s"]
+            if (aheadTime >= triggerTime        # Ensure the latest brightfield image is 'ahead' of the recently-sent trigger time
+                and behindTime <= triggerTime): # Ensure the previous brightfield image is 'behind' the recently-sent trigger time
+            
+                aheadPhase = self.frame_history[-1].metadata["unwrapped_phase"]
+                behindPhase = self.frame_history[-2].metadata["unwrapped_phase"]
+
+                interpolatedPhase = np.interp(triggerTime, [behindTime, aheadTime], [behindPhase, aheadPhase])
+                wrappedPhaseAtSentTriggerTime = interpolatedPhase % (2 * np.pi)
+            
+                # Compute the error between the target phase and the estimated phase
+                phaseError = wrappedPhaseAtSentTriggerTime - self.pog_settings["targetSyncPhase"]
+            
+                # Adjust the phase error to lie in (-pi, pi)
+                if phaseError > np.pi:
+                    phaseError = phaseError - (2 * np.pi)
+                elif phaseError < - np.pi:
+                    phaseError = phaseError + (2 * np.pi)
+            
+            
+                self.latestTriggerPredictFrame.metadata["triggerPhaseError"] = phaseError
+                self.latestTriggerPredictFrame.metadata["wrappedPhaseAtSentTriggerTime"] = wrappedPhaseAtSentTriggerTime
+
+                logger.info('Live phase interpolation successful! Phase error = {0}', phaseError)
+            
+                errorThreshold = 0.15
+                if abs(phaseError) > errorThreshold:
+                    logger.warning('Phase error ({0} radians) has exceeded desired threshold ({1} radians)', phaseError, errorThreshold)
+            
 
     def sync_state(self, pixelArray):
         """ Code to run when in "sync" state
@@ -307,6 +360,10 @@ class OpticalGater:
                         this_predicted_trigger_time_s
                     )
 
+                    self.latestTriggerPredictFrame = self.frame_history[-1]
+                    # trigger_sent is a special flag that is *only* present in the dictionary if we did send a trigger
+                    self.frame_history[-1].metadata["trigger_sent"] = sendTriggerNow
+
                     # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
 
@@ -315,6 +372,7 @@ class OpticalGater:
             "predicted_trigger_time_s"
         ] = this_predicted_trigger_time_s
         self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
+        self.frame_history[-1].metadata["targetSyncPhase"] = self.pog_settings["targetSyncPhase"]
         logger.debug(
             "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}",
             self.frame_history[-1].metadata["timestamp"],
@@ -325,6 +383,9 @@ class OpticalGater:
         # store this phase now to calculate the delta phase for the next frame
         self.previous_phase = float(current_phase)
 
+        # Computing the phase at the exact time the most recent trigger was acted upon
+        self.live_phase_interpolation()
+
     def reset_state(self):
         """ Code to run when in "reset" state
             Resetting for a new period determination.
@@ -333,9 +394,11 @@ class OpticalGater:
             or before getting a new reference period in the adaptive mode.
         """
         logger.info("Resetting for new period determination.")
+        
         self.pog_settings["ref_frames"] = None
         self.ref_buffer = []
         self.period_guesses = []
+        
         # lastSent is used as part of the logic in prospective_optical_gating.py
         # TODO: it's not ideal that the reset logic is here but the variable is used in prospective_optical_gating.
         # A future refactor may want to think about tidying that up...
@@ -350,6 +413,7 @@ class OpticalGater:
         # It appears in analyze(), where it may induce a reset, and then it appears again here as a
         # sort of way of figuring out why this reset was initiated in the first place.
         # Not sure yet what the best solution is, but I'm flagging it for a rethink.
+        
         if (
             ("update_after_n_triggers" in self.settings) and
             (self.trigger_num >= self.settings["update_after_n_triggers"])
@@ -359,7 +423,6 @@ class OpticalGater:
             logger.info(
                 "Switching to adaptive mode.", self.settings["update_after_n_triggers"]
             )
-            self.trigger_num = 0
             self.state = "adapt"
         else:
             logger.info("Switching to determine period mode.")
@@ -524,11 +587,15 @@ class OpticalGater:
             self.start_sync_with_ref_frame(ref_frame_number)
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
-        """As this is the base server, this function just outputs a log that a trigger would have been sent."""
+        """
+        As this is the base server, this function just outputs a log that a trigger would have been sent.
+        """
         logger.success("A fluorescence image would be triggered now.")
 
     def plot_triggers(self, outfile="triggers.png"):
-        """Plot the phase vs. time sawtooth line with trigger events."""
+        """
+        Plot the phase vs. time sawtooth line with trigger events.
+        """
 
         # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
         sent_trigger_times = pa.get_metadata_from_list(
@@ -551,87 +618,95 @@ class OpticalGater:
             color="r",
             label="Trigger fire",
         )
-        # Add labels etc
-        # x_1, x_2, _, y_2 = plt.axis()
-        # plt.axis((x_1, x_2, 0, y_2 * 1.1))
         plt.legend()
         plt.xlabel("Time (s)")
         plt.ylabel("Phase (rad)")
-
-        # Saves the figure
-        plt.savefig(outfile)
         plt.show()
-
-    def plot_accuracy(self, outfile="accuracy.png"):
-        """Plot the target phase and adjusted real phase of trigger events."""
-        wrapped_phase = pa.get_metadata_from_list(
-            self.frame_history, "unwrapped_phase"
-        ) % (2 * np.pi)
-
-        # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
-        sent_trigger_times = pa.get_metadata_from_list(
-            self.frame_history, "predicted_trigger_time_s"
-        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
-
-        triggeredPhase = []
-        for i in range(len(sent_trigger_times)):
-            triggeredPhase.append(
-                wrapped_phase[
-                    (
-                        np.abs(
-                            pa.get_metadata_from_list(self.frame_history, "timestamp")
-                            - sent_trigger_times[i]
-                        )
-                    ).argmin()
-                ]
-            )
-
+        
+    def plot_phase_histogram(self):
+        """
+        Plots a histogram representing the frequency density of triggered phases (green) in addition to markers denoting the target phase (red).
+        """
         plt.figure()
         plt.title("Frequency density of triggered phase")
-        bins = np.arange(0, 2 * np.pi, 0.1)
-        plt.hist(triggeredPhase, bins=bins, color="g", label="Triggered phase")
-        x_1, x_2, y_1, y_2 = plt.axis()
-        plt.plot(
-            np.full(2, self.pog_settings["targetSyncPhase"]),
-            (y_1, y_2),
-            "r-",
-            label="Target phase",
+        plt.hist(
+            wrappedPhaseAtSentTriggerTimeList = pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="trigger_sent"), 
+            bins = np.arange(0, 2 * np.pi, 0.01), 
+            color = "green", 
+            label = "Triggered phase"
         )
+        x_1, x_2, y_1, y_2 = plt.axis()
+
+        # Add red markers indicating the target phases
+        uniqueTargetPhases = np.unique(pa.get_metadata_from_list(self.frame_history, "targetSyncPhase"))
+        for ph in uniqueTargetPhases:
+            plt.plot(np.full(2, ph), (y_1, y_2),"red", label = "Target phase",)
+            
         plt.xlabel("Triggered phase (rad)")
         plt.ylabel("Frequency")
-        plt.legend()
         plt.axis((x_1, x_2, y_1, y_2))
-
         plt.tight_layout()
-        plt.savefig(outfile)
+        plt.show()
+        
+    def plot_phase_error_histogram(self):
+        """
+        Plots a histogram representing the frequency estimated phase errors.
+        """
+        plt.figure()
+        plt.title("Histogram of triggered phase errors")
+        phaseErrorList = pa.get_metadata_from_list(
+            self.frame_history, 
+            "triggerPhaseError", 
+            onlyIfKeyPresent="trigger_sent"
+        )
+        plt.hist(
+            phaseErrorList,
+            bins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList) + 0.1,  0.03), 
+            color = "green", 
+            label = "Triggered phase"
+        )
+        x_1, x_2, y_1, y_2 = plt.axis()
+        plt.xlabel("Frequency density of phase error (rad)")
+        plt.ylabel("Frequency")
+        plt.axis((x_1, x_2, y_1, y_2))
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_phase_error_with_time(self):
+        """
+        Plots the estimated phase error associated with each sent trigger over time.
+        """
+        plt.figure()
+        plt.title('Triggered phase error with time')
+        plt.scatter(
+            pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s", onlyIfKeyPresent="trigger_sent"), 
+            pa.get_metadata_from_list(self.frame_history, "triggerPhaseError", onlyIfKeyPresent="trigger_sent"), 
+            color = 'red'
+        )
+        plt.xlabel('Time (s)')
+        plt.ylabel('Phase error (rad)')
+        plt.ylim(-np.pi, np.pi)
+        plt.tight_layout()
         plt.show()
 
-    def plot_prediction(self, outfile="prediction.png"):
+    def plot_prediction(self):
         plt.figure()
-        plt.title("Predicted Trigger Times")
+        plt.title("Predicted trigger times")
         plt.plot(
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
             pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s"),
         )
-        # Add labels etc
         plt.xlabel("Time (s)")
         plt.ylabel("Prediction (s)")
-
-        # Saves the figure
-        plt.savefig(outfile)
         plt.show()
 
-    def plot_running(self, outfile="running.png"):
+    def plot_running(self):
         plt.figure()
         plt.title("Frame processing rate")
         plt.plot(
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
             pa.get_metadata_from_list(self.frame_history, "processing_rate_fps"),
         )
-        # Add labels etc
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")
-
-        # Saves the figure
-        plt.savefig(outfile)
         plt.show()
