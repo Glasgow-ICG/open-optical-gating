@@ -211,7 +211,7 @@ def save_period(reference_period, parent_dir="~/", prefix="REF-"):
 
     # Saves the period
     for i, frame in enumerate(reference_period):
-        tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
+        tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame, check_contrast = False) # CW ADDED check_contrast = False
 
     logger.warning("Saved frames to \"{0}\"", dt)
 
