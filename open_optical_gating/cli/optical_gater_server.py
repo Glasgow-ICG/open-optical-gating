@@ -423,6 +423,7 @@ class OpticalGater:
             logger.info(
                 "Switching to adaptive mode.", self.settings["update_after_n_triggers"]
             )
+            self.trigger_num = 0
             self.state = "adapt"
         else:
             logger.info("Switching to determine period mode.")
