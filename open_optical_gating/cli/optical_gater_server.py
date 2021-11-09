@@ -630,7 +630,7 @@ class OpticalGater:
         plt.figure()
         plt.title("Frequency density of triggered phase")
         plt.hist(
-            wrappedPhaseAtSentTriggerTimeList = pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="trigger_sent"), 
+            pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="trigger_sent"), 
             bins = np.arange(0, 2 * np.pi, 0.01), 
             color = "green", 
             label = "Triggered phase"
