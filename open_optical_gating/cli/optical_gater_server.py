@@ -85,8 +85,9 @@ class OpticalGater:
         self.trigger_num = 0
         self.sequence_history = None
         self.period_history = None
-        self.shift_history = None
         self.drift_history = None
+        self.shift_history = None
+        self.global_solution = None
 
         # TODO: JT writes: this seems as good a place as any to flag the fact that I don't think barrier frames are being implemented properly.
         # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
@@ -507,7 +508,7 @@ class OpticalGater:
                 self.drift_history,
                 self.shift_history,
                 self.global_solution,
-                self.pog_settings["oga_reference_value"],
+                self.pog_settings["referenceFrame"],
             ) = oga.process_sequence(
                 self.pog_settings["ref_frames"],
                 self.pog_settings["reference_period"],
@@ -519,7 +520,7 @@ class OpticalGater:
                 global_solution=self.global_solution,
                 max_offset=3,
                 ref_seq_id=0,
-                ref_seq_phase=self.pog_settings["referenceFrame"],
+                ref_seq_phase=self.pog_settings["oga_reference_value"],
                 resampled_period=self.pog_settings["oga_resampled_period"]
             )
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
@@ -537,31 +538,14 @@ class OpticalGater:
 
     def start_sync_with_ref_frame(self, ref_frame_number):
         self.pog_settings["referenceFrame"] = ref_frame_number
-        # add to periods history for adaptive updates
-        (
-         self.sequence_history,
-         self.period_history,
-         self.drift_history,
-         self.shift_history,
-         self.global_solution,
-         self.pog_settings["oga_reference_value"],
-         ) = oga.process_sequence(
-                                  self.pog_settings["ref_frames"],
-                                  self.pog_settings["reference_period"],
-                                  self.pog_settings["drift"],
-                                  max_offset=3,
-                                  ref_seq_id=0,
-                                  ref_seq_phase=self.pog_settings["oga_reference_value"],
-                                  resampled_period=self.pog_settings["oga_resampled_period"]
-                                  )
-
+        
         # Turn recording back on for rest of run
         self.stop = False
         # Turn automatic target frames on for future adaptive updates
         self.automatic_target_frame_selection = True
         # Switch to "sync" state, in which we send camera triggers
         logger.info(
-                    "Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
+                    "Starting sync. Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
                     )
         self.state = "sync"
 
