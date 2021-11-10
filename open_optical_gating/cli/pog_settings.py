@@ -65,8 +65,9 @@ class POGSettings(dict):
             dict.update(params)
 
         # These are read-only parameters that we handle as derived quantities
-        self.special_list = [ "referenceFrameCount", "targetSyncPhase", "oga_reference_value" ]
-    
+        self.special_list = [ "referenceFrameCount", "targetSyncPhase" ]
+        self.special_list2 = [ "referenceFrame", "barrierFrame" ]
+
     def __getitem__(self, key):
         if key in self.special_list:
             if key == "referenceFrameCount":
@@ -76,12 +77,6 @@ class POGSettings(dict):
                 # Target phase in rads
                 if self["reference_period"] > 0.0:
                     return 2 * np.pi * (self["referenceFrame"] / self["reference_period"])
-                else:
-                    return 0
-            elif key == "oga_reference_value":
-                # Target frame index as understood by optical_gating_alignment
-                if self["reference_period"] > 0.0:
-                    return self["oga_resampled_period"] * (self["referenceFrame"] / self["reference_period"])
                 else:
                     return 0
             else:
@@ -106,15 +101,10 @@ class POGSettings(dict):
         return val
     
     def __setitem__(self, key, val):
-        if key == "oga_reference_value":
-            # This is a derived key, but the caller is permitted to set it.
-            # Internally we just translate to referenceFrame, which is our definitive value
-            assert(self["reference_period"] > 0.0)
-            translated = self["reference_period"] * (val / self["oga_resampled_period"])
-            translated = translated % self["reference_period"]
-            dict.__setitem__(self, "referenceFrame", translated)
-        elif key in self.special_list:
+        if key in self.special_list:
             raise KeyError("Attempting to set read-only parameter '{0}'".format(key))
+        elif key in self.special_list2:
+            raise KeyError("Parameter '{0}' must be set through a dedicated setter function".format(key))
         else:
             dict.__setitem__(self, key, val)
 
@@ -123,15 +113,14 @@ class POGSettings(dict):
         # the PixelArray metadata at this point if we wished.
         # However, long-term we want to store a 3D array because that is what OGA expects to work with.
         # We therefore make that conversion here
+        # Note that this function does not do anything to self["referenceFrame"].
+        # It is up to the caller to set or update that as they wish
         ref_frames = np.array(ref_frames)
-        
         self["ref_frames"] = ref_frames
         self["reference_period"] = period_to_use
 
-        # Automatically select a target frame and barrier
-        # This can be overriden by the user/controller later
-        self["referenceFrame"], self["barrierFrame"] = \
-                    pog.pick_target_and_barrier_frames(ref_frames, period_to_use)
-
+    def set_reference_and_barrier_frame(ref, barrier):
+        self["referenceFrame"] = ref
+        self["barrierFrame"] = barrier
         # Precalculate a lookup of the barrier frames
         self["framesForFitLookup"] = pog.determine_barrier_frame_lookup(self)

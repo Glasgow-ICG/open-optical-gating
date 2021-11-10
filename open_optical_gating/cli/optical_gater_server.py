@@ -477,7 +477,7 @@ class OpticalGater:
                 )
                 # Automatically switch to the "sync" state, using the default reference frame.
                 # The user might choose to change the reference frame later, via a GUI.
-                self.start_sync_with_ref_frame(self.pog_settings["referenceFrame"])
+                self.start_sync_with_ref_frame(None)
                 self.state = "sync"
             else:
                 # If we aren't using the automatically determined period
@@ -485,6 +485,8 @@ class OpticalGater:
                 # The user/app can then select a target frame
                 # The user/app will also need to call the adaptive system
                 # see user_select_ref_frame()
+                # **** JT update this comment?
+                # This process is a bit weird - perhaps it's time to think about what a proper state machine would look like?
                 self.stop = 'select'
 
 
@@ -497,9 +499,17 @@ class OpticalGater:
         """
 
         # Start by calling through to determine_state() to establish a new reference sequence
+        # JT: I think this is backwards. I think it makes more sense for determine_state to know if we should be being adaptive,
+        #     and doing the adapt logic if required. Otherwise we set a target frame and then immediately change it to something else
         self.determine_state(pixelArray, modeString="adaptive optical gating")
 
         if self.pog_settings["ref_frames"] is not None:
+            # First, spot if we are setting up the OGA process for the first time.
+            # If so, we need to set oga_reference_value
+            if self.sequence_history is None:
+                relTargetPos = self.pog_settings["referenceFrame"] / self.pog_settings["reference_period"]
+                self.pog_settings["oga_reference_value"] = self.pog_settings["oga_resampled_period"] * relTargetPos
+            
             # Align the current reference sequence relative to previous ones (adaptive update)
             # Note that the ref_seq_phase parameter for process_sequence is in units
             (
@@ -536,8 +546,14 @@ class OpticalGater:
             )
             self.state = "sync"
 
-    def start_sync_with_ref_frame(self, ref_frame_number):
-        self.pog_settings["referenceFrame"] = ref_frame_number
+    def start_sync_with_ref_frame(self, ref_frame_number, barrier=None):
+        defaultRef, defaultBarrier = pog.pick_target_and_barrier_frames(self.pog_settings["ref_frames"],
+                                                                        self.pog_settings["reference_period"])
+        if ref_frame_number is None:
+            ref_frame_number = defaultRef
+        if barrier is None:
+            barrier = defaultBarrier
+        self.pog_settings.set_reference_and_barrier_frame(ref_frame_number, barrier)
         
         # Turn recording back on for rest of run
         self.stop = False
