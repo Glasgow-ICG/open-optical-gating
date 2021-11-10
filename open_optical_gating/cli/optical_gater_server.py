@@ -518,7 +518,7 @@ class OpticalGater:
                 self.drift_history,
                 self.shift_history,
                 self.global_solution,
-                self.pog_settings["referenceFrame"],
+                newRefFrame,
             ) = oga.process_sequence(
                 self.pog_settings["ref_frames"],
                 self.pog_settings["reference_period"],
@@ -533,12 +533,12 @@ class OpticalGater:
                 ref_seq_phase=self.pog_settings["oga_reference_value"],
                 resampled_period=self.pog_settings["oga_resampled_period"]
             )
+            logger.success("Reference frame adaptive update complete. New reference frame will be {0}", newRefFrame)
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
-            logger.success(
-                "Reference period updated. New period of length {0} with reference frame at {1}",
-                self.pog_settings["reference_period"],
-                self.pog_settings["referenceFrame"],
-            )
+            # JT: note that currently this does not adaptively update the barrier frame,
+            # it just lets the code identify the barrier frame from scratch without reference to anything specified previously
+            self.start_sync_with_ref_frame(newRefFrame, barrier=None)
+
 
             # Switch back to the sync state
             logger.info(

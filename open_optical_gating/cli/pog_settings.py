@@ -119,8 +119,8 @@ class POGSettings(dict):
         self["ref_frames"] = ref_frames
         self["reference_period"] = period_to_use
 
-    def set_reference_and_barrier_frame(ref, barrier):
-        self["referenceFrame"] = ref
-        self["barrierFrame"] = barrier
+    def set_reference_and_barrier_frame(self, ref, barrier):
+        dict.__setitem__(self, "referenceFrame", ref)
+        dict.__setitem__(self, "barrierFrame", barrier)
         # Precalculate a lookup of the barrier frames
         self["framesForFitLookup"] = pog.determine_barrier_frame_lookup(self)
