@@ -477,7 +477,7 @@ class OpticalGater:
                 )
                 # Automatically switch to the "sync" state, using the default reference frame.
                 # The user might choose to change the reference frame later, via a GUI.
-                self.start_sync_with_ref_frame(None)
+                self.start_sync_with_ref_frame(None, ltu=False)
                 self.state = "sync"
             else:
                 # If we aren't using the automatically determined period
@@ -499,16 +499,11 @@ class OpticalGater:
         """
 
         # Start by calling through to determine_state() to establish a new reference sequence
-        # JT: I think this is backwards. I think it makes more sense for determine_state to know if we should be being adaptive,
+        # JT: I think this is backwards. I think it makes more sense for determine_state to know if we should be being adaptive,
         #     and doing the adapt logic if required. Otherwise we set a target frame and then immediately change it to something else
         self.determine_state(pixelArray, modeString="adaptive optical gating")
 
         if self.pog_settings["ref_frames"] is not None:
-            # First, spot if we are setting up the OGA process for the first time.
-            # If so, we need to set oga_reference_value
-            if self.sequence_history is None:
-                relTargetPos = self.pog_settings["referenceFrame"] / self.pog_settings["reference_period"]
-                self.pog_settings["oga_reference_value"] = self.pog_settings["oga_resampled_period"] * relTargetPos
             
             # Align the current reference sequence relative to previous ones (adaptive update)
             # Note that the ref_seq_phase parameter for process_sequence is in units
@@ -537,8 +532,7 @@ class OpticalGater:
             self.justRefreshedRefFrames = True   # Flag that a slow action took place
             # JT: note that currently this does not adaptively update the barrier frame,
             # it just lets the code identify the barrier frame from scratch without reference to anything specified previously
-            self.start_sync_with_ref_frame(newRefFrame, barrier=None)
-
+            self.start_sync_with_ref_frame(newRefFrame, barrier=None, ltu=True)
 
             # Switch back to the sync state
             logger.info(
@@ -546,7 +540,7 @@ class OpticalGater:
             )
             self.state = "sync"
 
-    def start_sync_with_ref_frame(self, ref_frame_number, barrier=None):
+    def start_sync_with_ref_frame(self, ref_frame_number, ltu, barrier=None):
         defaultRef, defaultBarrier = pog.pick_target_and_barrier_frames(self.pog_settings["ref_frames"],
                                                                         self.pog_settings["reference_period"])
         if ref_frame_number is None:
@@ -555,6 +549,39 @@ class OpticalGater:
             barrier = defaultBarrier
         self.pog_settings.set_reference_and_barrier_frame(ref_frame_number, barrier)
         
+        if ((ltu == False) and
+            (self.sequence_history is None)):
+            # We are setting a new reference frame that has been "chosen" (either by the user or a "best software pick").,
+            # but it is *not* just a case that we are adjusting it after a long-term update.
+            # In this situation we need to seed the LTU code with this information, so it knows what to compare against.
+            # JT TODO: this logic currently does not support the case where the user adjusts the reference frame in the middle of a run.
+            # In that situation we need to decide whether to use ref_seq_id!=0, or to clear all the OGA history and start afresh
+            self.pog_settings["oga_reference_value"] = self.pog_settings["referenceFrame"]
+
+            # JT TODO: for now I am putting a separate call to oga.process_sequence here,
+            # but it would be good to try and fold this in with the other call, so there is only one call that works in both scenarios
+            (
+             self.sequence_history,
+             self.period_history,
+             self.drift_history,
+             self.shift_history,
+             self.global_solution,
+             newRefFrame,
+             ) = oga.process_sequence(
+                                      self.pog_settings["ref_frames"],
+                                      self.pog_settings["reference_period"],
+                                      self.pog_settings["drift"],
+                                      sequence_history=self.sequence_history,
+                                      period_history=self.period_history,
+                                      drift_history=self.drift_history,
+                                      shift_history=self.shift_history,
+                                      global_solution=self.global_solution,
+                                      max_offset=3,
+                                      ref_seq_id=0,
+                                      ref_seq_phase=self.pog_settings["oga_reference_value"],
+                                      resampled_period=self.pog_settings["oga_resampled_period"]
+                                      )
+
         # Turn recording back on for rest of run
         self.stop = False
         # Turn automatic target frames on for future adaptive updates
@@ -585,7 +612,7 @@ class OpticalGater:
             self.state = "reset"
         else:
             # Commit to using this reference frame
-            self.start_sync_with_ref_frame(ref_frame_number)
+            self.start_sync_with_ref_frame(ref_frame_number, ltu=False)
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """
