@@ -44,6 +44,7 @@ class FileOpticalGater(server.OpticalGater):
                                                        optical_gater_server determining a reference sequence from the
                                                        supplied input data
             ref_frame_period                  float   Noninteger period for supplied ref frames
+            target_frame                      int     User pre-selected target frame within reference sequence
             repeats                           int     Number of times to play through the frames in the source .tif file
             automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
             force_framerate                   bool    Whether or not to slow down the rate at which new frames
