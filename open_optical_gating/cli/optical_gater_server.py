@@ -43,7 +43,7 @@ class OpticalGater:
             "adapt" - adaptive mode (update period but maintain phase-lock with previous period)
     """
 
-    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
+    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None, target_frame = None):
         """Function inputs:
             settings - a dictionary of settings (see optical_gating_data/json_format_description.md)
         """
@@ -71,7 +71,12 @@ class OpticalGater:
                 ref_frame_period = ref_frames.shape[0] - 2 * pog.numExtraRefFrames
             self.pog_settings.set_reference_frames(ref_frames, ref_frame_period)
             self.state = "sync"
-
+            
+        if target_frame is not None:
+            self.initialTargetFrame = target_frame
+        else:
+            self.initialTargetFrame = None
+                   
     def initialise_internal_parameters(self):
         """Defines all internal parameters not already initialised"""
         # Defines an empty list to store past frames with timestamp, phase and argmin(sad) metadata
@@ -83,6 +88,8 @@ class OpticalGater:
         
         # Variables for adaptive algorithm
         self.trigger_num = 0
+        self.frame_num = 0
+        self.frame_num_total = 0
         self.sequence_history = None
         self.period_history = None
         self.drift_history = None
@@ -148,20 +155,28 @@ class OpticalGater:
             "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
         )
         self.justRefreshedRefFrames = False # Will be set to True later, if applicable
-
+        
+        self.frame_num += 1 
+        self.frame_num_total += 1
+        # Specify the reference sequence update criterion and initialise update_criterion accordingly
+        if (self.settings["ref_update_criterion"] == "frames"):
+            self.update_criterion = self.frame_num
+        elif (self.settings["ref_update_criterion"] == "triggers"):
+            self.update_criterion = self.trigger_num
+            
         # For logging processing time
         time_init = time.perf_counter()
         
         if (
-            ("update_after_n_triggers" in self.settings) and
-            (self.trigger_num >= self.settings["update_after_n_triggers"])
+            ("update_after_n_criterions" in self.settings) and
+            (self.update_criterion >= self.settings["update_after_n_criterions"])
            ):
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
-            # As part of this reset, trigger_num will be reset
+            # As part of this reset, trigger_num and frame_num will both be reset
             logger.info(
                 "At least {0} triggers have been sent; resetting before switching to adaptive mode.",
-                self.settings["update_after_n_triggers"],
+                self.settings["update_after_n_criterions"],
             )
             self.state = "reset" 
 
@@ -174,8 +189,7 @@ class OpticalGater:
             self.frames_to_save.append(pixelArray)
             if len(self.frames_to_save) == self.settings["save_first_n_frames"]:
                 ref.save_period(self.frames_to_save, self.settings["reference_sequence_dir"], prefix="VID-")
-
-
+                
         if self.state == "sync":
             # Using previously-determined reference period, analyse brightfield frames
             # to determine predicted trigger time for prospective optical gating
@@ -242,13 +256,12 @@ class OpticalGater:
                 elif phaseError < - np.pi:
                     phaseError = phaseError + (2 * np.pi)
             
-            
                 self.latestTriggerPredictFrame.metadata["triggerPhaseError"] = phaseError
                 self.latestTriggerPredictFrame.metadata["wrappedPhaseAtSentTriggerTime"] = wrappedPhaseAtSentTriggerTime
 
                 logger.info('Live phase interpolation successful! Phase error = {0}', phaseError)
             
-                errorThreshold = 0.15
+                errorThreshold = 0.5
                 if abs(phaseError) > errorThreshold:
                     logger.warning('Phase error ({0} radians) has exceeded desired threshold ({1} radians)', phaseError, errorThreshold)
             
@@ -375,10 +388,11 @@ class OpticalGater:
         self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
         self.frame_history[-1].metadata["targetSyncPhase"] = self.pog_settings["targetSyncPhase"]
         logger.debug(
-            "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}",
+            "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
             self.frame_history[-1].metadata["timestamp"],
             self.frame_history[-1].metadata["predicted_trigger_time_s"],
             self.frame_history[-1].metadata["trigger_type_sent"],
+            self.frame_num_total,
         )
 
         # store this phase now to calculate the delta phase for the next frame
@@ -416,14 +430,15 @@ class OpticalGater:
         # Not sure yet what the best solution is, but I'm flagging it for a rethink.
         
         if (
-            ("update_after_n_triggers" in self.settings) and
-            (self.trigger_num >= self.settings["update_after_n_triggers"])
+            ("update_after_n_criterions" in self.settings) and
+            (self.update_criterion >= self.settings["update_after_n_criterions"])
         ):
             # i.e. if adaptive reset trigger_num and get new period
             # automatically phase-locking with the existing period
             logger.info(
-                "Switching to adaptive mode.", self.settings["update_after_n_triggers"]
+                "Switching to adaptive mode.", self.settings["update_after_n_criterions"]
             )
+            self.frame_num = 0
             self.trigger_num = 0
             self.state = "adapt"
         else:
@@ -497,7 +512,6 @@ class OpticalGater:
             In this mode we determine a new period and then align with
             previous periods using an adaptive algorithm.
         """
-
         # Start by calling through to determine_state() to establish a new reference sequence
         # JT: I think this is backwards. I think it makes more sense for determine_state to know if we should be being adaptive,
         #     and doing the adapt logic if required. Otherwise we set a target frame and then immediately change it to something else
@@ -592,19 +606,19 @@ class OpticalGater:
                     )
         self.state = "sync"
 
-    def user_select_ref_frame(self, ref_frame_number=None):
+    def user_select_ref_frame(self):
         """Prompts the user to select the target frame from a one-period set of reference frames"""
-        if ref_frame_number is None:
+        
+        if self.initialTargetFrame is None:
             # For now it is a simple command line interface (which is not helpful at all)
-            ref_frame_number = int(
+            self.initialTargetFrame = int(
                 input(
                     "Please select a frame between 0 and "
                     + str(len(self.pog_settings["ref_frames"]) - 1)
                     + "\nOr enter -1 to select a new period.\n"
                 )
             )
-
-        if ref_frame_number < 0:
+        if self.initialTargetFrame < 0:
             # User wants to select a new period. Users can use their creative side by selecting any negative number.
             logger.success(
                            "User has asked for a new period to be determined, resetting before switching to period determination mode."
@@ -612,7 +626,7 @@ class OpticalGater:
             self.state = "reset"
         else:
             # Commit to using this reference frame
-            self.start_sync_with_ref_frame(ref_frame_number, ltu=False)
+            self.start_sync_with_ref_frame(self.initialTargetFrame, ltu = False)
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """
@@ -624,7 +638,6 @@ class OpticalGater:
         """
         Plot the phase vs. time sawtooth line with trigger events.
         """
-
         # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
         sent_trigger_times = pa.get_metadata_from_list(
             self.frame_history, "predicted_trigger_time_s"
@@ -660,7 +673,7 @@ class OpticalGater:
         plt.hist(
             pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="trigger_sent"), 
             bins = np.arange(0, 2 * np.pi, 0.01), 
-            color = "green", 
+            color = "tab:green", 
             label = "Triggered phase"
         )
         x_1, x_2, y_1, y_2 = plt.axis()
@@ -669,7 +682,6 @@ class OpticalGater:
         uniqueTargetPhases = np.unique(pa.get_metadata_from_list(self.frame_history, "targetSyncPhase"))
         for ph in uniqueTargetPhases:
             plt.plot(np.full(2, ph), (y_1, y_2),"red", label = "Target phase",)
-            
         plt.xlabel("Triggered phase (rad)")
         plt.ylabel("Frequency")
         plt.axis((x_1, x_2, y_1, y_2))
@@ -690,7 +702,7 @@ class OpticalGater:
         plt.hist(
             phaseErrorList,
             bins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList) + 0.1,  0.03), 
-            color = "green", 
+            color = "tab:green", 
             label = "Triggered phase"
         )
         x_1, x_2, y_1, y_2 = plt.axis()
@@ -709,7 +721,7 @@ class OpticalGater:
         plt.scatter(
             pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s", onlyIfKeyPresent="trigger_sent"), 
             pa.get_metadata_from_list(self.frame_history, "triggerPhaseError", onlyIfKeyPresent="trigger_sent"), 
-            color = 'red'
+            color = 'tab:green'
         )
         plt.xlabel('Time (s)')
         plt.ylabel('Phase error (rad)')
@@ -738,3 +750,4 @@ class OpticalGater:
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")
         plt.show()
+        
