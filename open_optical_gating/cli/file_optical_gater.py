@@ -30,6 +30,7 @@ class FileOpticalGater(server.OpticalGater):
         settings=None,
         ref_frames=None,
         ref_frame_period=None,
+        target_frame = None,
         repeats=1,
         automatic_target_frame_selection=True,
         force_framerate=True
@@ -52,11 +53,10 @@ class FileOpticalGater(server.OpticalGater):
 
         # Initialise parent
         super(FileOpticalGater, self).__init__(
-            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period,
-        )
-
+            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period, target_frame = target_frame)
+        
         self.force_framerate = force_framerate
-        self.progress_bar = None  # May be updated during run_server
+        self.progress_bar = True  # May be updated during run_server
         
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
@@ -130,7 +130,7 @@ class FileOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
-    def run_server(self, show_progress_bar=False):
+    def run_server(self, show_progress_bar=True):
         if show_progress_bar:
             self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
         super().run_server()
@@ -255,7 +255,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
             raise
                     
     # If a relative path to the data file is specified in the settings file,
-    # we will adjust it to be a path relative to the location of the settings file itself.
+    # we will adjust it to be a path relative to the location of the settings file itself.ss
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
     if "input_tiff_path" in settings:
