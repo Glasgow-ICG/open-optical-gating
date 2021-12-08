@@ -307,7 +307,7 @@ class OpticalGater:
         self.frame_history.append(pixelArray)
 
         logger.debug(
-            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad: {3}",
+            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad min: {3}",
             self.frame_history[-1].metadata["timestamp"],
             self.frame_history[-1].metadata["unwrapped_phase"],
             delta_phase,
@@ -388,7 +388,7 @@ class OpticalGater:
         self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
         self.frame_history[-1].metadata["targetSyncPhase"] = self.pog_settings["targetSyncPhase"]
         logger.debug(
-            "Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
+            "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
             self.frame_history[-1].metadata["timestamp"],
             self.frame_history[-1].metadata["predicted_trigger_time_s"],
             self.frame_history[-1].metadata["trigger_type_sent"],
@@ -413,7 +413,7 @@ class OpticalGater:
         self.pog_settings["ref_frames"] = None
         self.ref_buffer = []
         self.period_guesses = []
-        
+
         # lastSent is used as part of the logic in prospective_optical_gating.py
         # TODO: it's not ideal that the reset logic is here but the variable is used in prospective_optical_gating.
         # A future refactor may want to think about tidying that up...
@@ -472,7 +472,7 @@ class OpticalGater:
             del self.ref_buffer[0]
 
         # Calculate period from determine_reference_period.py
-        logger.info("Attempting to determine new reference period.")
+        logger.trace("Attempting to determine new reference period.")
         ref_frames, period_to_use = ref.establish(
             self.ref_buffer, self.period_guesses, self.pog_settings
         )

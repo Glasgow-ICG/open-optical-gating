@@ -1,4 +1,4 @@
-""" An object encapsulating state for the optical gating algorithms
+""" An object encapsulating state for the optical gating algorithms.
     
     Note that at the moment this contains both user-accessible parameters that affect algorithm behaviour,
     and actual *state* (e.g. the current reference frames).

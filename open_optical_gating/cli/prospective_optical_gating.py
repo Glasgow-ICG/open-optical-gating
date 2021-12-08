@@ -166,7 +166,7 @@ def identify_phase_with_drift(frame, reference_frames, reference_period, drift):
 
     # Apply drift correction, identifying a crop rect for the frame and/or reference frames,
     # representing the area intersection between them once drift is accounted for.
-    logger.info("Applying drift correction of ({0},{1})", dx, dy)
+    logger.trace("Applying drift correction of ({0},{1})", dx, dy)
     rectF = [0, frame.shape[0], 0, frame.shape[1]]  # X1,X2,Y1,Y2
     rect = [
         0,
@@ -210,7 +210,7 @@ def identify_phase_with_drift(frame, reference_frames, reference_period, drift):
 
     # Update current drift estimate in the settings dictionary
     dx, dy = update_drift(frame, reference_frames[np.argmin(SADs)], (dx, dy))
-    logger.info("Drift correction updated to ({0},{1})", dx, dy)
+    logger.debug("Drift correction updated to ({0},{1})", dx, dy)
 
     return (matched_phase, SADs, (dx, dy))
 
@@ -259,8 +259,8 @@ def predict_trigger_wait(frame_history, pog_settings, fitBackToBarrier=True, fra
     # Perform a linear fit to the past phases. We will use this for our forward-prediction
     radsPerSec, alpha = np.polyfit(pastPhases[:, 0], pastPhases[:, 1], 1)
 
-    logger.trace(pastPhases[:, 0])
-    logger.trace(pastPhases[:, 1])
+    logger.debug("Phase history times: {0}", pastPhases[:, 0])
+    logger.debug("Phase history phases: {0}", pastPhases[:, 1])
 
     logger.info("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
     if radsPerSec < 0:
@@ -341,7 +341,7 @@ def predict_trigger_wait(frame_history, pog_settings, fitBackToBarrier=True, fra
             extendedFramesForFit <= frameHistory.shape[0]
             and extendedFramesForFit <= pog_settings["maxFramesForFit"]
         ):
-            logger.info("Increasing number of frames to use")
+            logger.info("Repeating fit using more frames")
             #  Recurse, using a larger number of frames, to obtain an improved predicted time
             # (Note that if we get to this code branch, fitBackToBarrier will in fact definitely be False)
             time_to_wait_seconds, radsPerSec = predict_trigger_wait(
@@ -563,7 +563,12 @@ def decide_whether_to_trigger(timestamp, timeToWaitInSeconds, pog_settings, hear
         # JT note: the reason for my approach is because I may want to send multiple triggers at different heart phases
         # Future updates to this code can incorporate that concept...
         logger.info(
-            "Trigger type {0} at {1}\tDROPPED", sendIt, timestamp + timeToWaitInSeconds
+            "Trigger type {0} at {1}\tDROPPED ({2} {3} {4})",
+            sendIt,
+            timestamp + timeToWaitInSeconds,
+            pog_settings["lastSent"],
+            timestamp,
+            ((pog_settings["reference_period"] / pog_settings["framerate"]) / 2)
         )
         sendIt = 0
     elif sendIt > 0:

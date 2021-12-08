@@ -241,7 +241,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
         if (basename in ["example_data_settings.json", "pi_default_settings.json"]):
             if (sys.platform == "win32"):
                 os.system("color")  # Make ascii color codes work
-            url = "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/" + basename
+            url = os.path.join("https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data", basename)
             response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(settings_file_path))
             if (response.startswith("Y") or response.startswith("y") or (response == "")):
                 # Download from github
@@ -256,7 +256,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
             raise
                     
     # If a relative path to the data file is specified in the settings file,
-    # we will adjust it to be a path relative to the location of the settings file itself.ss
+    # we will adjust it to be a path relative to the location of the settings file itself.
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
     if "input_tiff_path" in settings:
@@ -268,7 +268,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
 
     return settings
 
-# This next function taken from tqdm example code
+# This next function taken from tqdm example code, to report progress during urlretrieve()
 def tqdm_hook(t):
     """ Wraps tqdm instance for use with urlretrieve()    """
     last_b = [0]
