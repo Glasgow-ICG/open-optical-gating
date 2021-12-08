@@ -567,7 +567,9 @@ def decide_whether_to_trigger(timestamp, timeToWaitInSeconds, pog_settings, hear
         )
         sendIt = 0
     elif sendIt > 0:
-        logger.success("Trigger scheduled to be sent, updating `pog_settings['lastSent']`.")
+        logger.success("Trigger scheduled to be sent, updating `pog_settings['lastSent']` to {0}.", timestamp)
+        # TODO: lastSent is perhaps misleading - this is about when we scheduled it, not when the electronic signal occurs.
+        # In fact, I think the logic I actually use this variable for can still work if I change this to mostRecentTriggerTime...
         pog_settings["lastSent"] = timestamp
 
     return timeToWaitInSeconds, sendIt
