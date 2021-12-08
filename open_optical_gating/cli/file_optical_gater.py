@@ -316,7 +316,7 @@ def run(args, desc):
     logger.success("Plotting summaries...")
     analyser.plot_triggers()
     analyser.plot_prediction()
-    analyser.plot_accuracy()
+    analyser.plot_phase_histogram()
     analyser.plot_running()
 
 
