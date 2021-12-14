@@ -221,6 +221,7 @@ class OpticalGater:
                 time_fin - time_init
             )
 
+
     def live_phase_interpolation(self): 
         """
         Fluorescence triggers will rarely (if ever) overlap exactly in time with brightfield frames. 
@@ -264,6 +265,9 @@ class OpticalGater:
                 errorThreshold = 0.5
                 if abs(phaseError) > errorThreshold:
                     logger.warning('Phase error ({0} radians) has exceeded desired threshold ({1} radians)', phaseError, errorThreshold)
+    logger
+
+
             
 
     def sync_state(self, pixelArray):
@@ -381,12 +385,17 @@ class OpticalGater:
                     # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
 
+                    logger.debug(
+                        'Retrospective Log Analysis Data (Type B): Trigger Time = {0}'.format(this_predicted_trigger_time_s)
+                        )
+
         # Update PixelArray with predicted trigger time and trigger type
         self.frame_history[-1].metadata[
             "predicted_trigger_time_s"
         ] = this_predicted_trigger_time_s
         self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
         self.frame_history[-1].metadata["targetSyncPhase"] = self.pog_settings["targetSyncPhase"]
+
         logger.debug(
             "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
             self.frame_history[-1].metadata["timestamp"],
@@ -400,6 +409,15 @@ class OpticalGater:
 
         # Computing the phase at the exact time the most recent trigger was acted upon
         self.live_phase_interpolation()
+
+        logger.debug(
+            'Retrospective Log Analysis Data (Type A): Timestamp = {0} Phase = {1} Target Phase = {2}'.format(
+                self.frame_history[-1].metadata["timestamp"],
+                self.frame_history[-1].metadata["unwrapped_phase"],
+                self.frame_history[-1].metadata["targetSyncPhase"],
+            )
+        )
+
 
     def reset_state(self):
         """ Code to run when in "reset" state
@@ -473,6 +491,7 @@ class OpticalGater:
 
         # Calculate period from determine_reference_period.py
         logger.trace("Attempting to determine new reference period.")
+
         ref_frames, period_to_use = ref.establish(
             self.ref_buffer, self.period_guesses, self.pog_settings
         )
@@ -503,7 +522,6 @@ class OpticalGater:
                 # **** JT update this comment?
                 # This process is a bit weird - perhaps it's time to think about what a proper state machine would look like?
                 self.stop = 'select'
-
 
     def adapt_state(self, pixelArray):
         """ Code to run when in "adapt" state.
@@ -750,4 +768,3 @@ class OpticalGater:
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")
         plt.show()
-        
