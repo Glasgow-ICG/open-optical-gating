@@ -16,16 +16,25 @@ import optical_gating_alignment.optical_gating_alignment as oga
 from . import pixelarray as pa
 from . import determine_reference_period as ref
 from . import prospective_optical_gating as pog
-from . import pog_settings as ps
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 logger.add("testing_logs/oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
-# TODO create a time-stamped copy of the settings file after this
-# TODO create a time-stamped log somewhere
+# TODO create a time-stamped copy of the settings file when the optical gater class is initialised
+# TODO write the git version to the log file
 
+# JT TODO: move update_criterion into LTU code, storing criteria in a dictionary, and resetting them when the LTU actually occurs
+
+# JT TODO: at the moment we rely on self.settings["brightfield_framerate"] as our expectation of how often frames are arriving.
+# (The relevant variable is frameInterval_s)
+# It might be better to determine this empirically, and/or to be aware if the framerate changes significantly.
+
+# JT TODO: I don't think barrier frames are being implemented properly.
+# There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
+# It certainly isn't when using existing reference frames. This seems like an important missing bit of code.
+# I think it just defaults to 0 when the settings are initialised, and stays that way.
 
 class OpticalGater:
     """ Base optical gating class - includes no hardware features beyond
@@ -43,7 +52,7 @@ class OpticalGater:
             "adapt" - adaptive mode (update period but maintain phase-lock with previous period)
     """
 
-    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None, target_frame = None):
+    def __init__(self, settings=None, ref_frames=None, ref_frame_period=None):
         """Function inputs:
             settings - a dictionary of settings (see optical_gating_data/json_format_description.md)
         """
@@ -52,63 +61,31 @@ class OpticalGater:
         # we occasionally store some of this information elsewhere too
         # that's not ideal but works for now
         self.settings = settings
-        # NOTE: there is also self.pog_settings, be careful of this
 
         logger.success("Initialising internal parameters...")
         self.initialise_internal_parameters()
-        
-        if ref_frames is None:
-            logger.info(
-                        "No reference frames found, resetting before switching to determine period mode."
-                        )
-            self.state = "reset"
-        else:
-            logger.success("Using existing reference frames, setting to prospective optical gating mode.")
-            if ref_frame_period is None:
-                logger.warning("No period supplied, inferring integer period.")
-                # Deduce an integer reference period from the reference frames we were provided with.
-                # This is just a legacy mode - caller who constructed this object should really have provided a reference period
-                ref_frame_period = ref_frames.shape[0] - 2 * pog.numExtraRefFrames
-            self.pog_settings.set_reference_frames(ref_frames, ref_frame_period)
+        self.reset_state()
+        if ref_frames is not None:
+            self.ref_seq_manager.set_ref_frames(ref_frames, ref_frame_period)
             self.state = "sync"
-            
-        if target_frame is not None:
-            self.initialTargetFrame = target_frame
-        else:
-            self.initialTargetFrame = None
-                   
+            # We need to identify the target frame.
+            # If the caller cares what it is, they should specify it via the 'settings' dictionary
+            ok = self.identify_and_set_reference_frame()
+            assert(ok)
+    
     def initialise_internal_parameters(self):
         """Defines all internal parameters not already initialised"""
-        # Defines an empty list to store past frames with timestamp, phase and argmin(sad) metadata
         self.frame_history = []
         self.frames_to_save = []
-        self.automatic_target_frame_selection = True
-        self.justRefreshedRefFrames = False
+        self.slow_action_occurred = None
         self.latestTriggerPredictFrame = None
         
-        # Variables for adaptive algorithm
         self.trigger_num = 0
         self.frame_num = 0
         self.frame_num_total = 0
-        self.sequence_history = None
-        self.period_history = None
-        self.drift_history = None
-        self.shift_history = None
-        self.global_solution = None
+        self.aligner = oga.Aligner(self.settings["oga"])
 
-        # TODO: JT writes: this seems as good a place as any to flag the fact that I don't think barrier frames are being implemented properly.
-        # There is a call to determine_barrier_frames, but I don't think the *value* for the barrier frame parameter is ever computed, is it?
-        # It certainly isn't when using existing reference frames. This seems like an important missing bit of code.
-        # I think it just defaults to 0 when the settings are initialised, and stays that way.
-
-        self.pog_settings = ps.POGSettings({"framerate": self.settings["brightfield_framerate"]})
-
-        # Start experiment timer
-        self.initial_process_time_s = time.time()
-
-        # Flag for interrupting the program at key points
-        # E.g. when user-input is needed
-        # It is assumed that the user/app controls what this interaction is
+        # Flag for interrupting the program's running
         self.stop = False
 
     def run_server(self):
@@ -116,46 +93,25 @@ class OpticalGater:
             run_and_analyze_until_stopped() is implemented by subclasses, which call back into
             analyze_pixelarray() with the appropriate frame data to be analyzed
         """
-        if self.automatic_target_frame_selection == False:
-            logger.success("Determining reference period...")
-            
-            # Prompt for a target frame if reference frames are provided
-            if self.pog_settings["ref_frames"] is not None:
-                self.user_select_ref_frame()
-            
-            while self.state != "sync":
-                # JT TODO: the current code does not quite work in the case where the user rejects the references by typing -1.
-                # It sets state to "reset" but self.stop will be non-False *until* we go through the reset state action...
-                # but we don't do anything here if self.stop is non-False!
-                # I suspect the best fix would be a proper state machine that understands when we are acquiring a period,
-                # but where some of the current "states" such as reset are actually state machine actions that take place
-                # on certain state transitions.
-                # For now this is a workaround that forces analyze_pixelarray to run the first time
-                self.stop = False
-                self.run_and_analyze_until_stopped()
-                if self.stop == 'out-of-frames':
-                    raise RuntimeError("Ran out of frames without managing to establish a period")
-                logger.info("Requesting user input for ref frame selection...")
-                self.user_select_ref_frame()
-                
-            logger.success(
-                "Period determined ({0} frames long) and user has selected frame {1} as target.",
-                self.pog_settings["reference_period"],
-                self.pog_settings["referenceFrame"],
-            )
-                
-        logger.success("Synchronizing...")
         self.run_and_analyze_until_stopped()
-    
+        if ((self.stop == "out-of-frames") and
+            (self.state == "determine") and
+            (self.aligner.sequence_history is None)
+        ):
+            raise RuntimeError("Ran out of frames without ever managing to establish a period")
+
+    def run_and_analyze_until_stopped(self):
+        """ Subclasses must override this function to obtain images and pass them to analyze_pixelarray().
+        """
+        logger.error("Subclasses must override this function")
+        raise NotImplementedError("Subclasses must override this function")
+
     def analyze_pixelarray(self, pixelArray):
         """ Method to analyse each frame as they are captured by the camera.
             Note that this analysis must take place fast enough that we return before the next frame arrives.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
-        logger.debug(
-            "Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"],
-        )
-        self.justRefreshedRefFrames = False # Will be set to True later, if applicable
-        
+        logger.debug("Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"])
+        self.slow_action_occurred = None # Will be set to a descriptive string later, if applicable
         self.frame_num += 1 
         self.frame_num_total += 1
         # Specify the reference sequence update criterion and initialise update_criterion accordingly
@@ -175,10 +131,12 @@ class OpticalGater:
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num and frame_num will both be reset
             logger.info(
-                "At least {0} triggers have been sent; resetting before switching to adaptive mode.",
-                self.settings["update_after_n_criterions"],
-            )
-            self.state = "reset" 
+                        "Refreshing reference sequence (counter reached {0})",
+                        self.settings["update_after_n_criterions"]
+                        )
+            self.frame_num = 0
+            self.trigger_num = 0
+            self.state = "reset"
 
         pixelArray.metadata["optical_gating_state"] = self.state
         
@@ -189,31 +147,21 @@ class OpticalGater:
             self.frames_to_save.append(pixelArray)
             if len(self.frames_to_save) == self.settings["save_first_n_frames"]:
                 ref.save_period(self.frames_to_save, self.settings["reference_sequence_dir"], prefix="VID-")
-                
-        if self.state == "sync":
-            # Using previously-determined reference period, analyse brightfield frames
-            # to determine predicted trigger time for prospective optical gating
-            # self.predicted_trigger_time_s.append(
-            #     None
-            # )  # placeholder - updated inside sync_state
-
-            self.sync_state(pixelArray)
-
-        elif self.state == "reset":
+            
+        if self.state == "reset":
             # Clears reference period and resets frame number
             # Used when determining new period
             self.reset_state()
-
         elif self.state == "determine":
             # Determine initial reference period and target frame
             self.determine_state(pixelArray)
-
-        elif self.state == "adapt":
-            # Determine reference period syncing target frame with original user selection
-            self.adapt_state(pixelArray)
-
+        elif self.state == "sync":
+            # Using previously-determined reference period, analyse brightfield frames
+            # to determine predicted trigger time for prospective optical gating
+            self.sync_state(pixelArray)
         else:
-            logger.critical("Unknown state {0}.", self.state)
+            logger.critical("Unknown state '{0}'", self.state)
+            raise NotImplementedError("Unknown state '{0}'".format(self.state))
 
         # take a note of our processing rate (useful for deciding what camera framerate is viable to use)
         time_fin = time.perf_counter()
@@ -221,13 +169,299 @@ class OpticalGater:
                 time_fin - time_init
             )
 
+    def reset_state(self):
+        """ Code to run when resetting all state (ready to determine a new period)
+            Used if the user is not happy with a period choice,
+            or before getting a new reference period in the adaptive mode.
+        """
+        logger.info("Resetting for new period determination.")
+        self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference_finding"])
+        self.predictor = pog.LinearPredictor(self.settings["linear_prediction"])
+        self.state = "determine"
+    
+    def determine_state(self, pixelArray):
+        """ Code to run when in "determine" state (identifying a reference sequence).
+            In this mode we accumulate frames and try and recognise a single heartbeat sequence from within them.
+        """
+        logger.debug("Processing frame to determine period")
+
+        ref_frames, period_to_use = self.ref_seq_manager.establish_period_from_frames(pixelArray)
+        if ref_frames is not None:
+            logger.success("Established reference sequence with period {0}".format(period_to_use))
+            self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
+            if "reference_sequence_dir" in self.settings:
+                # Save the reference sequence to disk, for debug purposes
+                self.ref_seq_manager.save_ref_sequence(self.settings["reference_sequence_dir"])
+            self.slow_action_occurred = "reference frame refresh"
+
+            if self.identify_and_set_reference_frame():
+                self.state = "sync"
+                logger.success(
+                           "Period determined ({0} frames long) and we have selected frame {1} as target.",
+                           self.ref_seq_manager.ref_period,
+                           self.ref_seq_manager.targetFrameNum
+                           )
+            else:
+                # Latest reference sequence was rejected for some reason.
+                # Start from scratch
+                logger.debug("Reference sequence rejected - resetting")
+                self.state = "reset"
+
+    def sync_state(self, pixelArray):
+        """ Code to run when in "sync" state
+            Perform prospective optical gating for heartbeat-synchronized triggering.
+        """
+        logger.debug("Processing frame in prospective optical gating mode.")
+
+        # Gets the phase (in frames) and arrays of SADs between the current frame and the reference sequence
+        current_phase, sad = self.ref_seq_manager.identify_phase_for_frame(pixelArray)
+        logger.debug("SAD: {0}", sad)
+
+        # Calculate the unwrapped phase.
+        if len(self.frame_history) == 0:
+            # This is our first frame - the unwrapped phase is simply the phase of this frame
+            delta_phase = 0
+            phase = current_phase
+        else:
+            # Normally it is fairly straightforward to determine the unwrapped phase:
+            # we just calculate (current_phase - previous_phase) and add that to the unwrapped phase of the previous frame.
+            # But some care is needed to handle the case where the current phase has just wrapped,
+            # or there is a slight backward step from e.g. 0.01 to 2π-0.01.
+            previous_phase = self.frame_history[-1].metadata["unwrapped_phase"] % (2*np.pi)
+            delta_phase = current_phase - previous_phase
+            # Handle phase wraps in the most sensible way possible
+            # (when mapped to [0,2π], we consider [0,π] to be a forward step and [π,2π] to be backwards.
+            while delta_phase < -np.pi:
+                delta_phase += 2 * np.pi
+            phase = self.frame_history[-1].metadata["unwrapped_phase"] + delta_phase
+
+        # Limit the length of frame_history by evicting the oldest entry
+        # if the list length exceeds the maximum length we are meant to be retaining.
+        # Note: deletion of the *first* element of a list is potentially a performance issue,
+        # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
+        if len(self.frame_history) >= self.settings["frame_buffer_length"]:
+            del self.frame_history[0]
+
+        # Append our current PixelArray object (including its metadata) to our frame_history list
+        thisFrameMetadata = pixelArray.metadata
+        thisFrameMetadata["unwrapped_phase"] = phase
+        thisFrameMetadata["sad_min"] = np.argmin(sad)
+        self.frame_history.append(pixelArray)
+
+        logger.debug(
+            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad min: {3}",
+            thisFrameMetadata["timestamp"],
+            thisFrameMetadata["unwrapped_phase"],
+            delta_phase,
+            thisFrameMetadata["sad_min"],
+        )
+
+        # === The main purpose of this function: generating synchronization triggers ===
+        # If we have at least one period of phase history, have a go at predicting a future trigger time
+        # (Note that this prediction can be disabled by including a "phase_stamp_only" key in the settings file
+        frameInterval_s = 1.0 / self.settings["brightfield_framerate"]
+        this_predicted_trigger_time_s = None
+        sendTriggerReason = None
+        if ((len(self.frame_history) > self.ref_seq_manager.ref_period)
+            and (not "phase_stamp_only" in self.settings)
+        ):
+            logger.debug("Predicting trigger...")
+
+            # Make a future prediction
+            logger.trace("Predicting next trigger.")
+            timeToWait_s, estHeartPeriod_s = self.predictor.predict_trigger_wait(
+                self.frame_history,
+                self.ref_seq_manager.targetSyncPhase,
+                frameInterval_s,
+                fitBackToBarrier=True
+            )
+            logger.trace("Time to wait to trigger: {0} s.".format(timeToWait_s))
+
+            this_predicted_trigger_time_s = thisFrameMetadata["timestamp"] + timeToWait_s
+
+            # If we have a prediction, consider actually sending the trigger
+            if timeToWait_s > 0:
+                logger.info("Possible trigger after: {0}s", timeToWait_s)
+                # Decide whether the current candidate trigger time should actually be used,
+                # or whether we should wait for an improved prediction from the next brightfield frame.
+                # Note that timeToWait_s might be updated by this call (to change the value to
+                # refer to the next heart cycle) if we have already committed to a trigger in the current cycle.
+                #
+                # JT TODO: Check if I want to do more refactoring here (and/or match better with Ross's Kalman code)
+                (
+                    timeToWait_s,
+                    sendTriggerReason
+                ) = self.predictor.decide_whether_to_trigger(
+                    thisFrameMetadata["timestamp"],
+                    timeToWait_s,
+                    frameInterval_s,
+                    estHeartPeriod_s
+                )
+                if sendTriggerReason is not None:
+                    # Actually send the electrical trigger signal
+                    logger.success(
+                        "Sending trigger (reason: {0}) at time ({1} + {2}) s",
+                        sendTriggerReason,
+                        thisFrameMetadata["timestamp"],
+                        timeToWait_s,
+                    )
+                    # Note that the following call may block on some platforms
+                    # (its exact implementation is for the subclass to determine)
+                    self.trigger_fluorescence_image_capture(
+                        this_predicted_trigger_time_s
+                    )
+                    # Track the frame that initiated the trigger, because we will go back later
+                    # and update its metadata with metrics of how good we think the trigger was
+                    self.latestTriggerPredictFrame = self.frame_history[-1]
+                    # trigger_sent is a special flag that is *only* present in the dictionary if we did send a trigger
+                    thisFrameMetadata["trigger_sent"] = (sendTriggerReason is not None)
+
+                    # Update trigger iterator (for adaptive algorithm)
+                    self.trigger_num += 1
+
+                    logger.debug(
+                        'Retrospective Log Analysis Data (Type B): Trigger Time = {0}'.format(this_predicted_trigger_time_s)
+                        )
+
+        # Update PixelArray with predicted trigger time and trigger type
+        thisFrameMetadata["predicted_trigger_time_s"] = this_predicted_trigger_time_s
+        thisFrameMetadata["trigger_type_sent"] = sendTriggerReason
+        thisFrameMetadata["targetSyncPhase"] = self.ref_seq_manager.targetSyncPhase
+
+        logger.debug(
+            "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
+            thisFrameMetadata["timestamp"],
+            thisFrameMetadata["predicted_trigger_time_s"],
+            thisFrameMetadata["trigger_type_sent"],
+            self.frame_num_total,
+        )
+
+        # Retrospective monitoring of how closely a recent previous trigger ended up matching the target phase
+        self.live_phase_interpolation()
+
+        logger.debug(
+            'Retrospective Log Analysis Data (Type A): Timestamp = {0} Phase = {1} Target Phase = {2}'.format(
+                thisFrameMetadata["timestamp"],
+                thisFrameMetadata["unwrapped_phase"],
+                thisFrameMetadata["targetSyncPhase"],
+            )
+        )
+
+    def identify_and_set_reference_frame(self):
+        """ Select a reference frame. We may:
+            - Use a value hard-coded in the config settings
+            - Prompt the user to pick one
+            - Make a guess of a suitable one to use
+            - Use the LTU code to maintain the same target phase as was previously in force
+            
+            Returns True if a suitable reference frame has been applied,
+             or False if we need to start the period-determining process from scratch again.
+        """
+        ok = True
+        method = self.settings["reference_finding"]["target_frame_selection_method"]
+        adaptive = self.settings["reference_finding"]["target_frame_adaptive_update"]
+
+        if (adaptive and (self.aligner.sequence_history is not None)):
+            # Automatically maintain existing target phase
+            logger.info("Use LTU code to compute the reference frame")
+            newTargetFrame, newBarrierFrame = self.pick_target_frame_adaptively()
+        elif method == "config":
+            # Config file specifies reference frame
+            logger.info("Config file specifies reference frame of {0}", self.settings["target_frame_default"])
+            newTargetFrame = self.settings["target_frame_default"]
+            newBarrierFrame = None
+        elif method == "user":
+            # User types a choice
+            logger.info("User will select a reference frame")
+            newTargetFrame, newBarrierFrame = self.user_pick_target_frame()
+            ok = (newTargetFrame >= 0)
+        elif method == "auto":
+            # Automatically pick a frame
+            logger.info("Automatically pick a suitable reference frame")
+            newTargetFrame = None
+            newBarrierFrame = None
+                
+        if ok:
+            # We decided on a reference frame to use
+            self.set_target_frame(newTargetFrame, newBarrierFrame)
+            if (adaptive and (self.aligner.sequence_history is None)):
+                # We need to seed the LTU code with the first reference sequence information.
+                # JT TODO: somewhere we need to support the case where the user adjusts the reference frame in the middle of a run.
+                # In that situation we need to decide whether to use ref_seq_id!=0, or to clear all the OGA history and start afresh
+                #            self.pog_settings["oga_reference_value"] = self.pog_settings["referenceFrame"]
+                
+                # JT TODO: it would be nice if there was a way to avoid having to do this separately to the call to oga.process_sequence.
+                self.aligner.process_initial_sequence(self.ref_seq_manager.ref_frames,
+                                                      self.ref_seq_manager.ref_period,
+                                                      self.ref_seq_manager.drift,
+                                                      self.ref_seq_manager.targetFrameNum)
+
+        return ok
+
+    def set_target_frame(self, new_target_frame, new_barrier):
+        """ Impose a new target frame representing the heart phase that our code will aim to synchronize to.
+            If input values are None, we will make our own empirical guess of values we think should perform well
+        """
+        logger.debug("set_target_frame() called with {0}, {1}", new_target_frame, new_barrier)
+        defaultTarget, defaultBarrier = self.ref_seq_manager.pick_good_target_and_barrier_frames()
+        if new_target_frame is None:
+            new_target_frame = defaultTarget
+        if new_barrier is None:
+            new_barrier = defaultBarrier
+        logger.success("Setting reference and barrier frames to {0}, {1}", new_target_frame, new_barrier)
+        self.ref_seq_manager.set_target_and_barrier_frame(new_target_frame, new_barrier)
+        # JT TODO: this function is called when we acquire a new set of reference frames,
+        # but it is not updated if the parameters such as barrierFrame, min/maxFramesForFit
+        # are later altered by the user. It should be...
+        self.predictor.target_and_barrier_updated(self.ref_seq_manager)
+
+    def pick_target_frame_adaptively(self):
+        """ Adaptive prospective optical gating mode
+            i.e. update reference sequence, while maintaining the same phase-lock.
+            In this mode we align the latest reference sequence with
+            previous sequences using an adaptive algorithm.
+        """
+        # Align the current reference sequence relative to previous ones (adaptive update)
+        # Note that the ref_seq_phase parameter for process_sequence is in units of ??[WHAT?]??
+        # JT TODO: update the above comment to clarify
+        newTargetFrame = self.aligner.process_sequence(self.ref_seq_manager.ref_frames,
+                                                    self.ref_seq_manager.ref_period,
+                                                    self.ref_seq_manager.drift)
+            
+        logger.success("Reference frame adaptive update complete. New reference frame will be {0}", newTargetFrame)
+        self.slow_action_occurred = "reference frame adaptive update"
+        # JT TODO: currently this does not adaptively update the barrier frame,
+        # it just lets the code identify the barrier frame from scratch without reference to anything specified previously
+        return newTargetFrame, None
+
+    def user_pick_target_frame(self):
+        """Prompts the user to select the target frame from a one-period set of reference frames"""
+        # For now it is a simple command line interface (which is not very user-friendly as you can't see the images)
+        choice = input(
+                        "Please select a target frame between 0 and "
+                        + str(len(self.ref_seq_manager.ref_frames) - 1)
+                        + "\nOr enter -1 to select a new period.\n"
+                       )
+        self.slow_action_occurred = "user selection of target frame"
+        # JT TODO: currently we do not prompt the user about the barrier frame
+        # We just let the code identify the barrier frame from scratch without reference to anything specified previously
+        return int(choice), None
+
+    def trigger_fluorescence_image_capture(self, trigger_time_s):
+        """
+        As this is the base server, this function just outputs a log that a trigger would have been sent.
+        Subclasses should override this if they want to interact with hardware.
+        """
+        logger.success("A fluorescence image would be triggered now.")
 
     def live_phase_interpolation(self): 
         """
         Fluorescence triggers will rarely (if ever) overlap exactly in time with brightfield frames. 
-        To achieve an accurate phase estimate at the time a fluorescence image was captured, it is necessary to interpolated between times of known phase. 
+        To achieve an accurate phase estimate at the time a fluorescence image was captured,
+        it is necessary to interpolated between times of known phase.
         
-        This function interpolates phase between the TWO CLOSEST brightfield frames to a given sent trigger time in order to the estimate phase
+        This function interpolates phase between the TWO CLOSEST brightfield frames
+        to a given sent trigger time in order to the estimate phase
         at the exact time a fluorescence frame was captured. 
         """
         
@@ -249,7 +483,7 @@ class OpticalGater:
                 wrappedPhaseAtSentTriggerTime = interpolatedPhase % (2 * np.pi)
             
                 # Compute the error between the target phase and the estimated phase
-                phaseError = wrappedPhaseAtSentTriggerTime - self.pog_settings["targetSyncPhase"]
+                phaseError = wrappedPhaseAtSentTriggerTime - self.ref_seq_manager.targetSyncPhase
             
                 # Adjust the phase error to lie in (-pi, pi)
                 if phaseError > np.pi:
@@ -265,401 +499,19 @@ class OpticalGater:
                 errorThreshold = 0.5
                 if abs(phaseError) > errorThreshold:
                     logger.warning('Phase error ({0} radians) has exceeded desired threshold ({1} radians)', phaseError, errorThreshold)
-    logger
 
-
-            
-
-    def sync_state(self, pixelArray):
-        """ Code to run when in "sync" state
-            Synchronising with prospective optical gating for phase-locked triggering.
-        """
-        logger.debug("Processing frame in prospective optical gating mode.")
-
-        # Gets the phase (in frames) and arrays of SADs between the current frame and the reference sequence
-        current_phase, sad, self.pog_settings["drift"] = \
-                             pog.identify_phase_with_drift(pixelArray,
-                                                           self.pog_settings["ref_frames"],
-                                                           self.pog_settings["reference_period"],
-                                                           self.pog_settings["drift"])
-
-        # Calculate the unwrapped phase.
-        # Normally this is fairly straightforward - calculate (current_phase - previous_phase)
-        # and add that to the unwrapped phase of the previous frame.
-        # But some care is needed to handle the case where the current phase has just wrapped,
-        # or there is a slight backward step from e.g. 0.01 to 2π-0.01.
-        if len(self.frame_history) == 0:  # i.e. this is our first frame
-            logger.debug("First frame, using current phase as cumulative phase.")
-            delta_phase = 0
-            phase = current_phase
-        else:
-            delta_phase = current_phase - self.previous_phase
-            # Handle phase wraps in the most sensible way possible
-            while delta_phase < -np.pi:
-                delta_phase += 2 * np.pi
-            phase = self.frame_history[-1].metadata["unwrapped_phase"] + delta_phase
-
-        # Evicts the oldest entry in frame_history if it exceeds the history length that we are meant to be retaining
-        # Note: deletion of first list element is potentially a performance issue,
-        # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
-        if len(self.frame_history) >= self.settings["frame_buffer_length"]:
-            del self.frame_history[0]
-
-        # Append PixelArray object to frame_history list with its metadata
-        pixelArray.metadata["unwrapped_phase"] = phase
-        pixelArray.metadata["sad_min"] = np.argmin(sad)
-        self.frame_history.append(pixelArray)
-
-        logger.debug(
-            "Current time: {0} s; cumulative phase: {1} (delta:{2:+f}) rad; sad min: {3}",
-            self.frame_history[-1].metadata["timestamp"],
-            self.frame_history[-1].metadata["unwrapped_phase"],
-            delta_phase,
-            self.frame_history[-1].metadata["sad_min"],
-        )
-
-        # === The main purpose of this function: generating synchronization triggers ===
-        # If we have at least one period of phase history, have a go at predicting a future trigger time
-        # (Note that this prediction can be disabled by enabling "phase_stamp_only" in pog_settings
-        this_predicted_trigger_time_s = None
-        sendTriggerNow = 0
-        if (len(self.frame_history) > self.pog_settings["reference_period"]
-            and self.pog_settings["phase_stamp_only"] != True
-        ):
-            logger.debug("Predicting trigger...")
-
-            # Make a future prediction
-            logger.trace("Predicting next trigger.")
-            time_to_wait_seconds, heartRateRadsPerSec = pog.predict_trigger_wait(
-                pa.get_metadata_from_list(
-                    self.frame_history, ["timestamp", "unwrapped_phase", "sad_min"]
-                ),
-                self.pog_settings,
-                fitBackToBarrier=True,
-            )
-            logger.trace("Time to wait to trigger: {0} s.".format(time_to_wait_seconds))
-
-            this_predicted_trigger_time_s = (
-                self.frame_history[-1].metadata["timestamp"] + time_to_wait_seconds
-            )
-
-            # If we have a prediction, consider actually sending the trigger
-            if time_to_wait_seconds > 0:
-                logger.info("Possible trigger after: {0}s", time_to_wait_seconds)
-                # Decide whether the current candidate trigger time should actually be used,
-                # or whether we should wait for an improved prediction from the next brightfield frame.
-                # Note that time_to_wait_seconds might be updated by this call (to change the value to
-                # refer to the next heart cycle) if we have already committed to a trigger in the current cycle.
-                #
-                # JT TODO: I would like to refactor that logic. I think that better belongs
-                # in the prediction code itself. More generally, pog_settings should be refactored
-                # to just be actual settings, and *state* (e.g. "lastSent") should be encapsulated
-                # in a class. That structure would also mesh better with Ross's Kalman code.
-                (
-                    time_to_wait_seconds,
-                    sendTriggerNow
-                ) = pog.decide_whether_to_trigger(
-                    self.frame_history[-1].metadata["timestamp"],
-                    time_to_wait_seconds,
-                    self.pog_settings,
-                    heartRateRadsPerSec
-                )
-                if sendTriggerNow != 0:
-                    # Actually send the electrical trigger signal
-                    logger.success(
-                        "Sending trigger (reason: {0}) at time ({1} plus {2}) s",
-                        sendTriggerNow,
-                        self.frame_history[-1].metadata["timestamp"],
-                        time_to_wait_seconds,
-                    )
-                    # Note that the following call may block on some platforms
-                    # (its exact implementation is for the subclass to determine)
-                    self.trigger_fluorescence_image_capture(
-                        this_predicted_trigger_time_s
-                    )
-
-                    self.latestTriggerPredictFrame = self.frame_history[-1]
-                    # trigger_sent is a special flag that is *only* present in the dictionary if we did send a trigger
-                    self.frame_history[-1].metadata["trigger_sent"] = sendTriggerNow
-
-                    # Update trigger iterator (for adaptive algorithm)
-                    self.trigger_num += 1
-
-                    logger.debug(
-                        'Retrospective Log Analysis Data (Type B): Trigger Time = {0}'.format(this_predicted_trigger_time_s)
-                        )
-
-        # Update PixelArray with predicted trigger time and trigger type
-        self.frame_history[-1].metadata[
-            "predicted_trigger_time_s"
-        ] = this_predicted_trigger_time_s
-        self.frame_history[-1].metadata["trigger_type_sent"] = sendTriggerNow
-        self.frame_history[-1].metadata["targetSyncPhase"] = self.pog_settings["targetSyncPhase"]
-
-        logger.debug(
-            "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
-            self.frame_history[-1].metadata["timestamp"],
-            self.frame_history[-1].metadata["predicted_trigger_time_s"],
-            self.frame_history[-1].metadata["trigger_type_sent"],
-            self.frame_num_total,
-        )
-
-        # store this phase now to calculate the delta phase for the next frame
-        self.previous_phase = float(current_phase)
-
-        # Computing the phase at the exact time the most recent trigger was acted upon
-        self.live_phase_interpolation()
-
-        logger.debug(
-            'Retrospective Log Analysis Data (Type A): Timestamp = {0} Phase = {1} Target Phase = {2}'.format(
-                self.frame_history[-1].metadata["timestamp"],
-                self.frame_history[-1].metadata["unwrapped_phase"],
-                self.frame_history[-1].metadata["targetSyncPhase"],
-            )
-        )
-
-
-    def reset_state(self):
-        """ Code to run when in "reset" state
-            Resetting for a new period determination.
-            Clears everything required to get a new period.
-            Used if the user is not happy with a period choice,
-            or before getting a new reference period in the adaptive mode.
-        """
-        logger.info("Resetting for new period determination.")
-        
-        self.pog_settings["ref_frames"] = None
-        self.ref_buffer = []
-        self.period_guesses = []
-
-        # lastSent is used as part of the logic in prospective_optical_gating.py
-        # TODO: it's not ideal that the reset logic is here but the variable is used in prospective_optical_gating.
-        # A future refactor may want to think about tidying that up...
-        self.pog_settings["lastSent"] = 0
-
-        # TODO: JT writes: I don't like this logic - I don't feel this is the right place for it.
-        # Also, update_after_n_triggers is one reason why we might want to reset the sync,
-        # but the user should have the ability to reset the sync through the GUI, or there might
-        # be other future reasons we might want to reset the sync (e.g. after each stack).
-        # I think this could partly be tidied by making self.state behave more like a proper finite state machine.
-        # What I don't like is the fact that the "update_after_n_triggers" logic effectively appears twice.
-        # It appears in analyze(), where it may induce a reset, and then it appears again here as a
-        # sort of way of figuring out why this reset was initiated in the first place.
-        # Not sure yet what the best solution is, but I'm flagging it for a rethink.
-        
-        if (
-            ("update_after_n_criterions" in self.settings) and
-            (self.update_criterion >= self.settings["update_after_n_criterions"])
-        ):
-            # i.e. if adaptive reset trigger_num and get new period
-            # automatically phase-locking with the existing period
-            logger.info(
-                "Switching to adaptive mode.", self.settings["update_after_n_criterions"]
-            )
-            self.frame_num = 0
-            self.trigger_num = 0
-            self.state = "adapt"
-        else:
-            logger.info("Switching to determine period mode.")
-            self.state = "determine"
-
-    def determine_state(self, pixelArray, modeString="determine period"):
-        """ Code to run when in "determine" state
-            Determine period mode (default behaviour requires user input).
-            In this mode we obtain a minimum number of frames, determine a
-            period and then return.
-            It is assumed that the user (or cli/flask app) then runs the
-            user_select_ref_frame function (and updates the state) before running
-            analyse again with the new state.
-        """
-        logger.debug("Processing frame in {0} mode.".format(modeString))
-
-        # Adds new frame to buffer
-        self.ref_buffer.append(pixelArray)
-        # Impose an upper limit on the buffer length, to protect against performance degradation
-        # in cases where we are not succeeding in identifying a period
-        # Note: deletion of first list element is potentially a performance issue,
-        # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
-        ref_buffer_duration = (self.ref_buffer[-1].metadata["timestamp"]
-                               - self.ref_buffer[0].metadata["timestamp"])
-        if (
-            ("min_heart_rate_hz" in self.settings) and
-            (ref_buffer_duration > 1.0/self.settings["min_heart_rate_hz"])
-           ):
-            logger.debug("Trimming buffer to duration {0}".format(1.0/self.settings["min_heart_rate_hz"]))
-            del self.ref_buffer[0]
-
-        # Calculate period from determine_reference_period.py
-        logger.trace("Attempting to determine new reference period.")
-
-        ref_frames, period_to_use = ref.establish(
-            self.ref_buffer, self.period_guesses, self.pog_settings
-        )
-
-        if ref_frames is not None:
-            self.pog_settings.set_reference_frames(ref_frames, period_to_use)
-
-            if "reference_sequence_dir" in self.settings:
-                # Save the reference sequence to disk, for debug purposes
-                ref.save_period(self.pog_settings["ref_frames"], self.settings["reference_sequence_dir"])
-            logger.success("Period determined.")
-            self.justRefreshedRefFrames = True   # Flag that a slow action took place
-
-            if self.automatic_target_frame_selection:
-                logger.info(
-                    "Period determined and target frame automatically selected; switching to prospective optical gating mode."
-                )
-                # Automatically switch to the "sync" state, using the default reference frame.
-                # The user might choose to change the reference frame later, via a GUI.
-                self.start_sync_with_ref_frame(None, ltu=False)
-                self.state = "sync"
-            else:
-                # If we aren't using the automatically determined period
-                # We raise the stop flag, which returns the current state to the user/app
-                # The user/app can then select a target frame
-                # The user/app will also need to call the adaptive system
-                # see user_select_ref_frame()
-                # **** JT update this comment?
-                # This process is a bit weird - perhaps it's time to think about what a proper state machine would look like?
-                self.stop = 'select'
-
-    def adapt_state(self, pixelArray):
-        """ Code to run when in "adapt" state.
-            Adaptive prospective optical gating mode
-            i.e. update reference sequence, while maintaining the same phase-lock.
-            In this mode we determine a new period and then align with
-            previous periods using an adaptive algorithm.
-        """
-        # Start by calling through to determine_state() to establish a new reference sequence
-        # JT: I think this is backwards. I think it makes more sense for determine_state to know if we should be being adaptive,
-        #     and doing the adapt logic if required. Otherwise we set a target frame and then immediately change it to something else
-        self.determine_state(pixelArray, modeString="adaptive optical gating")
-
-        if self.pog_settings["ref_frames"] is not None:
-            
-            # Align the current reference sequence relative to previous ones (adaptive update)
-            # Note that the ref_seq_phase parameter for process_sequence is in units
-            (
-                self.sequence_history,
-                self.period_history,
-                self.drift_history,
-                self.shift_history,
-                self.global_solution,
-                newRefFrame,
-            ) = oga.process_sequence(
-                self.pog_settings["ref_frames"],
-                self.pog_settings["reference_period"],
-                self.pog_settings["drift"],
-                sequence_history=self.sequence_history,
-                period_history=self.period_history,
-                drift_history=self.drift_history,
-                shift_history=self.shift_history,
-                global_solution=self.global_solution,
-                max_offset=3,
-                ref_seq_id=0,
-                ref_seq_phase=self.pog_settings["oga_reference_value"],
-                resampled_period=self.pog_settings["oga_resampled_period"]
-            )
-            logger.success("Reference frame adaptive update complete. New reference frame will be {0}", newRefFrame)
-            self.justRefreshedRefFrames = True   # Flag that a slow action took place
-            # JT: note that currently this does not adaptively update the barrier frame,
-            # it just lets the code identify the barrier frame from scratch without reference to anything specified previously
-            self.start_sync_with_ref_frame(newRefFrame, barrier=None, ltu=True)
-
-            # Switch back to the sync state
-            logger.info(
-                "Period updated and adaptive phase-lock successful; switching back to prospective optical gating mode."
-            )
-            self.state = "sync"
-
-    def start_sync_with_ref_frame(self, ref_frame_number, ltu, barrier=None):
-        defaultRef, defaultBarrier = pog.pick_target_and_barrier_frames(self.pog_settings["ref_frames"],
-                                                                        self.pog_settings["reference_period"])
-        if ref_frame_number is None:
-            ref_frame_number = defaultRef
-        if barrier is None:
-            barrier = defaultBarrier
-        self.pog_settings.set_reference_and_barrier_frame(ref_frame_number, barrier)
-        
-        if ((ltu == False) and
-            (self.sequence_history is None)):
-            # We are setting a new reference frame that has been "chosen" (either by the user or a "best software pick").,
-            # but it is *not* just a case that we are adjusting it after a long-term update.
-            # In this situation we need to seed the LTU code with this information, so it knows what to compare against.
-            # JT TODO: this logic currently does not support the case where the user adjusts the reference frame in the middle of a run.
-            # In that situation we need to decide whether to use ref_seq_id!=0, or to clear all the OGA history and start afresh
-            self.pog_settings["oga_reference_value"] = self.pog_settings["referenceFrame"]
-
-            # JT TODO: for now I am putting a separate call to oga.process_sequence here,
-            # but it would be good to try and fold this in with the other call, so there is only one call that works in both scenarios
-            (
-             self.sequence_history,
-             self.period_history,
-             self.drift_history,
-             self.shift_history,
-             self.global_solution,
-             newRefFrame,
-             ) = oga.process_sequence(
-                                      self.pog_settings["ref_frames"],
-                                      self.pog_settings["reference_period"],
-                                      self.pog_settings["drift"],
-                                      sequence_history=self.sequence_history,
-                                      period_history=self.period_history,
-                                      drift_history=self.drift_history,
-                                      shift_history=self.shift_history,
-                                      global_solution=self.global_solution,
-                                      max_offset=3,
-                                      ref_seq_id=0,
-                                      ref_seq_phase=self.pog_settings["oga_reference_value"],
-                                      resampled_period=self.pog_settings["oga_resampled_period"]
-                                      )
-
-        # Turn recording back on for rest of run
-        self.stop = False
-        # Turn automatic target frames on for future adaptive updates
-        self.automatic_target_frame_selection = True
-        # Switch to "sync" state, in which we send camera triggers
-        logger.info(
-                    "Starting sync. Period determined and target frame has been selected by the user/app; switching to prospective optical gating mode."
-                    )
-        self.state = "sync"
-
-    def user_select_ref_frame(self):
-        """Prompts the user to select the target frame from a one-period set of reference frames"""
-        
-        if self.initialTargetFrame is None:
-            # For now it is a simple command line interface (which is not helpful at all)
-            self.initialTargetFrame = int(
-                input(
-                    "Please select a frame between 0 and "
-                    + str(len(self.pog_settings["ref_frames"]) - 1)
-                    + "\nOr enter -1 to select a new period.\n"
-                )
-            )
-        if self.initialTargetFrame < 0:
-            # User wants to select a new period. Users can use their creative side by selecting any negative number.
-            logger.success(
-                           "User has asked for a new period to be determined, resetting before switching to period determination mode."
-                           )
-            self.state = "reset"
-        else:
-            # Commit to using this reference frame
-            self.start_sync_with_ref_frame(self.initialTargetFrame, ltu = False)
-
-    def trigger_fluorescence_image_capture(self, trigger_time_s):
-        """
-        As this is the base server, this function just outputs a log that a trigger would have been sent.
-        """
-        logger.success("A fluorescence image would be triggered now.")
 
     def plot_triggers(self, outfile="triggers.png"):
         """
         Plot the phase vs. time sawtooth line with trigger events.
         """
         # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
-        sent_trigger_times = pa.get_metadata_from_list(
-            self.frame_history, "predicted_trigger_time_s"
-        )[pa.get_metadata_from_list(self.frame_history, "trigger_type_sent") > 0]
+        sent_trigger_times = pa.get_metadata_from_list(self.frame_history,
+                                                       "predicted_trigger_time_s",
+                                                       onlyIfKeyPresent="trigger_sent")
+        sent_trigger_target_phases = pa.get_metadata_from_list(self.frame_history,
+                                                               "targetSyncPhase",
+                                                               onlyIfKeyPresent="trigger_sent")
 
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
@@ -671,9 +523,7 @@ class OpticalGater:
         )
         plt.scatter(
             np.array(sent_trigger_times),
-            np.full(
-                max(len(sent_trigger_times), 0), self.pog_settings["targetSyncPhase"],
-            ),
+            np.array(sent_trigger_target_phases),
             color="r",
             label="Trigger fire",
         )
@@ -689,7 +539,7 @@ class OpticalGater:
         plt.figure()
         plt.title("Frequency density of triggered phase")
         plt.hist(
-            pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="trigger_sent"), 
+            pa.get_metadata_from_list(self.frame_history, "wrappedPhaseAtSentTriggerTime", onlyIfKeyPresent="wrappedPhaseAtSentTriggerTime"),
             bins = np.arange(0, 2 * np.pi, 0.01), 
             color = "tab:green", 
             label = "Triggered phase"
@@ -715,7 +565,7 @@ class OpticalGater:
         phaseErrorList = pa.get_metadata_from_list(
             self.frame_history, 
             "triggerPhaseError", 
-            onlyIfKeyPresent="trigger_sent"
+            onlyIfKeyPresent="triggerPhaseError"
         )
         plt.hist(
             phaseErrorList,

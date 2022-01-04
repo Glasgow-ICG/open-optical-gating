@@ -30,12 +30,13 @@ class FileOpticalGater(server.OpticalGater):
         settings=None,
         ref_frames=None,
         ref_frame_period=None,
-        target_frame = None,
         repeats=1,
-        automatic_target_frame_selection=True,
         force_framerate=True
     ):
         """Function inputs:
+            source                            str     A path (which may include wildcards) to a tiff file(s)
+                                                       to be processed as image data.
+                                                       If NULL, we will look in the settings dictionary
             settings                          dict    Parameters affecting operation
                                                       (see optical_gating_data/json_format_description.md)
             ref_frames                        arraylike
@@ -44,9 +45,7 @@ class FileOpticalGater(server.OpticalGater):
                                                        optical_gater_server determining a reference sequence from the
                                                        supplied input data
             ref_frame_period                  float   Noninteger period for supplied ref frames
-            target_frame                      int     User pre-selected target frame within reference sequence
             repeats                           int     Number of times to play through the frames in the source .tif file
-            automatic_target_frame_selection  bool    Do we automatically select a target frame or ask the user to pick?
             force_framerate                   bool    Whether or not to slow down the rate at which new frames
                                                        are delivered, such that we emulate real-world speeds
 
@@ -54,20 +53,15 @@ class FileOpticalGater(server.OpticalGater):
 
         # Initialise parent
         super(FileOpticalGater, self).__init__(
-            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period, target_frame = target_frame)
+            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period)
         
         self.force_framerate = force_framerate
         self.progress_bar = True  # May be updated during run_server
-        
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
 
         # Load the data
         self.load_data(source)
-
-        # By default we will take a guess at a good target frame (True)
-        # rather than ask user for their preferred initial target frame (False)
-        self.automatic_target_frame_selection = automatic_target_frame_selection
 
     def load_data(self, filename):
         """Load data file"""
@@ -154,13 +148,14 @@ class FileOpticalGater(server.OpticalGater):
             if wait_s > 1e-9:
                 # the 1e-9 is a very small time to allow for the calculation
                 time.sleep(wait_s - 1e-9)
-            elif self.justRefreshedRefFrames:
+            elif self.slow_action_occurred is not None:
                 logger.success(
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s). " \
-                    "But that is no particular surprise, because we just did a reference frame refresh".format(
+                               "But that is no particular surprise, because we just did a {3}".format(
                         self.settings["brightfield_framerate"],
                         self.next_frame_index,
                         wait_s,
+                        self.slow_action_occurred
                     )
                 )
             else:
@@ -306,7 +301,6 @@ def run(args, desc):
     analyser = FileOpticalGater(
         source=settings["input_tiff_path"],
         settings=settings,
-        automatic_target_frame_selection=False,
         force_framerate=True
     )
 
