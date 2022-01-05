@@ -367,8 +367,8 @@ class OpticalGater:
             newTargetFrame, newBarrierFrame = self.pick_target_frame_adaptively()
         elif method == "config":
             # Config file specifies reference frame
-            logger.info("Config file specifies reference frame of {0}", self.settings["target_frame_default"])
-            newTargetFrame = self.settings["target_frame_default"]
+            logger.info("Config file specifies reference frame of {0}", self.settings["reference_finding"]["target_frame_default"])
+            newTargetFrame = self.settings["reference_finding"]["target_frame_default"]
             newBarrierFrame = None
         elif method == "user":
             # User types a choice
