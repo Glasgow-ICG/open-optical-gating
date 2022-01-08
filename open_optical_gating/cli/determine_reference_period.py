@@ -447,7 +447,12 @@ def save_period(reference_sequence, parent_dir="~/", prefix="REF-"):
 
     # Saves the period
     for i, frame in enumerate(reference_sequence):
-        tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame, check_contrast = False)
+        if using_skimage:
+            # skimage will output a warning if it thinks we are passing it a low-contrast image
+            tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame, check_contrast = False)
+        else:
+            # ... but tifffile does not accept that parameter, so we need separate code here
+            tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
 
     logger.warning("Saved frames to \"{0}\"", dt)
 
