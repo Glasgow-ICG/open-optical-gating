@@ -26,7 +26,7 @@ logger.enable("open_optical_gating")
 # Log information about the environment we are running in.
 # This module list should match those specified in pyproject.toml
 import importlib
-version_dict = dict()
+version_dict = {"python": sys.version}
 for mod in ["optical_gating_alignment", "j_py_sad_correlation", "loguru", "tqdm", "serial", "flask",
             "tifffile", "skimage", "scipy", "matplotlib", "numpy", "numba", "picamera", "fastpins", "pybase64"]:
     try:
