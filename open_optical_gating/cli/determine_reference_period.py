@@ -10,8 +10,10 @@ import j_py_sad_correlation as jps
 # See comment in pyproject.toml for why we have to try both of these
 try:
     import skimage.io as tiffio
+    using_skimage = True
 except:
     import tifffile as tiffio
+    using_skimage = False
 
 # Local
 from . import prospective_optical_gating as pog
