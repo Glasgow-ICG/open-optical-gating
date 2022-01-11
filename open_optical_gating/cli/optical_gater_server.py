@@ -20,7 +20,7 @@ from . import prospective_optical_gating as pog
 # Set up logging
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
-logger.add("testing_logs/oog_{time}.log", level="DEBUG")
+logger.add("user_log_folder/oog_{time}.log", level="DEBUG", format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
 logger.enable("open_optical_gating")
 
 # Log information about the environment we are running in.
