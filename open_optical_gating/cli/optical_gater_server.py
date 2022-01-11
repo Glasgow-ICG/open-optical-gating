@@ -126,7 +126,14 @@ class OpticalGater:
         """ Method to analyse each frame as they are captured by the camera.
             Note that this analysis must take place fast enough that we return before the next frame arrives.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
-        logger.debug("Analysing frame with timestamp: {0}s", pixelArray.metadata["timestamp"])
+        
+        logger.info(
+            "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
+            self.frame_num_total,
+            pixelArray.metadata["timestamp"],
+            self.state
+        )
+
         self.slow_action_occurred = None # Will be set to a descriptive string later, if applicable
         self.frame_num += 1 
         self.frame_num_total += 1
@@ -178,7 +185,25 @@ class OpticalGater:
         else:
             logger.critical("Unknown state '{0}'", self.state)
             raise NotImplementedError("Unknown state '{0}'".format(self.state))
-
+            
+        if self.state == 'sync':
+            if len(self.frame_history) > 0:
+                logger.debug(
+                    "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                    pixelArray.metadata["timestamp"],
+                    self.state,
+                    self.frame_history[-1].metadata["unwrapped_phase"],
+                    self.frame_history[-1].metadata["targetSyncPhase"]
+                )
+        else:
+            logger.debug(
+                "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                pixelArray.metadata["timestamp"],
+                self.state,
+                None,
+                None
+            )
+            
         # take a note of our processing rate (useful for deciding what camera framerate is viable to use)
         time_fin = time.perf_counter()
         pixelArray.metadata["processing_rate_fps"] = 1 / (
@@ -336,7 +361,7 @@ class OpticalGater:
                     self.trigger_num += 1
 
                     logger.debug(
-                        'Retrospective Log Analysis Data (Type B): Trigger Time = {0}'.format(this_predicted_trigger_time_s)
+                        'LOG TYPE B: Trigger Time = {0}', this_predicted_trigger_time_s
                         )
 
         # Update PixelArray with predicted trigger time and trigger type
@@ -354,14 +379,6 @@ class OpticalGater:
 
         # Retrospective monitoring of how closely a recent previous trigger ended up matching the target phase
         self.live_phase_interpolation()
-
-        logger.debug(
-            'Retrospective Log Analysis Data (Type A): Timestamp = {0} Phase = {1} Target Phase = {2}'.format(
-                thisFrameMetadata["timestamp"],
-                thisFrameMetadata["unwrapped_phase"],
-                thisFrameMetadata["targetSyncPhase"],
-            )
-        )
 
     def identify_and_set_reference_frame(self):
         """ Select a reference frame. We may:
@@ -411,7 +428,6 @@ class OpticalGater:
                                                       self.ref_seq_manager.ref_period,
                                                       self.ref_seq_manager.drift,
                                                       self.ref_seq_manager.targetFrameNum)
-
         return ok
 
     def set_target_frame(self, new_target_frame, new_barrier):
@@ -522,12 +538,16 @@ class OpticalGater:
         Plot the phase vs. time sawtooth line with trigger events.
         """
         # get trigger times from predicted triggers time and trigger types sent (e.g. not 0)
-        sent_trigger_times = pa.get_metadata_from_list(self.frame_history,
-                                                       "predicted_trigger_time_s",
-                                                       onlyIfKeyPresent="trigger_sent")
-        sent_trigger_target_phases = pa.get_metadata_from_list(self.frame_history,
-                                                               "targetSyncPhase",
-                                                               onlyIfKeyPresent="trigger_sent")
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history,
+            "predicted_trigger_time_s",
+            onlyIfKeyPresent="trigger_sent"
+        )
+        sent_trigger_target_phases = pa.get_metadata_from_list(
+            self.frame_history,
+            "targetSyncPhase",
+            onlyIfKeyPresent="trigger_sent"
+        )
 
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
@@ -535,13 +555,16 @@ class OpticalGater:
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
             pa.get_metadata_from_list(self.frame_history, "unwrapped_phase")
             % (2 * np.pi),
+            color = "tab:green",
             label="Heart phase",
+            zorder=5
         )
         plt.scatter(
             np.array(sent_trigger_times),
             np.array(sent_trigger_target_phases),
-            color="r",
+            color="tab:red",
             label="Trigger fire",
+            zorder = 10
         )
         plt.legend()
         plt.xlabel("Time (s)")
@@ -619,6 +642,7 @@ class OpticalGater:
         plt.plot(
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
             pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s"),
+            color = "tab:green"
         )
         plt.xlabel("Time (s)")
         plt.ylabel("Prediction (s)")
@@ -630,6 +654,7 @@ class OpticalGater:
         plt.plot(
             pa.get_metadata_from_list(self.frame_history, "timestamp"),
             pa.get_metadata_from_list(self.frame_history, "processing_rate_fps"),
+            color = "tab:green"
         )
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")
