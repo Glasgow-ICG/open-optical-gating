@@ -18,30 +18,34 @@ def LogFileScraper(logFilePath, keyDictPath, zeroTimes = True):
     Outputs:
         scrapedDict = dictionary containing keys {timeStamps, phases, targetPhases, triggerTimes}
     """
-    # Load the key phrase dictionary
+
     keyDict = json.load(open(keyDictPath))
-    
-    # Define the dictionary to store the scraped values
     scrapedDictKeys = [
         'timeStamps',
+        'states',
         'phases',
         'targetPhases',
         'triggerTimes'
     ]
     scrapedDict= dict(zip(scrapedDictKeys, [[] for i in range(len(scrapedDictKeys))]))
-    
-    # Scrape each log line for the key phrases
+
     for line in open(logFilePath).readlines():
         if keyDict["keyTypeA"] in line:
             scrapedDict["timeStamps"].append(float(line.split()[keyDict["timeStampIndex"]]))
-            scrapedDict["phases"].append(float(line.split()[keyDict["phaseIndex"]]))
-            scrapedDict["targetPhases"].append(float(line.split()[keyDict["targetPhaseIndex"]]))
+            scrapedDict["states"].append(line.split()[keyDict["stateIndex"]])
+            
+            if not line.split()[keyDict["phaseIndex"]] == 'None':
+                scrapedDict["phases"].append(float(line.split()[keyDict["phaseIndex"]]))
+                
+            if not line.split()[keyDict["targetPhaseIndex"]] == 'None':
+                scrapedDict["targetPhases"].append(float(line.split()[keyDict["targetPhaseIndex"]]))
+       
         if keyDict["keyTypeB"] in line:
             scrapedDict["triggerTimes"].append(float(line.split()[keyDict["triggerTimeIndex"]]))
-    
-    # Assigning dictionary entries to arrays and zeroing time arrays by the zeroth timestamp entry
+
     scrapedDict["phases"] = np.asarray(scrapedDict["phases"])
     scrapedDict["targetPhases"] = np.asarray(scrapedDict["targetPhases"])
+    scrapedDict["states"] = np.asarray(scrapedDict["states"])
     
     if zeroTimes:
         scrapedDict["triggerTimes"] = np.asarray(scrapedDict["triggerTimes"]) - np.asarray(scrapedDict["timeStamps"][0])

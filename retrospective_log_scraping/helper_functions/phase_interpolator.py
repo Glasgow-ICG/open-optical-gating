@@ -1,6 +1,6 @@
 import numpy as np
 
-def TriggerPhaseInterpolation(timeStamps, phases, triggerTimes, targetPhases):
+def TriggerPhaseInterpolation(timeStamps, states, phases, triggerTimes, targetPhases):
     """
     A function to interpolate phase between brightfield frames in order to estimate the phase
     at which fluorescent images were captured. 
@@ -18,25 +18,25 @@ def TriggerPhaseInterpolation(timeStamps, phases, triggerTimes, targetPhases):
     
     unwrappedPhases = []
     phaseErrors = []
-    
+    syncTimeStamps = timeStamps[states == 'sync']
+
     for triggerTime in triggerTimes:
-        
         # Compute an array of the difference between timestamps and current trigger time
-        timeDifferences = timeStamps - triggerTime
-        
+        timeDifferences = syncTimeStamps - triggerTime
         # Only interpolate phases for triggers which are followed by further timestamps
         # Then split into negative and positive parts to find the closest behind time/phase and closest ahead time/phase
+        
         if not timeDifferences[-1] < 0:
             behindTime = timeDifferences[timeDifferences < 0][-1] + triggerTime
             aheadTime = timeDifferences[timeDifferences > 0][0] + triggerTime
-            behindPhase = phases[timeStamps == behindTime][0]
-            aheadPhase = phases[timeStamps == aheadTime][0]
+            behindPhase = phases[syncTimeStamps == behindTime][0]
+            aheadPhase = phases[syncTimeStamps == aheadTime][0]
         
         # Interpolate between the behind and ahead coordinate
         unwrappedPhase = np.interp(triggerTime, [behindTime, aheadTime], [behindPhase, aheadPhase])
         
         # Compute error between wrapped phase (unwrapped modulo 2pi) and current target phase
-        phaseError = unwrappedPhase % (2 * np.pi) - targetPhases[timeStamps == aheadTime][0]
+        phaseError = unwrappedPhase % (2 * np.pi) - targetPhases[syncTimeStamps == aheadTime][0]
         
         # Bring phase error into -pi, pi range
         if phaseError > np.pi:
