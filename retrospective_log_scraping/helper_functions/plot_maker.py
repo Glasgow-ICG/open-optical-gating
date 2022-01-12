@@ -105,9 +105,7 @@ def plot_framerate(timeStamps, states, windowSize = 10):
     """
     
     def frame_rate_calculator(timeStamps, windowSize):
-        # Compute the difference between frame timestamps
         timeDifferences = np.asarray([timeStamps[i] - timeStamps[i - 1] for i in range(1, len(timeStamps))])
-        # Compute the framerate averaged over the provided 'windowSize'
         framerates = [1/np.mean(timeDifferences[i:(i + windowSize)]) for i in range(len(timeDifferences) - windowSize)]
         return framerates
     
@@ -115,17 +113,13 @@ def plot_framerate(timeStamps, states, windowSize = 10):
     syncFramerates = frame_rate_calculator(timeStamps[states == 'sync'], windowSize)
     nonSyncFramerates = frame_rate_calculator(timeStamps[states != 'sync'], windowSize)
     
-    # Finding the timestamps at which the state changed (e.g from 'determine' to 'sync')
+    # Find the timestamps at which the state changed (e.g from 'determine' to 'sync')
     changeTimes = [timeStamps[i] for i in range(1, len(states)) if states[i] != states[i - 1]] 
     
-    # If the script is terminated before a sync-run is complete, we must add the final timestamp as the end point of the sync 
+    # If the script is terminated before a sync-run is complete, we add the final timestamp as the end point of the sync 
     changeTimes.append(timeStamps[-1]) if len(changeTimes) % 2 != 0 else None
     changeTimes = np.asarray(changeTimes)
-    
-    # Form parameters for translucent bar graph depicting when the system was in the 'sync state'
     startSyncTimes, endSyncTimes = changeTimes[::2], changeTimes[1::2]
-    barCentres = (startSyncTimes + endSyncTimes)/2
-    barWidths = (endSyncTimes - startSyncTimes)
         
     plt.figure(figsize = figsize, dpi = dpi)
     plt.scatter(
