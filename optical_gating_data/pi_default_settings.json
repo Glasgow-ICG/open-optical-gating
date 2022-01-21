@@ -21,5 +21,6 @@
     "reference_sequence_dir": "reference-sequence-data/",
     "prediction_latency_s": 0.015,
     "update_after_n_triggers": 5,
-    "min_heart_rate_hz": 1.0
+    "min_heart_rate_hz": 1.0,
+    "time_limit_seconds": 30
 }
