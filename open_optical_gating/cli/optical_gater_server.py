@@ -210,6 +210,9 @@ class OpticalGater:
                 time_fin - time_init
             )
 
+        # Temporary addition for Radhan framerate testing 21/01/2022
+        self.currentTimeStamp = pixelArray.metadata["timestamp"]
+
     def reset_state(self):
         """ Code to run when resetting all state (ready to determine a new period)
             Used if the user is not happy with a period choice,
