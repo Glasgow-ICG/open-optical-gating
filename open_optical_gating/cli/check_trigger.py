@@ -23,14 +23,12 @@ def run(args, desc, delay=500e3, number=10):
                   delay      float
                   number     int
         '''
-    settings = load_settings(args, desc)
-
+    settings = load_settings(args, desc)["trigger"]
     laser_trigger_pin = settings["laser_trigger_pin"]
     fluorescence_camera_pins = settings["fluorescence_camera_pins"]
-
-    duration = settings[
-        "fluorescence_exposure_us"
-    ]  # us, this is the duration of a laser pulse (also controls the camera exposure if set to do so)
+    
+    # us, this is the duration of a laser pulse (also controls the camera exposure if set to do so)
+    duration = settings["fluorescence_exposure_us"]  
     
     # Create pi optical gater server
     server = pi_optical_gater.PiOpticalGater(settings=dict_data)

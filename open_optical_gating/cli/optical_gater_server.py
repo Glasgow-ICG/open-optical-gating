@@ -70,12 +70,10 @@ class OpticalGater:
         """Function inputs:
             settings - a dictionary of settings (see optical_gating_data/json_format_description.md)
         """
-
         # store the whole settings dict
         # we occasionally store some of this information elsewhere too
         # that's not ideal but works for now
         self.settings = settings
-        
         logger.info("Instantiated OpticalGater with settings: {0}", settings)
 
         logger.success("Initialising internal parameters...")
@@ -146,24 +144,24 @@ class OpticalGater:
         self.frame_num += 1 
         self.frame_num_total += 1
         # Specify the reference sequence update criterion and initialise update_criterion accordingly
-        if (self.settings["ref_update_criterion"] == "frames"):
+        if (self.settings["reference"]["ref_update_criterion"] == "frames"):
             self.update_criterion = self.frame_num
-        elif (self.settings["ref_update_criterion"] == "triggers"):
+        elif (self.settings["reference"]["ref_update_criterion"] == "triggers"):
             self.update_criterion = self.trigger_num
             
         # For logging processing time
         time_init = time.perf_counter()
         
         if (
-            ("update_after_n_criterions" in self.settings) and
-            (self.update_criterion >= self.settings["update_after_n_criterions"])
+            ("update_after_n_criterions" in self.settings["reference"]) and
+            (self.update_criterion >= self.settings["reference"]["update_after_n_criterions"])
            ):
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num and frame_num will both be reset
             logger.info(
                         "Refreshing reference sequence (counter reached {0})",
-                        self.settings["update_after_n_criterions"]
+                        self.settings["reference"]["update_after_n_criterions"]
                         )
             self.frame_num = 0
             self.trigger_num = 0
@@ -177,7 +175,7 @@ class OpticalGater:
            ):
             self.frames_to_save.append(pixelArray)
             if len(self.frames_to_save) == self.settings["save_first_n_frames"]:
-                ref.save_period(self.frames_to_save, self.settings["reference_sequence_dir"], prefix="VID-")
+                ref.save_period(self.frames_to_save, self.settings["reference"]["reference_sequence_dir"], prefix="VID-")
             
         if self.state == "reset":
             # Clears reference period and resets frame number
@@ -224,8 +222,8 @@ class OpticalGater:
             or before getting a new reference period in the adaptive mode.
         """
         logger.info("Resetting for new period determination.")
-        self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference_finding"])
-        self.predictor = pog.LinearPredictor(self.settings["linear_prediction"])
+        self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
+        self.predictor = pog.LinearPredictor(self.settings["prediction"])
         self.state = "determine"
     
     def determine_state(self, pixelArray):
@@ -238,9 +236,9 @@ class OpticalGater:
         if ref_frames is not None:
             logger.success("Established reference sequence with period {0}".format(period_to_use))
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
-            if "reference_sequence_dir" in self.settings:
+            if "reference_sequence_dir" in self.settings["reference"]:
                 # Save the reference sequence to disk, for debug purposes
-                self.ref_seq_manager.save_ref_sequence(self.settings["reference_sequence_dir"])
+                self.ref_seq_manager.save_ref_sequence(self.settings["reference"]["reference_sequence_dir"])
             self.slow_action_occurred = "reference frame refresh"
 
             if self.identify_and_set_reference_frame():
@@ -288,7 +286,7 @@ class OpticalGater:
         # if the list length exceeds the maximum length we are meant to be retaining.
         # Note: deletion of the *first* element of a list is potentially a performance issue,
         # although we are hopefully capping the length low enough that it doesn't become a real bottleneck
-        if len(self.frame_history) >= self.settings["frame_buffer_length"]:
+        if len(self.frame_history) >= self.settings["general"]["frame_buffer_length"]:
             del self.frame_history[0]
 
         # Append our current PixelArray object (including its metadata) to our frame_history list
@@ -308,7 +306,7 @@ class OpticalGater:
         # === The main purpose of this function: generating synchronization triggers ===
         # If we have at least one period of phase history, have a go at predicting a future trigger time
         # (Note that this prediction can be disabled by including a "phase_stamp_only" key in the settings file
-        frameInterval_s = 1.0 / self.settings["brightfield_framerate"]
+        frameInterval_s = 1.0 / self.settings["brightfield"]["brightfield_framerate"]
         this_predicted_trigger_time_s = None
         sendTriggerReason = None
         if ((len(self.frame_history) > self.ref_seq_manager.ref_period)
@@ -400,8 +398,8 @@ class OpticalGater:
              or False if we need to start the period-determining process from scratch again.
         """
         ok = True
-        method = self.settings["reference_finding"]["target_frame_selection_method"]
-        adaptive = self.settings["reference_finding"]["target_frame_adaptive_update"]
+        method = self.settings["reference"]["target_frame_selection_method"]
+        adaptive = self.settings["reference"]["target_frame_adaptive_update"]
 
         if (adaptive and (self.aligner.sequence_history is not None)):
             # Automatically maintain existing target phase
@@ -409,8 +407,8 @@ class OpticalGater:
             newTargetFrame, newBarrierFrame = self.pick_target_frame_adaptively()
         elif method == "config":
             # Config file specifies reference frame
-            logger.info("Config file specifies reference frame of {0}", self.settings["reference_finding"]["target_frame_default"])
-            newTargetFrame = self.settings["reference_finding"]["target_frame_default"]
+            logger.info("Config file specifies reference frame of {0}", self.settings["reference"]["target_frame_default"])
+            newTargetFrame = self.settings["reference"]["target_frame_default"]
             newBarrierFrame = None
         elif method == "user":
             # User types a choice

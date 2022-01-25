@@ -54,7 +54,7 @@ class FileOpticalGater(server.OpticalGater):
         # Initialise parent
         super(FileOpticalGater, self).__init__(
             settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period)
-        
+
         self.force_framerate = force_framerate
         self.progress_bar = True  # May be updated during run_server
         # How many times to repeat the sequence
@@ -92,7 +92,7 @@ class FileOpticalGater(server.OpticalGater):
     
         if self.data is None:
             # No files found matching the pattern 'filename'
-            if "source_url" in self.settings:
+            if "example_url" in self.settings["file"]:
                 if (sys.platform == "win32"):
                     os.system("color")  # Make ascii color codes work
                 response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(filename))
@@ -100,7 +100,7 @@ class FileOpticalGater(server.OpticalGater):
                     # Download from the URL provided in the settings file
                     os.makedirs(os.path.dirname(filename), exist_ok=True)
                     with tqdm(unit='B', unit_scale=True, desc="Downloading") as t:
-                        urllib.request.urlretrieve(self.settings["source_url"],
+                        urllib.request.urlretrieve(self.settings["file"]["example_url"],
                                                    filename,
                                                    reporthook=tqdm_hook(t))
                     logger.info("Downloaded file {0}".format(filename))
@@ -142,7 +142,7 @@ class FileOpticalGater(server.OpticalGater):
             of what would happen on a real system.
         """
         if self.force_framerate and (self.last_frame_wallclock_time is not None):
-            wait_s = (1 / self.settings["brightfield_framerate"]) - (
+            wait_s = (1 / self.settings["brightfield"]["brightfield_framerate"]) - (
                 time.time() - self.last_frame_wallclock_time
             )
             if wait_s > 1e-9:
@@ -152,7 +152,7 @@ class FileOpticalGater(server.OpticalGater):
                 logger.success(
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s). " \
                                "But that is no particular surprise, because we just did a {3}".format(
-                        self.settings["brightfield_framerate"],
+                        self.settings["brightfield"]["brightfield_framerate"],
                         self.next_frame_index,
                         wait_s,
                         self.slow_action_occurred
@@ -161,7 +161,7 @@ class FileOpticalGater(server.OpticalGater):
             else:
                 logger.warning(
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
-                        self.settings["brightfield_framerate"],
+                        self.settings["brightfield"]["brightfield_framerate"],
                         self.next_frame_index,
                         wait_s,
                     )
@@ -191,7 +191,7 @@ class FileOpticalGater(server.OpticalGater):
             # we are just running at whatever speed we can manage.
             # Since the analysis code may be looking at the timestamps,
             # we need to make sure they contain sane numbers
-            this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield_framerate"])
+            this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
         
         next = pa.PixelArray(
             self.data[self.next_frame_index, :, :],
@@ -254,8 +254,8 @@ def load_settings(raw_args, desc, add_extra_args=None):
     # we will adjust it to be a path relative to the location of the settings file itself.
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-    if "input_tiff_path" in settings:
-        settings["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), settings["input_tiff_path"])
+    if "input_tiff_path" in settings["file"]:
+        settings["file"]["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), settings["file"]["input_tiff_path"])
 
     # Provide the parsed arguments to the caller, as a way for them to access
     # any additional flags etc that they have specified
@@ -299,7 +299,7 @@ def run(args, desc):
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        source=settings["input_tiff_path"],
+        source=settings["file"]["input_tiff_path"],
         settings=settings,
         force_framerate=True
     )
