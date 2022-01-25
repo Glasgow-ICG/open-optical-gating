@@ -14,7 +14,7 @@
     },
     "fluorescence_trigger_mode": "edge",
     "fluorescence_exposure_us": 1000.0,
-    "frame_buffer_length": 100,
+    "frame_buffer_length": 1000,
     "frame_num": 0,
     "live": 1,
     "log": 0,
