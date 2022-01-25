@@ -77,15 +77,16 @@ class PiOpticalGater(server.OpticalGater):
         logger.success("Initialising camera...")
         # Camera settings from settings.json
         camera = picamera.PiCamera()
-        camera.framerate = self.settings["brightfield_framerate"]
+        camera.framerate = self.settings["brightfield"]["brightfield_framerate"]
         camera.resolution = (
-            self.settings["brightfield_resolution"],
-            self.settings["brightfield_resolution"]
+            self.settings["brightfield"]["brightfield_resolution"],
+            self.settings["brightfield"]["brightfield_resolution"]
         )
-        camera.awb_mode = self.settings["awb_mode"]
-        camera.exposure_mode = self.settings["exposure_mode"]
-        camera.shutter_speed = self.settings["shutter_speed_us"] # us
-        camera.image_denoise = self.settings["image_denoise"]
+        camera.awb_mode = self.settings["brightfield"]["awb_mode"]
+        camera.exposure_mode = self.settings["brightfield"]["exposure_mode"]
+        camera.shutter_speed = self.settings["brightfield"]["shutter_speed_us"] # us
+        camera.image_denoise = self.settings["brightfield"]["image_denoise"]
+        camera.contrast = self.settings["brightfield"]["contrast"]
         
         # Set the camera sensor mode to 7 to ensure the FOV is maintained regardless of framerate
         camera.sensor_mode = 7
@@ -114,7 +115,7 @@ class PiOpticalGater(server.OpticalGater):
         except Exception as inst:
             logger.critical("Error setting up fastpins module. {0}", inst)
         # Sets up trigger pin (for laser or BNC trigger)
-        laser_trigger_pin = self.settings["laser_trigger_pin"]
+        laser_trigger_pin = self.settings["trigger"]["laser_trigger_pin"]
         if laser_trigger_pin is not None:
             try:
                 logger.debug("Initialising BNC trigger pin... (Laser/Trigger Box)")
@@ -123,7 +124,7 @@ class PiOpticalGater(server.OpticalGater):
             except Exception as inst:
                 logger.critical("Error setting up laser pin. {0}", inst)
         # Sets up fluorescence camera pins
-        fluorescence_camera_pins = self.settings["fluorescence_camera_pins"]
+        fluorescence_camera_pins = self.settings["trigger"]["fluorescence_camera_pins"]
         if fluorescence_camera_pins is not None:
             try:
                 logger.debug("Initialising fluorescence camera pins...")
@@ -158,7 +159,7 @@ class PiOpticalGater(server.OpticalGater):
         self.framerate = 0 
         self.camera.start_recording(self.analysis, format="yuv")
         # Operating until the user desired time limit is reached
-        while time.time() - self.start_time < self.settings["time_limit_seconds"]:
+        while time.time() - self.start_time < self.settings["general"]["time_limit_seconds"]:
             self.camera.wait_recording(0.001)  # s
             self.frame_rate_calculator() 
             if showPreview:
@@ -194,22 +195,22 @@ class PiOpticalGater(server.OpticalGater):
         logger.success(
             "Sending RPi camera trigger at {0:.6f}s".format(trigger_time_s)
         )
-        trigger_mode = self.settings["fluorescence_trigger_mode"]
+        trigger_mode = self.settings["trigger"]["fluorescence_trigger_mode"]
         if trigger_mode == "edge":
             # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
                 (trigger_time_s - time.time()) * 1e6,
-                self.settings["laser_trigger_pin"],
-                self.settings["fluorescence_camera_pins"]["trigger"],
-                self.settings["fluorescence_camera_pins"]["SYNC-B"],
+                self.settings["trigger"]["laser_trigger_pin"],
+                self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],
+                self.settings["trigger"]["fluorescence_camera_pins"]["SYNC-B"],
             )
         elif trigger_mode == "expose":
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
                 (trigger_time_s - time.time()) * 1e6,
-                self.settings["fluorescence_exposure_us"],
-                self.settings["laser_trigger_pin"],
-                self.settings["fluorescence_camera_pins"]["trigger"],
+                self.settings["trigger"]["fluorescence_exposure_us"],
+                self.settings["trigger"]["laser_trigger_pin"],
+                self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],
             )
         else:
             logger.critical(
