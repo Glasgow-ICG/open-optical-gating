@@ -254,7 +254,8 @@ def load_settings(raw_args, desc, add_extra_args=None):
     # we will adjust it to be a path relative to the location of the settings file itself.
     # This is the only sane way to behave given that this code could be being run from any working directory
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
-    if "input_tiff_path" in settings["file"]:
+    if ("file" in settings 
+        and "input_tiff_path" in settings["file"]):
         settings["file"]["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), settings["file"]["input_tiff_path"])
 
     # Provide the parsed arguments to the caller, as a way for them to access

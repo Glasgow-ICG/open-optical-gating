@@ -2,7 +2,7 @@
     "general": {
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
-        "time_limit_seconds": 30
+        "time_limit_seconds": 20
     },
 
     "brightfield": {
@@ -12,14 +12,16 @@
         "exposure_mode": "off",
         "shutter_speed_us": 2500,
         "image_denoise": 0,
-        "contrast": 90      
+        "contrast": 10      
     },
     
     "trigger": {
         "laser_trigger_pin": 22,
-        "trigger": 8,
-        "SYNC-A": 10,
-        "SYNC-B": 12,
+        "fluorescence_camera_pins": {
+            "trigger": 8,
+            "SYNC-A": 10,
+            "SYNC-B": 12
+            },
         "fluorescence_trigger_mode": "edge",
         "fluorescence_exposure_us": 1000.0
     },
@@ -30,7 +32,7 @@
         "upperThresholdFactor": 0.75,
         "min_heart_rate_hz": 1.0,
         "reference_sequence_dir": "reference-sequence-data/",
-        "target_frame_selection_method": "user",
+        "target_frame_selection_method": "auto",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
         "update_after_n_criterions": 10
