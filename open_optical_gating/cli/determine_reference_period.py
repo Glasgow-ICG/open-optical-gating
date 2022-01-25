@@ -51,12 +51,12 @@ class ReferenceSequenceManager:
         # in cases where we are not succeeding in identifying a period.
         # That limit is defined in terms of how many seconds of frame data we have,
         # relative to the minimum heart rate (in Hz) that we are configured to expect.
-        ref_buffer_duration = (self.frame_history[-1].metadata["timestamp"]
-                               - self.frame_history[0].metadata["timestamp"])
+        ref_buffer_duration = (self.frame_history[-1].metadata["timestamp"] - self.frame_history[0].metadata["timestamp"])
         while (ref_buffer_duration > 1.0/self.ref_settings["min_heart_rate_hz"]):
             # I have coded this as a while loop, but we would normally expect to only trim one frame at a time
             logger.debug("Trimming buffer from duration {0} to {1}".format(ref_buffer_duration, 1.0/self.ref_settings["min_heart_rate_hz"]))
             del self.frame_history[0]
+            ref_buffer_duration = (self.frame_history[-1].metadata["timestamp"] - self.frame_history[0].metadata["timestamp"])
         
         return establish(self.frame_history, self.period_history, self.ref_settings)
 
