@@ -311,6 +311,8 @@ def run(args, desc):
     analyser.plot_triggers()
     analyser.plot_prediction()
     analyser.plot_phase_histogram()
+    analyser.plot_phase_error_histogram()
+    analyser.plot_phase_error_with_time()
     analyser.plot_running()
 
 
