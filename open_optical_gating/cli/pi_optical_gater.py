@@ -84,7 +84,7 @@ class PiOpticalGater(server.OpticalGater):
         )
         camera.awb_mode = self.settings["awb_mode"]
         camera.exposure_mode = self.settings["exposure_mode"]
-        camera.shutter_speed = self.settings["shutter_speed_us"]  # us
+        camera.shutter_speed = self.settings["shutter_speed_us"] # us
         camera.image_denoise = self.settings["image_denoise"]
         
         # Set the camera sensor mode to 7 to ensure the FOV is maintained regardless of framerate
@@ -158,22 +158,23 @@ class PiOpticalGater(server.OpticalGater):
         self.framerate = 0 
         self.camera.start_recording(self.analysis, format="yuv")
         # Operating until the user desired time limit is reached
-        while time.time() - self.initial_process_time_s < self.settings["time_limit_seconds"]:
+        while time.time() - self.start_time < self.settings["time_limit_seconds"]:
             self.camera.wait_recording(0.001)  # s
-            self.frame_rate_calculator()
+            self.frame_rate_calculator() 
             if showPreview:
                 if self.state == 'sync':
                     # Print the framerate only when in the sync state
                     self.camera.annotate_foreground = picamera.Color('white') 
-                    self.camera.annotate_text = 'Time = {0} s \n Framerate = {1} fps'.format(
-                        str(np.round(time.time() - self.initial_process_time_s, 1)), 
-                        self.framerate
+                    self.camera.annotate_text = 'Time = {0} s \n Framerate = {1} fps \n Triggers = {2}'.format(
+                        str(np.round(time.time() - self.start_time, 1)), 
+                        self.framerate,
+                        self.trigger_num_total
                         )
                 else:
                     # Print a statement to update that the reference sequence is updating
                     self.camera.annotate_foreground = picamera.Color('green')
                     self.camera.annotate_text = 'Time = {0} s \n Updating reference sequence...'.format(
-                        str(np.round(time.time() - self.initial_process_time_s,1))
+                        str(np.round(time.time() - self.start_time,1))
                         )
         else:
             self.stop = True
@@ -230,11 +231,12 @@ def run(args, desc):
     if analyser.stop:
         analyser.camera.stop_preview()
         print('\nUser time limit reached -> Halting sync ...')
+        print('\nPlotting summaries...')
         logger.success("Plotting summaries...")
         analyser.plot_triggers()
-        #analyser.plot_phase_histogram()
-        #analyser.plot_phase_error_histogram()
-        #analyser.plot_phase_error_with_time()
+        analyser.plot_phase_histogram()
+        analyser.plot_phase_error_histogram()
+        analyser.plot_phase_error_with_time()
         analyser.plot_prediction()
         analyser.plot_running()
 
