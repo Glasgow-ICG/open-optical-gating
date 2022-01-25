@@ -96,11 +96,17 @@ class OpticalGater:
         self.slow_action_occurred = None
         self.latestTriggerPredictFrame = None
         
+        self.aligner = oga.Aligner(self.settings["oga"])
+        
+        # Define parameters for reference sequence update requirements
         self.trigger_num = 0
+        self.trigger_num_total = 0
         self.frame_num = 0
         self.frame_num_total = 0
-        self.aligner = oga.Aligner(self.settings["oga"])
-
+        
+        # Object timestamp for RPi time printing
+        self.currentTimeStamp = 0
+        
         # Flag for interrupting the program's running
         self.stop = False
 
@@ -126,6 +132,8 @@ class OpticalGater:
         """ Method to analyse each frame as they are captured by the camera.
             Note that this analysis must take place fast enough that we return before the next frame arrives.
             Essentially this method just calls through to another appropriate method, based on the current value of the state attribute."""
+
+        self.currentTimeStamp = pixelArray.metadata["timestamp"]
         
         logger.info(
             "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
@@ -209,9 +217,6 @@ class OpticalGater:
         pixelArray.metadata["processing_rate_fps"] = 1 / (
                 time_fin - time_init
             )
-
-        # Temporary addition for Radhan framerate testing 21/01/2022
-        self.currentTimeStamp = pixelArray.metadata["timestamp"]
 
     def reset_state(self):
         """ Code to run when resetting all state (ready to determine a new period)
@@ -362,6 +367,7 @@ class OpticalGater:
 
                     # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
+                    self.trigger_num_total +=1
 
                     logger.debug(
                         'LOG TYPE B: Trigger Time = {0}', this_predicted_trigger_time_s
@@ -551,7 +557,6 @@ class OpticalGater:
             "targetSyncPhase",
             onlyIfKeyPresent="trigger_sent"
         )
-
         plt.figure()
         plt.title("Zebrafish heart phase with trigger fires")
         plt.plot(
@@ -602,13 +607,13 @@ class OpticalGater:
         """
         Plots a histogram representing the frequency estimated phase errors.
         """
-        plt.figure()
-        plt.title("Histogram of triggered phase errors")
         phaseErrorList = pa.get_metadata_from_list(
             self.frame_history, 
             "triggerPhaseError", 
             onlyIfKeyPresent="triggerPhaseError"
         )
+        plt.figure()
+        plt.title("Histogram of triggered phase errors")
         plt.hist(
             phaseErrorList,
             bins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList) + 0.1,  0.03), 
@@ -626,11 +631,21 @@ class OpticalGater:
         """
         Plots the estimated phase error associated with each sent trigger over time.
         """
+        phaseErrorList = pa.get_metadata_from_list(
+            self.frame_history, 
+            "triggerPhaseError", 
+            onlyIfKeyPresent="triggerPhaseError"
+        )
+        timeList = pa.get_metadata_from_list(
+                self.frame_history, 
+                "predicted_trigger_time_s", 
+                onlyIfKeyPresent="trigger_sent"
+        )
         plt.figure()
         plt.title('Triggered phase error with time')
         plt.scatter(
-            pa.get_metadata_from_list(self.frame_history, "predicted_trigger_time_s", onlyIfKeyPresent="trigger_sent"), 
-            pa.get_metadata_from_list(self.frame_history, "triggerPhaseError", onlyIfKeyPresent="trigger_sent"), 
+            timeList, 
+            phaseErrorList,
             color = 'tab:green'
         )
         plt.xlabel('Time (s)')
