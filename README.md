@@ -43,7 +43,11 @@ Then, to install on any platform, run the following command:
 
 `python3 -m pip install --user git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
-(Note: if you get the error  `python3: command not found`, substitute `python` for `python3` throughout these instructions)
+If you get the error  `python3: command not found`, substitute `python` for `python3` throughout these instructions.
+
+If you get an error about not being able to write to `site-packages`, run the following command instead:
+
+`python3 -m pip install --prefix=/home/pi/.local git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
 
 ### Installation - troubleshooting
 
@@ -62,6 +66,10 @@ Fix by running `python3 -m pip install numpy`, and then rerun the installation c
     - If you are installing inside a virtual environment, rerun the install command but omit the `--user` flag. [A newer version of `pip` would have warned you about the problem - see above]
     - If you have a *very* old version of pip installed, you will see this error after a suspiciously fast installation process. Run `python3 -m pip install --upgrade pip` and then repeat the original installation instructions.
 
+- Installation fails, with the Raspberry Pi hanging completely and requiring a reboot. This can happen if the Pi runs out of memory.
+You can probably fix this by quitting all other programs that are currently running, other than the terminal window.
+TeamViewer will use up most of the RAM on a Pi with 1GB RAM, so you probably need to run the initial install in person, without using TeamViewer.
+(Note that TeamViewer is also likely to use too much CPU for you to be able to run live optical gating while connected over TeamViewer).
 
 ## Testing an installation
 
@@ -90,6 +98,13 @@ If using this to test a camera trigger, you will need to set your camera ready t
 Instead of the standard `pip install` command given above, run the following command from the directory where you want the source tree to be generated:
 
 `python3 -m pip install --src "." -e git+https://github.com/Glasgow-ICG/open-optical-gating.git@main#egg=open-optical-gating`
+
+As with the main install command above, you may need to add `--prefix=/home/pi/.local` on the RPi.
+
+*Upgrading* is awkward because we aren't recording proper version numbers for our modules yet.
+If you have the editable source then it should be sufficient to do a `git pull`.
+If you don't have the source (which is probably the case for `optical_gating_alignment`) then you probably need to specify `--force-reinstall`.
+I still need to test that. In the past I have simply gone into ` /home/pi/.local/lib/python3.7/site-packages` and manually deleted the source and egg.
 
 ### Tests for developers
 

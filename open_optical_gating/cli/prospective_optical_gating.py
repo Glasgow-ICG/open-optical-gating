@@ -105,6 +105,10 @@ class LinearPredictor:
             logger.debug("Fit failed due to too few frames")
             return -1
         
+        # We need to look back through the recent frame history and pick out 'framesForFit' frames
+        # to use in our linear fit. Note the care taken here to only pass those relevant frames
+        # to get_metadata_from_list, so that the time taken inside that function doesn't get longer
+        # and longer as the experiment continues (when our history is large)
         frame_history = pa.get_metadata_from_list(
                           full_frame_history[-framesForFit:], ["timestamp", "unwrapped_phase", "sad_min"]
                         )
