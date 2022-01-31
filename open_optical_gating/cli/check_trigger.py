@@ -14,7 +14,7 @@ logger.add(sys.stderr, level="DEBUG")
 # logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
-def run(args, desc, delay = 5, number = 10, wait = 1):
+def run(args, desc, delay = 5, number = 10, wait = 2):
     '''
         Run the optical gater based on a settings.json file which includes
         the path to the .tif file to be processed.
@@ -25,14 +25,8 @@ def run(args, desc, delay = 5, number = 10, wait = 1):
                   number     int     Number of triggers to be sent
                   wait       float   Time (seconds) to wait between triggers
         '''
+    # Import default pi settings and create pi optical gater server
     settings = fog.load_settings(args, desc)
-    laser_trigger_pin = settings["trigger"]["laser_trigger_pin"]
-    fluorescence_camera_pins = settings["trigger"]["fluorescence_camera_pins"]
-    
-    # us, this is the duration of a laser pulse (also controls the camera exposure if set to do so)
-    duration = settings["trigger"]["fluorescence_exposure_us"]  
-    
-    # Create pi optical gater server
     server = piog.PiOpticalGater(settings = settings)
 
     # Tests laser and camera
@@ -41,11 +35,10 @@ def run(args, desc, delay = 5, number = 10, wait = 1):
         server.trigger_fluorescence_image_capture(
             delay
         )
-        logger.info("Took {0} s", time.time()-t)
+        logger.info("Seding trigger {0}, took {1} s".format(i + 1, time.time()-t))
         time.sleep(wait)
 
     return True
-
 
 if __name__ == "__main__":
     success = run(sys.argv[1:], "Run a trigger test")
