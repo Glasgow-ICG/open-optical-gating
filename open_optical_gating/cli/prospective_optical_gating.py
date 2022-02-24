@@ -114,8 +114,8 @@ class LinearPredictor:
                         )
 
         # Perform a linear fit to the past phases. We will use this for our forward-prediction
-        logger.debug("Phase history times: {0}", frame_history[:, 0])
-        logger.debug("Phase history phases: {0}", frame_history[:, 1])
+        logger.trace("Phase history times: {0}", frame_history[:, 0])
+        logger.trace("Phase history phases: {0}", frame_history[:, 1])
         radsPerSec, alpha = np.polyfit(frame_history[:, 0], frame_history[:, 1], 1)
         logger.info("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
         if radsPerSec < 0:

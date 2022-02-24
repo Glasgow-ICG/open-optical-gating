@@ -262,7 +262,7 @@ class OpticalGater:
 
         # Gets the phase (in frames) and arrays of SADs between the current frame and the reference sequence
         current_phase, sad = self.ref_seq_manager.identify_phase_for_frame(pixelArray)
-        logger.debug("SAD: {0}", sad)
+        logger.trace("SAD curve: {0}", sad)
 
         # Calculate the unwrapped phase.
         if len(self.frame_history) == 0:
@@ -377,7 +377,7 @@ class OpticalGater:
         thisFrameMetadata["targetSyncPhase"] = self.ref_seq_manager.targetSyncPhase
 
         logger.debug(
-            "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame {3}",
+            "Sync analysis completed. Current time: {0} s; predicted trigger time: {1} s; trigger type: {2}; brightfield frame number: {3}",
             thisFrameMetadata["timestamp"],
             thisFrameMetadata["predicted_trigger_time_s"],
             thisFrameMetadata["trigger_type_sent"],
