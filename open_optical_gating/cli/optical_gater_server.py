@@ -17,11 +17,7 @@ from . import pixelarray as pa
 from . import determine_reference_period as ref
 from . import prospective_optical_gating as pog
 
-# Set up logging
-logger.remove()
-logger.add(sys.stderr, level="WARNING")
-logger.add("user_log_folder/oog_{time}.log", level="DEBUG", format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
-logger.enable("open_optical_gating")
+
 
 # Log information about the environment we are running in.
 # This module list should match those specified in pyproject.toml
@@ -34,7 +30,7 @@ for mod in ["optical_gating_alignment", "j_py_sad_correlation", "loguru", "tqdm"
         version_dict[mod] = m.__version__
     except:
         version_dict[mod] = "<unavailable>"
-logger.info("Running in module environment: {0}", version_dict)
+logger.debug("Running in module environment: {0}", version_dict)
 
 # TODO create a time-stamped copy of the settings file when the optical gater class is initialised
 # TODO write the git version to the log file
@@ -74,9 +70,15 @@ class OpticalGater:
         # we occasionally store some of this information elsewhere too
         # that's not ideal but works for now
         self.settings = settings
-        logger.info("Instantiated OpticalGater with settings: {0}", settings)
-
-        logger.success("Initialising internal parameters...")
+        
+        # Set up logging, now recieves level from settings
+        logger.remove()
+        logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["debug_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+        logger.add(sys.stderr, level = settings["general"]["debug_level"])
+        logger.enable("open_optical_gating")
+        
+        logger.debug("Instantiated OpticalGater with settings: {0}", settings)
+        logger.debug("Initialising internal parameters...")
         self.initialise_internal_parameters()
         self.reset_state()
         if ref_frames is not None:
@@ -102,7 +104,7 @@ class OpticalGater:
         self.frame_num = 0
         self.frame_num_total = 0
         
-        # Object timestamp for RPi time printing
+        # Object timestamp for RPi time
         self.currentTimeStamp = 0
         
         # Flag for interrupting the program's running
@@ -159,7 +161,7 @@ class OpticalGater:
             # It is time to update the reference period (whilst maintaining phase lock)
             # Set state to "reset" (so we clear things for a new reference period)
             # As part of this reset, trigger_num and frame_num will both be reset
-            logger.info(
+            logger.debug(
                         "Refreshing reference sequence (counter reached {0})",
                         self.settings["reference"]["update_after_n_criterions"]
                         )
@@ -194,7 +196,7 @@ class OpticalGater:
             
         if self.state == 'sync':
             if len(self.frame_history) > 0:
-                logger.debug(
+                logger.info(
                     "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
                     pixelArray.metadata["timestamp"],
                     self.state,
@@ -202,7 +204,7 @@ class OpticalGater:
                     self.frame_history[-1].metadata["targetSyncPhase"]
                 )
         else:
-            logger.debug(
+            logger.info(
                 "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
                 pixelArray.metadata["timestamp"],
                 self.state,
@@ -215,13 +217,13 @@ class OpticalGater:
         pixelArray.metadata["processing_rate_fps"] = 1 / (
                 time_fin - time_init
             )
-
+        
     def reset_state(self):
         """ Code to run when resetting all state (ready to determine a new period)
             Used if the user is not happy with a period choice,
             or before getting a new reference period in the adaptive mode.
         """
-        logger.info("Resetting for new period determination.")
+        logger.debug("Resetting for new period determination.")
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
         self.predictor = pog.LinearPredictor(self.settings["prediction"])
         self.state = "determine"
@@ -234,7 +236,7 @@ class OpticalGater:
 
         ref_frames, period_to_use = self.ref_seq_manager.establish_period_from_frames(pixelArray)
         if ref_frames is not None:
-            logger.success("Established reference sequence with period {0}".format(period_to_use))
+            logger.debug("Established reference sequence with period {0}".format(period_to_use))
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
             if "reference_sequence_dir" in self.settings["reference"]:
                 # Save the reference sequence to disk, for debug purposes
@@ -243,7 +245,7 @@ class OpticalGater:
 
             if self.identify_and_set_reference_frame():
                 self.state = "sync"
-                logger.success(
+                logger.debug(
                            "Period determined ({0} frames long) and we have selected frame {1} as target.",
                            self.ref_seq_manager.ref_period,
                            self.ref_seq_manager.targetFrameNum
@@ -328,7 +330,7 @@ class OpticalGater:
 
             # If we have a prediction, consider actually sending the trigger
             if timeToWait_s > 0:
-                logger.info("Possible trigger after: {0}s", timeToWait_s)
+                logger.debug("Possible trigger after: {0}s", timeToWait_s)
                 # Decide whether the current candidate trigger time should actually be used,
                 # or whether we should wait for an improved prediction from the next brightfield frame.
                 # Note that timeToWait_s might be updated by this call (to change the value to
@@ -346,14 +348,16 @@ class OpticalGater:
                 )
                 if sendTriggerReason is not None:
                     # Actually send the electrical trigger signal
-                    logger.success(
+                    logger.debug(
                         "Sending trigger (reason: {0}) at time ({1} + {2}) s",
                         sendTriggerReason,
                         thisFrameMetadata["timestamp"],
                         timeToWait_s,
                     )
+                    
                     # Note that the following call may block on some platforms
                     # (its exact implementation is for the subclass to determine)
+                    timeNow = thisFrameMetadata["timestamp"]
                     self.trigger_fluorescence_image_capture(
                         this_predicted_trigger_time_s
                     )
@@ -366,9 +370,9 @@ class OpticalGater:
                     # Update trigger iterator (for adaptive algorithm)
                     self.trigger_num += 1
                     self.trigger_num_total +=1
-
-                    logger.debug(
-                        'LOG TYPE B: Trigger Time = {0}', this_predicted_trigger_time_s
+                    
+                    logger.info(
+                        'LOG TYPE B: Trigger Decided at = {0} seconds; sent at {1} seconds'.format(timeNow, this_predicted_trigger_time_s)
                         )
 
         # Update PixelArray with predicted trigger time and trigger type
@@ -403,21 +407,21 @@ class OpticalGater:
 
         if (adaptive and (self.aligner.sequence_history is not None)):
             # Automatically maintain existing target phase
-            logger.info("Use LTU code to compute the reference frame")
+            logger.debug("Use LTU code to compute the reference frame")
             newTargetFrame, newBarrierFrame = self.pick_target_frame_adaptively()
         elif method == "config":
             # Config file specifies reference frame
-            logger.info("Config file specifies reference frame of {0}", self.settings["reference"]["target_frame_default"])
+            logger.debug("Config file specifies reference frame of {0}", self.settings["reference"]["target_frame_default"])
             newTargetFrame = self.settings["reference"]["target_frame_default"]
             newBarrierFrame = None
         elif method == "user":
             # User types a choice
-            logger.info("User will select a reference frame")
+            logger.debug("User will select a reference frame")
             newTargetFrame, newBarrierFrame = self.user_pick_target_frame()
             ok = (newTargetFrame >= 0)
         elif method == "auto":
             # Automatically pick a frame
-            logger.info("Automatically pick a suitable reference frame")
+            logger.debug("Automatically pick a suitable reference frame")
             newTargetFrame = None
             newBarrierFrame = None
                 
@@ -447,7 +451,7 @@ class OpticalGater:
             new_target_frame = defaultTarget
         if new_barrier is None:
             new_barrier = defaultBarrier
-        logger.success("Setting reference and barrier frames to {0}, {1}", new_target_frame, new_barrier)
+        logger.debug("Setting reference and barrier frames to {0}, {1}", new_target_frame, new_barrier)
         self.ref_seq_manager.set_target_and_barrier_frame(new_target_frame, new_barrier)
         # JT TODO: this function is called when we acquire a new set of reference frames,
         # but it is not updated if the parameters such as barrierFrame, min/maxFramesForFit
@@ -467,7 +471,7 @@ class OpticalGater:
                                                     self.ref_seq_manager.ref_period,
                                                     self.ref_seq_manager.drift)
             
-        logger.success("Reference frame adaptive update complete. New reference frame will be {0}", newTargetFrame)
+        logger.debug("Reference frame adaptive update complete. New reference frame will be {0}", newTargetFrame)
         self.slow_action_occurred = "reference frame adaptive update"
         # JT TODO: currently this does not adaptively update the barrier frame,
         # it just lets the code identify the barrier frame from scratch without reference to anything specified previously
@@ -491,7 +495,7 @@ class OpticalGater:
         As this is the base server, this function just outputs a log that a trigger would have been sent.
         Subclasses should override this if they want to interact with hardware.
         """
-        logger.success("A fluorescence image would be triggered now.")
+        logger.debug("A fluorescence image would be triggered now.")
 
     def live_phase_interpolation(self): 
         """
@@ -533,11 +537,7 @@ class OpticalGater:
                 self.latestTriggerPredictFrame.metadata["triggerPhaseError"] = phaseError
                 self.latestTriggerPredictFrame.metadata["wrappedPhaseAtSentTriggerTime"] = wrappedPhaseAtSentTriggerTime
 
-                logger.info('Live phase interpolation successful! Phase error = {0}', phaseError)
-            
-                errorThreshold = 0.5
-                if abs(phaseError) > errorThreshold:
-                    logger.warning('Phase error ({0} radians) has exceeded desired threshold ({1} radians)', phaseError, errorThreshold)
+                logger.debug('Live phase interpolation successful! Phase error = {0}', phaseError)
 
 
     def plot_triggers(self, outfile="triggers.png"):
@@ -642,7 +642,7 @@ class OpticalGater:
         plt.figure()
         plt.title('Triggered phase error with time')
         plt.scatter(
-            timeList, 
+            timeList[:len(phaseErrorList)], 
             phaseErrorList,
             color = 'tab:green'
         )

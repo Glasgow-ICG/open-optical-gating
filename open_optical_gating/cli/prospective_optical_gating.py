@@ -117,13 +117,13 @@ class LinearPredictor:
         logger.debug("Phase history times: {0}", frame_history[:, 0])
         logger.debug("Phase history phases: {0}", frame_history[:, 1])
         radsPerSec, alpha = np.polyfit(frame_history[:, 0], frame_history[:, 1], 1)
-        logger.info("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
+        logger.debug("Linear fit with intersect {0} and gradient {1}", alpha, radsPerSec)
         if radsPerSec < 0:
-            logger.warning(
+            logger.debug(
                 "Linear fit to unwrapped phases is negative! This is a problem for the trigger prediction."
             )
         elif radsPerSec == 0:
-            logger.warning(
+            logger.debug(
                 "Linear fit to unwrapped phases is zero! This will be a problem for prediction (divByZero)."
             )
         estHeartPeriod_s = 2*np.pi/radsPerSec
@@ -146,14 +146,14 @@ class LinearPredictor:
         timeToWait_s = phaseToWait / radsPerSec
         timeToWait_s = max(timeToWait_s, 0.0)
 
-        logger.info(
+        logger.debug(
             "Current time: {0};\tTime to wait: {1};",
             frame_history[-1, 0],
             timeToWait_s,
         )
         logger.debug(
             "Current phase: {0};\tPhase to wait: {1};", thisFramePhase, phaseToWait,
-        )
+        )  
         logger.debug(
             "Target phase:{0};\tPredicted phase:{1};",
             targetSyncPhase + (multiPhaseCounter * 2 * np.pi),
@@ -194,7 +194,7 @@ class LinearPredictor:
                 extendedFramesForFit <= frameHistory.shape[0]
                 and extendedFramesForFit <= self.settings["maxFramesForFit"]
             ):
-                logger.info("Repeating fit using more frames")
+                logger.debug("Repeating fit using more frames")
                 #  Recurse, using a larger number of frames, to obtain an improved predicted time
                 # (Note that if we get to this code branch, fitBackToBarrier will in fact definitely be False)
                 timeToWait_s, estHeartPeriod_s = self.predict_trigger_wait(
@@ -246,14 +246,14 @@ class LinearPredictor:
         elif timeToWait_s < self.settings["prediction_latency_s"]:
             # Haven't sent a trigger on this heartbeat.
             # We may not have time, but we can give it a go and cross our fingers we schedule it in time
-            logger.success("Trigger is needed with short latency, but we may as well give it a shot...")
+            logger.debug("Trigger is needed with short latency, but we may as well give it a shot...")
             sendTriggerReason = "panic"
         elif (timeToWait_s - (1.6 * frameInterval_s)) < self.settings["prediction_latency_s"]:
             # We don't expect to have time to wait for an updated prediction from the next frame... so schedule the trigger now!
             # Note that the 1.6 multiplier is an empirical constant related to how much
             # frame-to-frame variability we expect in the phase rate.
             # Ideally it would depend on the  actual observed variability in the time estimates as successive frame data is received
-            logger.success("Schedule trigger because target time is coming up soon")
+            logger.debug("Schedule trigger because target time is coming up soon")
             sendTriggerReason = "standard"
         else:
             # We expect to have time to wait for an updated prediction, so we do nothing for now.
@@ -261,7 +261,7 @@ class LinearPredictor:
             pass
 
         if (sendTriggerReason is not None):
-            logger.success("Trigger scheduled to be sent, updating `mostRecentTriggerTime` to {0}+{1}.", timestamp, timeToWait_s)
+            logger.debug("Trigger scheduled to be sent, updating `mostRecentTriggerTime` to {0}+{1}.", timestamp, timeToWait_s)
             self.mostRecentTriggerTime = timestamp + timeToWait_s
 
         return timeToWait_s, sendTriggerReason

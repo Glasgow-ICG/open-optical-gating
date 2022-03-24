@@ -1,5 +1,5 @@
 .parameters-form {
-    width: 100%;
+    width: 80%;
     display: flex; /* or inline-flex */
     flex-direction: row;
     flex-wrap: wrap;
@@ -7,7 +7,7 @@
     align-content: space-around;
 }
 .parameters-item {
-    padding: 10px;
+    padding: 100px;
 }
 .modal-dialog {
     width:80%;
@@ -17,10 +17,18 @@
     margin: auto;
 }
 .reference-period  img{
-    width: 100%;
+    width: 80%;
 }
 .results-img {
     clear:both;
-    width: 100%;
+    width: 80%;
     margin: auto;
+    border-radius:20%;
+}
+
+.center {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 80%;
 }

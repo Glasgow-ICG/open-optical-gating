@@ -159,7 +159,7 @@ class ReferenceSequenceManager:
             if barrier_frame_without_padding == min_pos_without_padding:
                 # This means I have done a complete loop and found no delta less than the average of the min and max deltas
                 # Probably means my frames are all empty so my diffs are all zeros
-                logger.warning(
+                logger.debug(
                     "Search for a barrier frame has failed: {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}",
                     min_pos_without_padding,
                     min_delta,
@@ -173,7 +173,7 @@ class ReferenceSequenceManager:
                 break
 
         # Return new value for target_frame and barrier_frame
-        logger.success(
+        logger.debug(
             "Identified recommended target frame of {0} and barrier frame of {1} (both without padding).",
             target_frame_without_padding,
             barrier_frame_without_padding,
@@ -322,7 +322,7 @@ def establish_indices(sequence, period_history, ref_settings, require_stable_his
             # pertains to the range of frames that we will actually use
             # for the central "unpadded" range of our reference frames.
             periodToUse = period_history[-1 - numExtraRefFrames]
-            logger.success("Found a period I'm happy with: {0}".format(periodToUse))
+            logger.debug("Found a period I'm happy with: {0}".format(periodToUse))
 
             # DevNote: int(x+1) is the same as np.ceil(x).astype(np.int)
             numRefs = int(periodToUse + 1) + (2 * numExtraRefFrames)
@@ -336,7 +336,7 @@ def establish_indices(sequence, period_history, ref_settings, require_stable_his
             )
             return len(pastFrames) - numRefs, len(pastFrames), periodToUse
 
-    logger.info("I didn't find a period I'm happy with!")
+    logger.debug("I didn't find a period I'm happy with!")
     return None, None, None
 
 def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperThresholdFactor=0.75):
@@ -456,7 +456,7 @@ def save_period(reference_sequence, parent_dir="~/", prefix="REF-"):
             # ... but tifffile does not accept that parameter, so we need separate code here
             tiffio.imsave(os.path.join(parent_dir, dt, "{0:03d}.tiff".format(i)), frame)
 
-    logger.warning("Saved frames to \"{0}\"", dt)
+    logger.debug("Saved frames to \"{0}\"", dt)
 
 def update_drift_estimate(frame0, bestMatch0, drift0):
     """ Determine an updated estimate of the sample drift.
@@ -566,7 +566,7 @@ def find_subframe_minimum(diffs, reference_period):
         # and an assumption of a phase of 0 shouldn't be too far from the truth,
         # so to keep things simple and robust I'm going to leave it at this for now.
         # We just return a reference phase that corresponds to a phase of 0
-        logger.warning("No minimum found - defaulting to phase=0")
+        logger.debug("No minimum found - defaulting to phase=0")
         return 0.0
     else:
         # A minimum exists - do sub-frame interpolation on it

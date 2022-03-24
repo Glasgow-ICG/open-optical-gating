@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="live_feed_container">   
+	<div class = "live_feed_title">Live Pi Camera Feed</div>
+		<img src="{{ url_for('video_feed') }}" class="live_feed">
+</div>
+    
+<div class = "debug_container">
+        
+	<div class = "debug_title">Setup and Debug</div>
+	<div class = "debug_subtitle" style = "top:5%;"> &#8618 Brightfield Settings:</div>
+
+	<div class = "integer_description" style = "top:12%;">Framerate =</div>
+		<form name = "brightfield_framerate" action ="{{url_for('update_setting')}}" method = "POST">
+			<input class = "integer_updater" style = "top:12%;" type = "number" name = "brightfield_framerate" value = "{{brightfield_framerate}}" min = "5" max = "88">
+		</form>
+
+	<div class = "integer_description" style = "top:18%;">Resolution =</div>
+		<form name = "brightfield_resolution" action ="{{url_for('update_setting')}}" method = "POST">
+			<input class = "integer_updater" style = "top:18%;" type = "number" name = "brightfield_resolution" value = "{{brightfield_resolution}}" min = "32" max = "512">
+		</form>
+
+	<div class = "integer_description" style = "top:24%;">Shutter speed =</div>
+		<form name = "shutter_speed_us" action ="{{url_for('update_setting')}}" method = "POST">
+			<input class = "integer_updater" style = "top:24%;" type = "number" name = "shutter_speed_us" value = "{{shutter_speed_us}}" min = "1">
+		</form>
+
+	<button type="button" class="trigger_button" style = "top:32%"> <a href = "/send-trigger/">Send Trigger</a></button>
+	<br>
+	<div style = "top:42%; position:absolute; width:100%; height:auto; text-align:left; font-size:2vmin;">
+	
+		<ul style = "color:red;">
+			<li style = "color:red;"> Each setting can be changed by pressing enter when the relevent input field is selected.</li>
+			<li style = "color:red;"> The live feed will immediately update with these new settings.</li>
+			<li style = "color:red;"> To release the Pi Camera before the next sync, you must navigate to the 'Sync' page then <b>immediately manually restart the web-sever from the Pi console</b>.</li>
+			<li style = "color:green;"> The 'Sync' page can then be refreshed.</li>
+		</ul>
+                  
+</div>
+{% endblock %}

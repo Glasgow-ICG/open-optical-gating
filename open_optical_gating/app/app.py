@@ -4,297 +4,284 @@
 Much of this was inspired by https://github.com/miguelgrinberg/flask-video-streaming"""
 
 # Imports
-import os
+import sys, io, os, glob, shutil, cgi, json, time, cv2
+import numpy as np
 from importlib import import_module
-from flask import Flask, render_template, Response, request, jsonify, session
-import json
-from loguru import logger
-from skimage import io
-import time
+from multiprocessing import Process, Queue
+from zipfile import ZipFile
+from flask import Flask, render_template, Response, request, jsonify, session, stream_with_context
 
-# import camera driver
+# Local Imports
 from camera_pi import Camera
+import open_optical_gating.cli.pi_optical_gater_app as sync
+import retrospective_log_scraping.scrape_and_plot as scrape
 
-#
-import open_optical_gating.cli.cli as cli
-
-# TODO make this passable argument
-settings_file = "/home/pi/open-optical-gating/examples/example_data_settings.json"
-
-
-def load_settings():
-    logger.success("Settings loaded into session.")
-    with open(settings_file, "r") as f:
-        session["settings"] = json.load(f)
-
-
-def save_settings():
-    logger.success("Settings dumped into file.")
-    with open(settings_file, "w") as f:
-        json.dump(session["settings"], f, indent=2, sort_keys=True)
-
-
-# how do I do this properly?
-analyse_camera = None
-
+# Initialise Flask App
 app = Flask(__name__)
 app.secret_key = "test"
-app.before_first_request(load_settings)
 app.config.from_object(__name__)
+app.config["CACHE_TYPE"] = 'null'
 
+# Import our optical gating settings and initialise Pi Object 
+settings_file = "/home/pi/open-optical-gating/optical_gating_data/pi_settings.json"
+with open(settings_file) as json_file:
+    settings = json.load(json_file)
+syncObject = sync.PiOpticalGater(settings = settings)
+
+@app.after_request
+def add_header(response):
+    """
+    Prevent the caching of post-sync figures by browser.
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Cache-Control"] = "public, max-age = 0"
+    return response
+
+@app.route("/settings-page/")
+def settings_page():
+    """
+    A page to tune the settings of the Pi Camera for desired parameters (resolution, contrast, 
+    brightness, etc) as well as sending testing triggers to the microscope.
+    """
+    # Setup the trigger pins
+    syncObject.setup_pins()
+    
+    #Render the index page with the required arguments for the settings pane
+    return render_template(
+        "settings.html",    
+        brightfield_framerate = settings["brightfield"]["brightfield_framerate"],
+        brightfield_resolution = settings["brightfield"]["brightfield_resolution"],
+        shutter_speed_us = settings["brightfield"]["shutter_speed_us"],
+        )
+   
+@app.route("/video_feed")
+def video_feed():
+    """Video streaming function."""
+    
+    def gen_frame(camera):
+        """Video streaming generator function."""
+        while not camera.stop:
+            frame = camera.get_frame()
+            yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+            
+    # Camera defined globally so it can be stopped by other functions
+    global camera
+    camera = Camera(
+        framerate = settings["brightfield"]["brightfield_framerate"],
+        resolution = settings["brightfield"]["brightfield_resolution"],
+        shutter_speed_us = settings["brightfield"]["shutter_speed_us"]
+    )
+    
+    if not camera.stop:
+        return Response(
+            gen_frame(camera), 
+            mimetype="multipart/x-mixed-replace; boundary=frame"
+            )
+    else:
+        print("Video feed broken...")
+        return 
+
+@app.route("/send-trigger/")
+def send_trigger():
+    """Calls pi_optical_gater trigger function to send a trigger to user microscope."""
+    # Send a trigger in 0.001 seconds
+    syncObject.trigger_fluorescence_image_capture(0.001)
+    camera.stop = True
+    time.sleep(0.2)
+    return settings_page()
+    
+@app.route("/update-setting/", methods = ["POST"])
+def update_setting():
+    """
+        A function which is called when the framerate html number input is engaged.
+        Camera is stopped in order to be initialised with new settings.
+    """
+    # Get the requested change
+    changeList = list(request.form.items())
+    
+    # Update the relevant setting in the settings dict
+    settings["brightfield"][changeList[0][0]] = int(changeList[0][1])
+    
+    # Dump the updated settings to json
+    with open(settings_file, "w") as fp:
+        json.dump(settings, fp, indent = 4)
+    
+    # Stop the camera
+    camera.stop = True
+    
+    # Wait for concurrent processes to complete before rendering the settings page
+    time.sleep(0.2)
+    return settings_page()
+    
+@app.route("/live-feed-live/")
+def live_feed_live():
+    """
+    Currently poorly-functioning attempt to get a live-feed to display on the 'Sync'
+    page. Designed to read a frame from the frameQueue (filled in pi_optical_gater_app).
+    This is converted from YUV to JPEG format, and yielded similar to the 'Settings'
+    page live feed.
+    Currently, threading seems to have reached it's limit, so the frames (however long the buffer is)
+    only stream once other threads have been stopped.
+    """
+    def gen_frame_live():
+        while stopQueue.empty():
+            # Read the frame from the frameQueue
+            frameYUV = frameQueue.get()
+            # Encode the frame to jpg and yield
+            ret, buffer = cv2.imencode(".jpg", frameYUV)
+            frame = buffer.tobytes()
+            yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+        # Sleep to let concurrent processes/threads complete
+        time.sleep(0.1)
+    return Response(
+        gen_frame_live(), 
+        mimetype="multipart/x-mixed-replace; boundary=frame"
+        )
+
+def stream_template(template_name, **context):
+    """Stream contents to template with context."""
+    app.update_template_context(context)
+    template = app.jinja_env.get_template(template_name)
+    stream = template.generate(context)
+    return Response(stream_with_context(stream))
+    
+@app.route("/print-data/")
+def print_data():
+    """Streams live sync readouts to the 'Sync' web-server page."""
+    def g():
+        """Yield data."""
+        while stopQueue.empty():
+            # Only proceed if the queue has not already been read 
+            if not eventQueue.empty():
+                queueContents = eventQueue.get()
+                timeFloat = queueContents[0]
+                timeRounded = int(timeFloat * (10**1))/(10**1)
+                timeNow = str(timeRounded)
+                framerateNow = str(queueContents[1])
+                triggersNow = str(queueContents[2])
+                stateNow = str(queueContents[3])
+                yield timeNow, triggersNow, framerateNow, stateNow
+            # Sleep to release GIL
+            time.sleep(0.001)
+        # Sleep to allow concurrent processes to complete 
+        time.sleep(0.1)
+        print("DATA  PRINTER SHUT DOWN COMPLETELY...")
+        
+    return stream_template(
+        "live.html", 
+        data = g(), 
+        time_limit_seconds = settings["general"]["time_limit_seconds"], 
+        trigger_update_number = settings["reference"]["update_after_n_criterions"],
+        trigger_limit = settings["general"]["trigger_limit"]
+    )
 
 @app.route("/")
 def index():
-    """Video streaming home page."""
-    # result will be one of:
-    # 0 - if no failure
-    # 1 - if fastpins fails
-    # 2 - if laser pin fails
-    # 3 - if camera pins fail
-    result = cli.init_controls(session["settings"])
-    # TODO catch failures
-    return render_template("index.html")
+    """Setup for the live run page."""
+    
+    # Attempt to kill the camera object used by the settings pane.
+    # Not currently working
+    if (
+        "camera" in globals()
+        ):
+        camera.stop = True
+        camera.stop_now()
+        
+    # Initialise global queues to send/recieved data from the concurrent sync process
+    global eventQueue
+    eventQueue = Queue()
+    global stopQueue
+    stopQueue = Queue()
 
-
-def gen(camera):
-    """Video streaming generator function."""
-    while True:
-        frame = camera.get_frame()
-        yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-
-
-@app.route("/video_feed")
-def video_feed():
-    # TODO: JT writes: I could really do with a comment explaining how this is working.
-    # The 'yield' stuff elsewhere could do with commenting, but I understand it.
-    # I don't understand what is going on here. gen() looks like it behaves as an iterator;
-    # what does Response do, is it somehow permanently streaming messages for each frame, or what...?
-    """Video streaming route. Put this in the src attribute of an img tag."""
-    return Response(gen(Camera()), mimetype="multipart/x-mixed-replace; boundary=frame")
-
-
-@app.route("/fire")
-def trigger(duration=500):
-    """A script to trigger the laser and camera on button press."""
-
-    laser_trigger_pin = session["settings"]["laser_trigger_pin"]
-    fluorescence_camera_pins = session["settings"]["fluorescence_camera_pins"]
-
-    cli.trigger_fluorescence_image_capture(
-        0,
-        laser_trigger_pin,
-        fluorescence_camera_pins,
-        edge_trigger=False,
-        duration=duration,
-    )
-
-
-@app.route("/parameters", methods=["GET", "POST"])
-def parameters():
-    """Setting editor page."""
-
-    # If POST, cast types and save
-    if request.method == "POST":
-        new_settings = request.form.to_dict(flat=False)
-
-        to_delete = []
-        for (key, val) in sorted(new_settings.items()):
-            # we assume there's only one val for each
-            # because there should be!
-            if key in session["settings"].keys():
-                logger.success(
-                    "Converting type of {0} from {1} to {2}",
-                    key,
-                    type(val[0]),
-                    type(session["settings"][key]),
-                )
-                if isinstance(session["settings"][key], dict):
-                    logger.success("Found nest {0}", key)
-                    new_settings[key] = {}
-                    for nestkey in session["settings"][key].keys():
-                        # assume only one level of nesting
-                        # if additional levels are needed, make this a function and recurse
-                        # TODO: JT writes: should this have some assertion/exception etc to guard against that scenario?
-                        if nestkey in new_settings.keys():
-                            logger.success(
-                                "Converting type of {0} from {1} to {2}",
-                                nestkey,
-                                type(new_settings[nestkey][0]),
-                                type(session["settings"][key][nestkey]),
-                            )
-                            new_settings[key][nestkey] = type(
-                                session["settings"][key][nestkey]
-                            )(new_settings[nestkey][0])
-                            if isinstance(session["settings"][key][nestkey], list):
-                                new_settings[key][nestkey] = list(
-                                    json.loads(new_settings[nestkey][0])
-                                )
-                            else:
-                                new_settings[key][nestkey] = type(
-                                    session["settings"][key][nestkey]
-                                )(new_settings[nestkey][0])
-                elif isinstance(session["settings"][key], list):
-                    new_settings[key] = list(json.loads(val[0]))
-                else:
-                    if val[0] == "None" or val[0] == "null":
-                        logger.info("Found a None or null, converting.")
-                        new_settings[key] = None
-                    else:
-                        new_settings[key] = type(session["settings"][key])(val[0])
-            else:
-                logger.info("Deleting unknown key: {0}".format(key))
-                to_delete.append(key)
-        for key in to_delete:
-            del new_settings[key]
-
-        session["settings"] = new_settings
-        save_settings()
-
-    return render_template("parameters.html", settings=session["settings"])
-
-
-@app.route("/emulate")
-def emulate():
-    """Emulated run page."""
-    # Global variable for analyse_camera object
-    # Note: this means the developer has to manage the temporal nature of accessing this!
-    # TODO: JT writes: what on earth do the above two lines of comments mean?
-    global analyse_camera
-    logger.debug("analyse_camera object: {0}", analyse_camera)
-
-    # Initialise
-    if request.args.get("state", False) is False:
-        logger.success("Initialising")
-        analyse_camera = cli.YUVLumaAnalysis(
-            update_after_n_triggers=session["settings"]["update_after_n_triggers"],
-            period_dir=session["settings"]["period_dir"],
+    return render_template(
+        "live.html", 
+        time_limit_seconds = settings["general"]["time_limit_seconds"], 
+        trigger_update_number = settings["reference"]["update_after_n_criterions"],
+        trigger_limit = settings["general"]["trigger_limit"]
         )
-        logger.debug("analyse_camera object: {0}", analyse_camera)
-    elif request.args.get("state", False) == "get":
-        logger.success("Getting period")
-        if "period" in session.keys():
-            logger.info("Clearing an existing period")
-            session.pop("period")
-        # TODO: JT writes: emulate_get_period() does not appear to exist as a function any more?
-        analyse_camera.emulate_get_period(session["settings"]["path"])
-        # save period in jpg for webpage
-        for (i, frame) in enumerate(analyse_camera.ref_frames):
-            io.imsave(
-                os.path.join(
-                    "open_optical_gating",
-                    "app",
-                    "static",
-                    "period-data",
-                    "{0:03d}.jpg".format(i),
-                ),
-                frame,
-            )
-        session["period"] = sorted(
-            [
-                os.path.join("period-data", p)
-                for p in os.listdir(
-                    os.path.join("open_optical_gating", "app", "static", "period-data")
-                )
-            ]
-        )
-    elif request.args.get("state", False) == "set":
-        print(type(analyse_camera.ref_frames))
-        logger.success(
-            "Setting target frame as {0}", int(request.args.get("target", 1)) - 1
-        )
-        analyse_camera.user_select_period(int(request.args.get("target", 1)) - 1)
-        print(type(analyse_camera.ref_frames))
-    elif request.args.get("state", False) == "run":
-        print(type(analyse_camera.ref_frames))
-        logger.success("Running emulator")
-        analyse_camera.emulate()
 
-    return render_template("emulate.html")
+@app.route("/update-setting-live/", methods = ["POST"])
+def update_setting_live():
+    """
+    Update the relevant settings as prompted by the user via the web-server's 'Sync' pane.
+    """
+    # Get the requested change
+    changeList = list(request.form.items())
+    
+    # Update the relevant setting in the settings dict
+    if "limit" in changeList[0][0]:
+        settings["general"][changeList[0][0]] = int(changeList[0][1])
+    else:
+        settings["reference"][changeList[0][0]] = int(changeList[0][1])
+    
+    # Dump the updated settings to json
+    with open(settings_file, "w") as fp:
+        json.dump(settings, fp, indent = 4)
+        
+    return index() 
+    
+@app.route("/start-live/")
+def start_live():
+    print("SYNC INITIATED...")
+    
+    # Initialise a sync object
+    syncObject = sync.PiOpticalGater(settings = settings)
+    
+    # Setup the appropriate trigger pins
+    syncObject.setup_pins()
+    
+    # Assign the start_sync function to a new process and start
+    syncProcess = Process(target = syncObject.start_sync, args = (eventQueue, stopQueue, ))
+    syncProcess.start()
+    
+    # A while loop to keep the main process active
+    while stopQueue.empty():
+        # Sleep to release GIL
+        time.sleep(0.0001)
+    
+    # Long sleep to let all concurent processes and threads complete
+    time.sleep(0.2)
+    print("SHUTTING DOWN PI PROCESS...")
+    
+    # Terminate and join the syncProcess
+    syncProcess.terminate()
+    syncProcess.join()
+    
+    print("PI PROCESS SHUT DOWN AND SYNC COMPLETE...")
+    return index()
 
+@app.route("/stop-live/")
+def stop_live():
+    """Stop live sync."""
+    # Place True in the global stopQueue
+    stopQueue.put(True)
+    
+    # Sleep to wait for all processes/threads to complete before rendering the page
+    time.sleep(1)
+    return index()
 
-@app.route("/live")
-def run():
-    """Live run page."""
-    # Global variable for analyse_camera object
-    # Note: this means the developer has to manage the temporal nature of accessing this!
-    # TODO: JT writes: what on earth do the above two lines of comments mean?
-    global analyse_camera
-    logger.debug("analyse_camera object: {0}", analyse_camera)
-
-    # TODO: JT writes: so the "state" can be False, "get", "set" or "run"? That seems a bit weirdly inconsistent to me.
-    # Is there any reason the False can't be a string such as "init" instead?
-    # [Same applies to emulate(), above]
-    if request.args.get("state", False) is False:
-        logger.success("Initialising")
-        # result will be one of:
-        # 0 - if no failure
-        # 1 - if fastpins fails
-        # 2 - if laser pin fails
-        # 3 - if camera pins fail
-        result = cli.init_controls(
-            session["settings"]
-        )  # we re-do this in case somethings happened since doing so at index
-        # TODO catch fails
-        analyse_camera = cli.YUVLumaAnalysis(
-            update_after_n_triggers=session["settings"]["update_after_n_triggers"],
-            period_dir=session["settings"]["period_dir"],
-        )
-        logger.debug("analyse_camera object: {0}", analyse_camera)
-    elif request.args.get("state", False) == "get":
-        logger.success("Getting period")
-        if "period" in session.keys():
-            logger.info("Clearing an existing period")
-            session.pop("period")
-        # TODO: JT writes: emulate_get_period() does not appear to exist as a function any more?
-        analyse_camera.emulate_get_period(session["settings"]["path"])
-        # save period in jpg for webpage
-        for (i, frame) in enumerate(analyse_camera.ref_frames):
-            io.imsave(
-                os.path.join(
-                    "open_optical_gating",
-                    "app",
-                    "static",
-                    "period-data",
-                    "{0:03d}.jpg".format(i),
-                ),
-                frame,
-            )
-        session["period"] = sorted(
-            [
-                os.path.join("period-data", p)
-                for p in os.listdir(
-                    os.path.join("open_optical_gating", "app", "static", "period-data")
-                )
-            ]
-        )
-    elif request.args.get("state", False) == "set":
-        print(type(analyse_camera.ref_frames))
-        logger.success(
-            "Setting target frame as {0}", int(request.args.get("target", 1)) - 1
-        )
-        analyse_camera.user_select_period(int(request.args.get("target", 1)) - 1)
-        print(type(analyse_camera.ref_frames))
-    elif request.args.get("state", False) == "run":
-        print(type(analyse_camera.ref_frames))
-        logger.success("Running emulator")
-        analyse_camera.emulate()
-
-    return render_template("emulate.html")
-
+@app.route("/post-sync-setup/")
+def post_sync_setup():
+    """A page to display relevant plots generated from the logs."""
+    
+    # Find the most recent log file in the user_log_folder
+    all_logs = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/user_log_folder/*")
+    most_recent_log = max(all_logs, key = os.path.getctime)
+    
+    # If the log is a real log (not empty) we move it to the static folder, overwriting the previous log
+    if len(open(most_recent_log).readlines()) > 5:
+        os.rename(most_recent_log, "/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log")
+        
+    # Run the log scraper on this log file
+    scrape.run("/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log", '/home/pi/open-optical-gating/open_optical_gating/app/retrospective_log_scraping/log_keys.json')
+    
+    # Zip all generated plots in the static folder to be downloaded by the user
+    with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/plots.zip", "w") as zipObj:
+        for plotPath in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/static/*.jpg"):
+            zipObj.write(plotPath, os.path.basename(plotPath))
+    return render_template("post_sync.html")
 
 if __name__ == "__main__":
-    # TODO: JT writes: I am still uncertain whether we are talking about concurrent multithreading
-    # or just sequential here. I am actually now thinking that *flask* is (or at least could potentially)
-    # spawn multiple *processes* to serve these requests, i.e. genuine concurrent multiprocessing.
-    # My blunt question is: has anybody writing this thought through the implications of this?
-    # How does that work in terms of state, race conditions etc? I'm wondering now if the "global analyse_camera"
-    # line (and associated comment) was written by you guys or was in an example you have cloned.
-    # I think this needs some careful thought, understanding and documenting, because I think there's
-    # a risk of things getting very messy. At the very least, we need to be very clear about
-    # how the threading is behaving.
-    # This is where my earlier observation to Chas becomes very important, making the point that
-    # this code is not implementing true REST because this code is not *stateless*.
-    # That's no longer just pedantry when we are talking about concurrent multithreading,
-    # it's really important!
-
-    app.run(debug=True, host="192.168.0.13", threaded=True)
+    app.run(debug = True, host = "0.0.0.0", threaded = True)

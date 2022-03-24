@@ -2,6 +2,7 @@
 
 import time
 import threading
+import sys
 
 try:
     from greenlet import getcurrent as get_ident
@@ -57,54 +58,73 @@ class CameraEvent(object):
 
 
 class BaseCamera(object):
-    thread = None  # background thread that reads frames from camera
-    frame = None  # current frame is stored here by background thread
-    last_access = 0  # time of last client access to the camera
-    event = CameraEvent()
 
-    def __init__(self):
+    
+    def __init__(self, framerate = 80, resolution = 128, shutter_speed_us = 2500, stop = False):
         """Start the background camera thread if it isn't running yet."""
-        if BaseCamera.thread is None:
-            BaseCamera.last_access = time.time()
+        self.thread = None
+        self.frame = None
+        self.last_access = 0
+        self.event = CameraEvent()
+        
+        if self.thread is None:
+            self.framerate = framerate
+            self.resolution = resolution
+            self.shutter_speed_us = shutter_speed_us
+            self.stop = stop
+        
+            self.last_access = time.time()
 
             # start background frame thread
-            BaseCamera.thread = threading.Thread(target=self._thread)
-            BaseCamera.thread.start()
+            self.thread = threading.Thread(target = self._thread)
+            self.thread.daemon = True
+            self.thread.start()
 
             # wait until frames are available
             while self.get_frame() is None:
                 time.sleep(0)
-
+                
+    def __del__(self):
+        print("Camera object deleted...")
+        
     def get_frame(self):
         """Return the current camera frame."""
-        BaseCamera.last_access = time.time()
+        self.last_access = time.time()
 
         # wait for a signal from the camera thread
-        BaseCamera.event.wait()
-        BaseCamera.event.clear()
+        self.event.wait()
+        self.event.clear()
 
-        return BaseCamera.frame
+        return self.frame
+        
+    def stop_now(self):
+        print("JOINING CAMERA THREAD TO MAIN...")
+        self.stop = True
+        time.sleep(0.4)
+        self.thread.join()
+        self.thread = None
+        print("CAMERA THREAD JOINED...")
+        
 
-    @staticmethod
-    def frames():
+    def frames(self):
         """"Generator that returns frames from the camera."""
         raise RuntimeError("Must be implemented by subclasses.")
 
-    @classmethod
-    def _thread(cls):
+    def _thread(self):
         """Camera background thread."""
-        print("Starting camera thread.")
-        # TODO: JT writes: needs a brief comment here explaining what's going on, the role of the iterator and the 'yield' keyword in frames(). [would benefit from a general comment in base_camera.frames() as well as in camera_pi
-        frames_iterator = cls.frames()
+        print("CAMERA THREAD INITIATED...")
+        frames_iterator = self.frames()
         for frame in frames_iterator:
-            BaseCamera.frame = frame
-            BaseCamera.event.set()  # send signal to clients
-            time.sleep(0)
-
-            # if there hasn't been any clients asking for frames in
-            # the last 10 seconds then stop the thread
-            if time.time() - BaseCamera.last_access > 10:
-                frames_iterator.close()
-                print("Stopping camera thread due to inactivity.")
+            self.frame = frame
+            self.event.set()  
+            time.sleep(0.01)
+            if (
+                (time.time() - self.last_access > 10) 
+                or self.stop
+                ):
+                time.sleep(0.1)
                 break
-        BaseCamera.thread = None
+        print("CAMERA THREAD STOPPED...")
+        return
+        #self.thread = None
+        

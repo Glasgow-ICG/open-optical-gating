@@ -1,16 +1,123 @@
 <!DOCTYPE html>
 <html>
+<style>
+    html * {
+        font-family:"Courier";
+        }
+        
+    .live_feed_container {
+        top:10%;
+        left:10%;
+        width:37%;
+        height:100%;
+        position:absolute;
+        }
+    .live_feed_title {
+        position:absolute;
+        text-align:center;
+        width:100%;
+        font-size:4vmin;
+        font-weight:bold;
+        background-color: LightGray;
+        font-family:"Courier";
+        }
+    .live_feed {
+        top:7%;
+        width:100%;
+        position:absolute;
+        text-align:center;
+        }
+        
+        
+    .debug_container {
+        top:10%;
+        right:10%;
+        width:37%;
+        height:100%;
+        position:absolute;
+        }
+    .debug_title {
+        position:absolute;
+        text-align:center;
+        width:100%;
+        font-size:4vmin;
+        font-weight:bold;
+        background-color: LightGray;
+        font-family:"Courier";
+        }
+    .debug_subtitle {
+        position:absolute;
+        text-align:center;
+        width:100%;
+        font-size:3vmin;
+        font-weight:bold;
+        background-color: LightGray;
+        font-family:"Courier";
+        }
+    .update_button {
+        top:50%;
+        width:100%;
+        position:absolute;
+        background-color:MediumSeaGreen;
+        font-size:4vmin;
+        font-weight:bold;
+        font-family:"Courier";
+        color:Black;
+        text-align:center;
+        }
+    .trigger_button {
+        top:60%;
+        width:100%;
+        position:absolute;
+        background-color:Tomato;
+        font-size:4vmin;
+        font-weight:bold;
+        font-family:"Courier";
+        color:Black;
+        text-align:center;
+        }
+
+    .integer_updater {
+        right:5%;
+        width:25%;
+        position:absolute;
+        font-size:3vmin;
+        font-weight:bold;
+        font-family:"Courier";
+        color:Black;
+        text-align:center;
+        }
+    .select {
+        width:25%;
+        position:absolute;
+        font-size:3vmin;
+        font-weight:bold;
+        font-family:"Courier";
+        color:Black;
+        text-align:center;
+        right:5%;
+        }
+    .integer_description {
+        position:absolute;
+        text-align:center;
+        left:5%;
+        font-size:3vmin;
+        font-weight:bold;
+        font-family:"Courier";
+        }
+</style>
 
 <head>
-    <title>asclePIus - open optical gating</title>
+    <title>Pi Open Optical Gating</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="http://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet" media="screen">
     <link href="../static/form.css" rel="stylesheet">
     {% block head %}{% endblock %}
 </head>
-
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <body>
-    <h1>asclePIus - Open optical gating</h1>
     <nav class="navbar navbar-inverse" role="navigation">
         <div class="container-fluid">
             <div class="navbar-header">
@@ -21,30 +128,21 @@
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                 </button>
-                <a class="navbar-brand" href="/">asclePIus</a>
+                <a class="navbar-brand" href="/">Pi OOG</a>
             </div>
 
             <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
                 <ul class="nav navbar-nav">
                     <li {% if request.endpoint == "index" %} class='active' {% endif %}><a
-                            href="{{ url_for('index') }}">Live Stream</a></li>
-                    <li {% if request.endpoint == "parameters" %} class='active' {% endif %}><a
-                            href="{{ url_for('parameters') }}">Settings Editor</a></li>
-                    <li {% if request.endpoint == "emulate" %} class='active' {% endif %}><a
-                            href="{{ url_for('emulate') }}">Emulate</a></li>
-                    <li {% if request.endpoint == "run" %} class='active' {% endif %}><a
-                            href="{{ url_for('run') }}">Run!</a></li>
+                            href="{{ url_for('index') }}">Sync</a></li>
+                    <li {% if request.endpoint == "post_sync_setup" %} class='active' {% endif %}><a
+                            href="{{ url_for('post_sync_setup') }}">Analysis</a></li>
                 </ul>
                 <ul class="nav navbar-nav navbar-right">
-                    <li><a href="#">Link</a></li>
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Dropdown <b class="caret"></b></a>
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Caution<b class="caret"></b></a>
                         <ul class="dropdown-menu">
-                            <li><a href="#">Action</a></li>
-                            <li><a href="#">Another action</a></li>
-                            <li><a href="#">Something else here</a></li>
-                            <li class="divider"></li>
-                            <li><a href="#">Separated link</a></li>
+                            <li><a href="{{ url_for('settings_page')}}">Settings</a></li>
                         </ul>
                     </li>
                 </ul>

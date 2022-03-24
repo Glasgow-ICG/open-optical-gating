@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .image_container {
+        width:100%;
+        position:absolute;
+        outline:2px dashed black;
+        }
+	.left_container {
+		top:10%;
+        left:10%;
+        width:37%;
+        height:200%;
+        position:absolute;
+		}
+	.right_container {
+		top:10%;
+        right:10%;
+        width:37%;
+        height:200%;
+        position:absolute;
+		}
+</style>
+
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+
+<div class="left_container">
+	<div class = "live_feed_title">Sync Data</div> 
+	<img class = "image_container" style = "top:4%;"src = "{{url_for('static', filename = 'unwrappedPhase.jpg')}}" alt = "doge">
+	<img class = "image_container" style = "top:32%;" src = "{{url_for('static', filename = 'wrappedPhase.jpg')}}" alt = "doge">
+	<img class = "image_container" style = "top:60%;" src = "{{url_for('static', filename = 'phaseHistogram.jpg')}}" alt = "doge">
+	<img class = "image_container" style = "top:88%;" src = "{{url_for('static', filename = 'phaseErrorHistogram.jpg')}}" alt = "doge">
+	<img class = "image_container" style = "top:116%;" src = "{{url_for('static', filename = 'phaseErrorWithTime.jpg')}}" alt = "doge">
+</div>
+
+<div class = "right_container">
+	<div class = "debug_title">Raspberry Pi Data</div> 
+	<img class = "image_container" style = "top:4%;"src = "{{url_for('static', filename = 'framerate.jpg')}}" alt = "doge">
+	
+	<button type="button" class="trigger_button" style = "top:32%;"> <a href = "{{url_for('static', filename = 'most_recent_log.log')}}">Download Log File</a></button>
+	<button type="button" class="trigger_button" style = "top:36%;"> <a href = "{{url_for('static', filename = 'plots.zip')}}">Download Graphs</a></button>
+</div>
+{% endblock %}

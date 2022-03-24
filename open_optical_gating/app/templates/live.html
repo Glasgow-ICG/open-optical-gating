@@ -1,81 +1,90 @@
 {% extends "base.html" %}
-{% block head %}
-<script>
 
-	var source = new EventSource("/live_progress");
-	source.onmessage = function(event) {
-		$('.progress-bar').css('width', event.data+'%').attr('aria-valuenow', event.data);
-		$('.progress-bar-label').text(event.data+'%');
-
-		if(event.data == 100){
-			source.close()
-		}
-	}
-    </script>
-{% endblock %}
 {% block content %}
-<!-- Controls.-->
-<div class="btn-group btn-group-justified">
-    <a href="?state=get" class="btn btn-primary" value="Get Period">Get Period</a>
-    <a href="?state=run&target={{ request.args.get('target',1) }}" class="btn btn-primary" value="Run">Run
-        Optical Gating</a>
+<style>
+	.instructions_container {
+		top:5%;
+		width:100%;
+		left:20%
+		text-align:left;
+		position:absolute;
+		font-size:2vmin;
+		}
+	.left_container {
+        top:10%;
+        left:10%;
+        width:37%;
+        height:200%;
+        position:absolute;
+        }
+	.right_container {
+        top:10%;
+        right:10%;
+        width:37%;
+        height:100%;
+        position:absolute;
+        }
+</style>
+<div class="left_container">
+	<div class = "live_feed_title">Instructions</div> 
+	<div class = "instructions_container">
+		<p>
+			This 'Sync' tab is <b>not</b> currently well optimised. In order for it to function smoothly, it must be used in the following way.
+		</p>
+		<ol>
+			<li> Press 'Start' to begin the heart-sync.</li>
+			<li> Press 'Show Live Data' to see live readouts.</li>
+			<li> To stop the sync, press 'Stop' <b>or</b> wait for your selected time limit to be reached.</li>
+			<li> Once the sync is complete (and the live readouts have dissappeared) you may select the 'Analysis' tab so assess the performance of the most recent sync.</li>
+			<li> From here, you can view and download the log files and plots.</li>
+			<li> You can return to the 'Sync' tab to perform further heart-syncs!</li>
+		</ol>
+		<br>
+		<p>Issues and how to solve them:</p>
+		<ul>
+			<li> The 'Show Live Data' button is the best way to verify if the sync is running. If no outputs are shown, the Pi Camera has failed to initialise. This requires the web-server to be manually restarted in the Pi console.</li>
+			<li> If the 'Post' tab returns an error page, this does <b>not</b> mean your sync was not successful. You can still return to the 'Sync' page to complete further syncs.</li>
+		</ul>
+		<br>
+		<p style = "color:red;"> <b>Caution - Only perform with direct access to the Pi console:</b></p>
+		<p style = "color:red;"> Pressing the 'Caution' dropdown in the top-right will allow you to see a live feed of the Pi Camera with the current settings:</p>
+		<ul style = "color:red;">
+			<li style = "color:red;"> Each setting can be changed by pressing enter when the relevent input field is selected.</li>
+			<li style = "color:red;"> The live feed will immediately update with these new settings.</li>
+			<li style = "color:red;"> To release the Pi Camera before the next sync, you must navigate to the 'Sync' page then <b>immediately manually restart the web-sever from the Pi console</b>.</li>
+			<li style = "color:green;"> The 'Sync' page can then be refreshed.</li>
+		</ul>
+	</div>
 </div>
 
-<br />
-<!-- Carousel of determined period.-->
-{% if session['period'] is defined %}
-<p>Note: whatever frame is currently highlighted will be the target frame.</p>
-<div id="myCarousel" class="carousel slide reference-period" style="width: {{ 2*session['settings_dict']['brightfield_resolution'] }}px;">
-    <!-- Indicators -->
-    <!-- <ol class="carousel-indicators">
-        {% for image in session['period'] %}
-        <li data-target="#myCarousel" data-slide-to="0" class="{% if loop.index==1 %}active{% endif %}"></li>
-        {% endfor %}
-    </ol> -->
+ <div class = "right_container">
+	<div class = "debug_title">Setup and Debug</div>
+	
+	<button type="button" class="update_button" style = "top:6%;"> <a href = "/start-live/">Start</a></button>
+	<button type="button" class="update_button" style = "top:13%; background-color:LightGoldenRodYellow;"> <a href = "/print-data/">Show Live Data</a></button>
+	<button type="button" class="trigger_button" style = "top:20%;"> <a href = "/stop-live/">Stop</a></button>     
 
-    <!-- Wrapper for slides -->
-    <div class="carousel-inner">
-        {% for image in session['period'] %}
-        <div class="item {% if loop.index == request.args.get('target',1) | int %}active{% endif %}">
-            <img src="{{url_for('static', filename=image)}}" alt="{{ loop.index }}">
-            <div class="carousel-caption">
-                <h3>{{ loop.index }}</h3>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
+	<div class = "integer_description" style = "top:28%; font-size:2.5vmin;">Time limit =</div>
+		<form name = "time_limit_seconds" action ="{{url_for('update_setting_live')}}" method = "POST">
+			<input class = "integer_updater" style = "top:28%;" type = "number" name = "time_limit_seconds" value = "{{time_limit_seconds}}" min = "5">
+		</form>
+		
+	<div class = "integer_description" style = "top:34%;font-size:2.5vmin;">Trigger limit =</div>
+		<form name = "trigger_limit" action ="{{url_for('update_setting_live')}}" method = "POST">
+			<input class = "integer_updater" style = "top:34%;" type = "number" name = "trigger_limit" value = "{{trigger_limit}}" min = "1">
+		</form>
+		
+	<div class = "integer_description" style = "top:40%; font-size:2.5vmin;">Update after n triggers =</div>
+		<form name = "update_after_n_criterions" action ="{{url_for('update_setting_live')}}" method = "POST">
+			<input class = "integer_updater" style = "top:40%;" type = "number" name = "update_after_n_criterions" value = "{{trigger_update_number}}" min = "1">
+		</form>
 
-    <!-- Left and right controls -->
-    <a class="left carousel-control" href="{{ url_for('live', state='set', target=request.args.get('target',1) | int - 1) }}"
-        data-slide="prev">
-        <span class="glyphicon glyphicon-chevron-left"></span>
-        <span class="sr-only">Previous</span>
-    </a>
-    <a class="right carousel-control" href="{{ url_for('live', state='set', target=request.args.get('target',1) | int + 1) }}"
-        data-slide="next">
-        <span class="glyphicon glyphicon-chevron-right"></span>
-        <span class="sr-only">Next</span>
-    </a>
+	<script src="http://code.jquery.com/jquery-latest.js"></script>
+	<div id="data" style = "white-space:pre-wrap; width:100%; height:auto; top:48%; text-align:center; position:absolute; font-size:3vmin; font-weight:bold; font-family:'Courier'; background-color: LightGray;"></div>
+	{% for i, j, k, l in data: %}
+		<script>
+		  $("#data").text(" Time = {{i}} \n Triggers = {{j}} \n Framerate = {{k}} \n State = {{l}}")
+		</script>
+	{% endfor %}
 </div>
-{% endif %}
-<br />
-
-{% if request.args['state'] is defined and request.args['state'] == 'run' %}
-<h2>Progress Bar - Not currently functional</h2>
-<div class="progress" style="width: 50%; margin: auto;">
-    <div class="progress-bar progress-bar-striped active" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%">
-        <span class="progress-bar-label">0%</span>
-    </div>
-</div>
-<br />
-{% endif %}
-
-{% if request.args['state'] is defined and request.args['state'] == 'run' %}
-<a href="?state=results" class="btn btn-primary" value="Load results">Load results</a>
-<p>Note: make sure the page has finished loading before loading the results.</p>
-{% elif request.args['state'] is defined and request.args['state'] == 'results' %}
-<h2>Results</h2>
-<img class='results-img' src="{{url_for('static', filename='triggers.png')}}" alt="triggers"> 
-<img class='results-img' src="{{url_for('static', filename='accuracy.png')}}" alt="accuracy"> 
-{% endif %}
 {% endblock %}

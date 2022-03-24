@@ -1,0 +1,10 @@
+{
+    "keyTypeA": "TYPE A",
+    "timeStampIndex": 13,
+    "stateIndex": 17,
+    "phaseIndex": 21,
+    "targetPhaseIndex": 26,
+    "keyTypeB": "TYPE B",
+    "triggerTimeScheduledIndex": 15,
+    "triggerTimeSentIndex": 19
+}

@@ -14,7 +14,7 @@ logger.add(sys.stderr, level="DEBUG")
 # logger.add("oog_{time}.log", level="DEBUG")
 logger.enable("open_optical_gating")
 
-def run(args, desc, delay = 5, number = 10, wait = 2):
+def run(args, desc, delay = 5, number = 1000, wait = 2):
     '''
         Run the optical gater based on a settings.json file which includes
         the path to the .tif file to be processed.
@@ -35,7 +35,7 @@ def run(args, desc, delay = 5, number = 10, wait = 2):
         server.trigger_fluorescence_image_capture(
             delay
         )
-        logger.info("Seding trigger {0}, took {1} s".format(i + 1, time.time()-t))
+        logger.info("Sending trigger {0}, took {1} s".format(i + 1, time.time()-t))
         time.sleep(wait)
 
     return True

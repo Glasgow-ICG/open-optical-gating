@@ -8,6 +8,7 @@ import time
 # Module imports
 import numpy as np
 from loguru import logger
+import tkinter as tk
 
 # Raspberry Pi-specific imports
 # Picamera
@@ -71,7 +72,7 @@ class PiOpticalGater(server.OpticalGater):
         # rather than ask user for their preferred initial target frame (False)
         self.automatic_target_frame_selection = automatic_target_frame_selection
 
-    def setup_pi(self, showPreview = True):
+    def setup_pi(self, showPreview = False):
         """Initialise Raspberry Pi hardware I/O interfaces."""
         # Initialise PiCamera
         logger.success("Initialising camera...")
@@ -91,14 +92,6 @@ class PiOpticalGater(server.OpticalGater):
         # Set the camera sensor mode to 7 to ensure the FOV is maintained regardless of framerate
         camera.sensor_mode = 7
         
-        ## Create a live grey-scale video view in the bottom left corner of screen
-        if showPreview:
-            camera.color_effects = (128, 128)
-            camera.start_preview()
-            camera.preview.window = (10, 810, 256, 256)
-            camera.annotate_text_size = 8
-            camera.preview_fullscreen = False
-
         # Store key variables for later
         self.height, self.width = camera.resolution
         self.camera = camera
@@ -138,48 +131,19 @@ class PiOpticalGater(server.OpticalGater):
         self.next_frame_index = 0
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
-        
-    def frame_rate_calculator(self, windowSize = 10):
-        """Compute average live framerate over timestamp window."""
-        if (
-            len(self.timeWindow) == 0
-            or not self.currentTimeStamp == self.timeWindow[-1] # Ensure timestamps are not repeated
-            ):
-            self.timeWindow.append(self.currentTimeStamp)
-        if len(self.timeWindow) > windowSize:
-            # Compute difference between each time stamp and use to compute framerate
-            del self.timeWindow[0]
-            timeDifferences = [self.timeWindow[i] - self.timeWindow[i - 1] for i in range(1, windowSize)]
-            self.framerate = np.round(1/np.mean(timeDifferences), 0)
     
-    def run_and_analyze_until_stopped(self, showPreview = True):
+    def run_and_analyze_until_stopped(self, showPreview = False):
         """Runs picam for required duration and updates time and framerate prints"""
-        # Initialise framerate requirements
-        self.timeWindow = []
-        self.framerate = 0 
         self.camera.start_recording(self.analysis, format="yuv")
         # Operating until the user desired time limit is reached
-        while time.time() - self.start_time < self.settings["general"]["time_limit_seconds"]:
+        while (
+            time.time() - self.start_time < self.settings["general"]["time_limit_seconds"]
+            and self.trigger_num_total <= self.settings["general"]["trigger_limit"]
+            ): 
+            sys.stdout.write("\rTriggers sent = {0}".format(self.trigger_num_total))
             self.camera.wait_recording(0.001)  # s
-            self.frame_rate_calculator() 
-            if showPreview:
-                if self.state == 'sync':
-                    # Print the framerate only when in the sync state
-                    self.camera.annotate_foreground = picamera.Color('white') 
-                    self.camera.annotate_text = 'Time = {0} s \n Framerate = {1} fps \n Triggers = {2}'.format(
-                        str(np.round(time.time() - self.start_time, 1)), 
-                        self.framerate,
-                        self.trigger_num_total
-                        )
-                else:
-                    # Print a statement to update that the reference sequence is updating
-                    self.camera.annotate_foreground = picamera.Color('green')
-                    self.camera.annotate_text = 'Time = {0} s \n Updating reference sequence...'.format(
-                        str(np.round(time.time() - self.start_time,1))
-                        )
-        else:
-            self.stop = True
-            self.camera.stop_recording()
+        self.stop = True
+        self.camera.stop_recording()
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """Triggers both the laser and fluorescence camera (assumes edge trigger mode by default) at the specified future time.
