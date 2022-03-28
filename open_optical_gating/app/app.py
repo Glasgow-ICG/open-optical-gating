@@ -5,6 +5,7 @@ Much of this was inspired by https://github.com/miguelgrinberg/flask-video-strea
 
 # Imports
 import sys, io, os, glob, shutil, cgi, json, time, cv2
+import urllib.request
 import numpy as np
 from importlib import import_module
 from multiprocessing import Process, Queue
@@ -267,7 +268,7 @@ def post_sync_setup():
     """A page to display relevant plots generated from the logs."""
     
     # Find the most recent log file in the user_log_folder
-    all_logs = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/user_log_folder/*")
+    all_logs = glob.glob("/home/pi/user_log_folder/*")
     most_recent_log = max(all_logs, key = os.path.getctime)
     
     # If the log is a real log (not empty) we move it to the static folder, overwriting the previous log
@@ -283,5 +284,25 @@ def post_sync_setup():
             zipObj.write(plotPath, os.path.basename(plotPath))
     return render_template("post_sync.html")
 
+def confirm(host = "http://google.com"):
+    i = 0
+    max_i = 10000
+    while True:
+        i += 1
+        if i > max_i:
+            i = 0
+        loadingString = "Waiting for an internet connection to be established..." + "."*(int(i/1000))  + " "*(int(max_i/1000) - int(i/1000))
+        sys.stdout.write("\r" + loadingString)
+        try:
+            urllib.request.urlopen(host)
+            return True
+        except:
+            continue
+        
 if __name__ == "__main__":
-    app.run(debug = True, host = "0.0.0.0", threaded = True)
+    if confirm():
+        print("\nConnection established; running script...")
+        app.run(debug = True, host = "0.0.0.0", threaded = True)
+    else:
+        print("\nInternet connection could not be established...")
+        time.sleep(10)
