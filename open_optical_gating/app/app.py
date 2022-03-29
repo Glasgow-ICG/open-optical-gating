@@ -39,13 +39,14 @@ def add_header(response):
     response.headers["Expires"] = "0"
     response.headers["Cache-Control"] = "public, max-age = 0"
     return response
-
+    
 @app.route("/settings-page/")
 def settings_page():
     """
     A page to tune the settings of the Pi Camera for desired parameters (resolution, contrast, 
     brightness, etc) as well as sending testing triggers to the microscope.
     """
+    previousPageSettings = True
     # Setup the trigger pins
     syncObject.setup_pins()
     
@@ -181,7 +182,6 @@ def print_data():
 @app.route("/")
 def index():
     """Setup for the live run page."""
-    
     # Attempt to kill the camera object used by the settings pane.
     # Not currently working
     if (
@@ -189,6 +189,7 @@ def index():
         ):
         camera.stop = True
         camera.stop_now()
+        os.system("sudo reboot")
         
     # Initialise global queues to send/recieved data from the concurrent sync process
     global eventQueue

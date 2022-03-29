@@ -27,15 +27,14 @@
 			<input class = "integer_updater" style = "top:24%;" type = "number" name = "shutter_speed_us" value = "{{shutter_speed_us}}" min = "1">
 		</form>
 
-	<button type="button" class="trigger_button" style = "top:32%"> <a href = "/send-trigger/">Send Trigger</a></button>
-	<br>
+	<button type="button" class="update_button" style = "top:32%"> <a href = "/send-trigger/">Send Trigger</a></button>
+	
 	<div style = "top:42%; position:absolute; width:100%; height:auto; text-align:left; font-size:2vmin;">
 	
 		<ul style = "color:red;">
 			<li style = "color:red;"> Each setting can be changed by pressing enter when the relevent input field is selected.</li>
 			<li style = "color:red;"> The live feed will immediately update with these new settings.</li>
-			<li style = "color:red;"> To release the Pi Camera before the next sync, you must navigate to the 'Sync' page then <b>immediately manually restart the web-sever from the Pi console</b>.</li>
-			<li style = "color:green;"> The 'Sync' page can then be refreshed.</li>
+			<li style = "color:red;"> When you return to the 'Sync' tab, the Pi will restart to release the camera; it will take 30-60 seconds for the web-page to refresh.</li>
 		</ul>
                   
 </div>
