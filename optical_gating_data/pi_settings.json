@@ -13,7 +13,7 @@
         "exposure_mode": "off",
         "shutter_speed_us": 5000,
         "image_denoise": 0,
-        "contrast": 20
+        "contrast": 50
     },
     "trigger": {
         "laser_trigger_pin": 22,
@@ -34,8 +34,7 @@
         "target_frame_selection_method": "user",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
-        "update_after_n_criterions": 250,
-        "contrast": 100
+        "update_after_n_criterions": 250
     },
     "prediction": {
         "minFramesForFit": 3,
