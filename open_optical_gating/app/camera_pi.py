@@ -28,6 +28,8 @@ class Camera(BaseCamera):
                 self.camera.resolution = (self.resolution, self.resolution)
             if not self.shutter_speed_us == None:
                 self.camera.shutter_speed = self.shutter_speed_us
+            if not self.contrast == None:
+                self.camera.contrast = self.contrast
             
             #Let camera warm up
             time.sleep(1)

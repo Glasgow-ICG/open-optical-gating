@@ -4,15 +4,16 @@
 Much of this was inspired by https://github.com/miguelgrinberg/flask-video-streaming"""
 
 # Imports
-import sys, io, os, glob, shutil, cgi, json, time, cv2
+import sys, io, os, glob, shutil, cgi, json, time, cv2, imageio, subprocess
 import urllib.request
 import numpy as np
 from importlib import import_module
 from multiprocessing import Process, Queue
 from zipfile import ZipFile
-from flask import Flask, render_template, Response, request, jsonify, session, stream_with_context
+from flask import Flask, render_template, Response, request, jsonify, session, stream_with_context, redirect, url_for
+from tifffile import imread
 
-# Local Imports
+# Local Imports	
 from camera_pi import Camera
 import open_optical_gating.cli.pi_optical_gater_app as sync
 import retrospective_log_scraping.scrape_and_plot as scrape
@@ -56,6 +57,7 @@ def settings_page():
         brightfield_framerate = settings["brightfield"]["brightfield_framerate"],
         brightfield_resolution = settings["brightfield"]["brightfield_resolution"],
         shutter_speed_us = settings["brightfield"]["shutter_speed_us"],
+        contrast = settings["brightfield"]["contrast"]
         )
    
 @app.route("/video_feed")
@@ -73,7 +75,8 @@ def video_feed():
     camera = Camera(
         framerate = settings["brightfield"]["brightfield_framerate"],
         resolution = settings["brightfield"]["brightfield_resolution"],
-        shutter_speed_us = settings["brightfield"]["shutter_speed_us"]
+        shutter_speed_us = settings["brightfield"]["shutter_speed_us"],
+        contrast = settings["brightfield"]["contrast"]
     )
     
     if not camera.stop:
@@ -148,10 +151,26 @@ def stream_template(template_name, **context):
     template = app.jinja_env.get_template(template_name)
     stream = template.generate(context)
     return Response(stream_with_context(stream))
+
+@app.route("/reboot/")
+def reboot():
+    """
+    Convoluted way to reboot the pi when the reboot button has been pressed 
+    while also redirecting the user back to the index page.
+    """
+    # Create a global variable to be detected by the index function
+    global recent
+    recent = 0
+    return redirect(url_for("index"))
     
-@app.route("/print-data/")
+@app.route("/print-data/", methods = ['POST'])
 def print_data():
     """Streams live sync readouts to the 'Sync' web-server page."""
+    # Read the reference frame choice from the user input
+    changeList = list(request.form.items())
+    refChoice = changeList[0][1]
+    refSelectQueue.put(changeList[0][1])
+    # Define live data generator
     def g():
         """Yield data."""
         while stopQueue.empty():
@@ -173,22 +192,21 @@ def print_data():
         
     return stream_template(
         "live.html", 
-        data = g(), 
+        data = g(),
+        index_setting = "Running",
         time_limit_seconds = settings["general"]["time_limit_seconds"], 
-        trigger_update_number = settings["reference"]["update_after_n_criterions"],
         trigger_limit = settings["general"]["trigger_limit"]
     )
 
 @app.route("/")
-def index():
+def index(index_setting = "Setup"):
     """Setup for the live run page."""
-    # Attempt to kill the camera object used by the settings pane.
-    # Not currently working
+    # Convoluted way of rebooting the pi if the user clicks reboot
+    # or the user was previously on the settings page
     if (
         "camera" in globals()
+        or "recent" in globals()
         ):
-        camera.stop = True
-        camera.stop_now()
         os.system("sudo reboot")
         
     # Initialise global queues to send/recieved data from the concurrent sync process
@@ -196,12 +214,25 @@ def index():
     eventQueue = Queue()
     global stopQueue
     stopQueue = Queue()
-
+    global refActivateQueue 
+    refActivateQueue = Queue()
+    global refSelectQueue
+    refSelectQueue = Queue()
+    
+    # Delete all temporary reference sequence data from the static folder
+    all_image_paths = sorted(glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/static/img_*.jpeg"))
+    for image_path in all_image_paths:
+        os.remove(image_path)
+    print("TEMPORARY DATA DELETED...")
+    
     return render_template(
-        "live.html", 
+        "live.html",
         time_limit_seconds = settings["general"]["time_limit_seconds"], 
         trigger_update_number = settings["reference"]["update_after_n_criterions"],
-        trigger_limit = settings["general"]["trigger_limit"]
+        trigger_limit = settings["general"]["trigger_limit"],
+        shutter_speed_us = settings["brightfield"]["shutter_speed_us"],
+        contrast = settings["brightfield"]["contrast"],
+        index_setting = index_setting
         )
 
 @app.route("/update-setting-live/", methods = ["POST"])
@@ -212,18 +243,52 @@ def update_setting_live():
     # Get the requested change
     changeList = list(request.form.items())
     
-    # Update the relevant setting in the settings dict
-    if "limit" in changeList[0][0]:
-        settings["general"][changeList[0][0]] = int(changeList[0][1])
-    else:
-        settings["reference"][changeList[0][0]] = int(changeList[0][1])
-    
+    # Altering the limited settings available to the user
+    # This could be streamlined by changing the structure of the settings json
+    if changeList[0][0] == "time_limit_seconds":
+        settings["general"]["time_limit_seconds"] = int(changeList[0][1])
+    elif changeList[0][0] == "trigger_limit":
+        settings["general"]["trigger_limit"] = int(changeList[0][1])
+    elif changeList[0][0] == "update_after_n_criterions":
+        settings["reference"]["update_after_n_criterions"] = int(changeList[0][1])
+    elif changeList[0][0] == "shutter_speed_us":
+        settings["brightfield"]["shutter_speed_us"] = int(changeList[0][1])
+    elif changeList[0][0] == "contrast":
+        settings["brightfield"]["contrast"] = int(changeList[0][1])
+
     # Dump the updated settings to json
     with open(settings_file, "w") as fp:
         json.dump(settings, fp, indent = 4)
         
     return index() 
+
+@app.route('/activate-ref/')
+def activate_ref_input():
+    """
+    Called when pi_optical_gater_app.py in a child process places an item in refActivateQueue.
+    Reads the initial reference sequence from the ref_sequence_folder, converts to jpeg,
+    and moves them to static.
+    Live.html is rendered with the relevant file paths and image numbers.
+    """
+    # Find the most recent reference sequence folder
+    ref_sequence_length = refActivateQueue.get()
+    all_folders = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*")
+    most_recent_folder = max(all_folders, key = os.path.getctime)
     
+    # Iterate through each image in the ref sequence folder, convert to jpeg, move to static
+    ref_frame_paths = []
+    for i, image_path in enumerate(sorted(glob.glob(most_recent_folder + "/*"))):
+        image = imread(image_path)
+        imageio.imsave("/home/pi/open-optical-gating/open_optical_gating/app/static/img_{0}.jpeg".format(str(i).zfill(3)), image)
+        ref_frame_paths.append([i, "img_{0}.jpeg".format(str(i).zfill(3))])
+
+    return render_template(
+        "live.html", 
+        index_setting = "PickRefFrame", 
+        ref_sequence_length = ref_sequence_length, 
+        ref_frame_paths = ref_frame_paths
+    )
+
 @app.route("/start-live/")
 def start_live():
     print("SYNC INITIATED...")
@@ -235,24 +300,17 @@ def start_live():
     syncObject.setup_pins()
     
     # Assign the start_sync function to a new process and start
-    syncProcess = Process(target = syncObject.start_sync, args = (eventQueue, stopQueue, ))
+    global syncProcess
+    syncProcess = Process(target = syncObject.start_sync, args = (eventQueue, stopQueue, refActivateQueue, refSelectQueue, ))
     syncProcess.start()
     
     # A while loop to keep the main process active
     while stopQueue.empty():
         # Sleep to release GIL
         time.sleep(0.0001)
-    
-    # Long sleep to let all concurent processes and threads complete
-    time.sleep(0.2)
-    print("SHUTTING DOWN PI PROCESS...")
-    
-    # Terminate and join the syncProcess
-    syncProcess.terminate()
-    syncProcess.join()
-    
-    print("PI PROCESS SHUT DOWN AND SYNC COMPLETE...")
-    return index()
+        # Once pi_optical_gater_app requests a reference frame, redirect to activate_ref_input
+        if not refActivateQueue.empty():
+            return redirect(url_for("activate_ref_input"))
 
 @app.route("/stop-live/")
 def stop_live():
@@ -261,7 +319,15 @@ def stop_live():
     stopQueue.put(True)
     
     # Sleep to wait for all processes/threads to complete before rendering the page
-    time.sleep(1)
+    time.sleep(0.2)
+    print("SHUTTING DOWN PI PROCESS...")
+    
+    # Terminate and join the syncProcess
+    syncProcess.terminate()
+    syncProcess.join()
+    
+    print("PI PROCESS SHUT DOWN AND SYNC COMPLETE...")
+    
     return index()
 
 @app.route("/post-sync-setup/")
@@ -286,6 +352,9 @@ def post_sync_setup():
     return render_template("post_sync.html")
 
 def confirm(host = "http://google.com"):
+    """
+    Function to confirm an internet connection.
+    """
     i = 0
     max_i = 10000
     while True:
@@ -301,9 +370,5 @@ def confirm(host = "http://google.com"):
             continue
         
 if __name__ == "__main__":
-    if confirm():
-        print("\nConnection established; running script...")
-        app.run(debug = True, host = "0.0.0.0", threaded = True)
-    else:
-        print("\nInternet connection could not be established...")
-        time.sleep(10)
+    app.run(debug = True, host = "0.0.0.0", threaded = True)
+

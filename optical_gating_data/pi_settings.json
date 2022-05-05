@@ -4,16 +4,16 @@
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000,
-        "trigger_limit": 100
+        "trigger_limit": 500
     },
     "brightfield": {
-        "brightfield_framerate": 85,
-        "brightfield_resolution": 128,
+        "brightfield_framerate": 80,
+        "brightfield_resolution": 256,
         "awb_mode": "off",
         "exposure_mode": "off",
-        "shutter_speed_us": 4000,
+        "shutter_speed_us": 5000,
         "image_denoise": 0,
-        "contrast": 10
+        "contrast": 20
     },
     "trigger": {
         "laser_trigger_pin": 22,
@@ -30,11 +30,12 @@
         "lowerThresholdFactor": 0.5,
         "upperThresholdFactor": 0.75,
         "min_heart_rate_hz": 1.0,
-        "reference_sequence_dir": "reference-sequence-data/",
-        "target_frame_selection_method": "auto",
+        "reference_sequence_dir": "/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/",
+        "target_frame_selection_method": "user",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
-        "update_after_n_criterions": 20
+        "update_after_n_criterions": 250,
+        "contrast": 100
     },
     "prediction": {
         "minFramesForFit": 3,

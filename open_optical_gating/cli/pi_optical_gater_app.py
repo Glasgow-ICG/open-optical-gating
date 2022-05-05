@@ -29,20 +29,22 @@ class PiAnalysisWrapper(picamera.array.PiYUVAnalysis):
         super().__init__(camera, size=size)
         self.gater = gater
         self.array = None
+        self.counter = 0
 
     def analyze(self, array):
         # Callback from picamera.array.PiYUVAnalysis
-        if self.gater is not None:
-            self.array = array[:, :, 0]
-            self.pixelarray = pa.PixelArray(
-                self.array,  # Y channel
-                metadata={
-                    "timestamp": time.time() - self.gater.start_time
-                },  # relative to start_time to sanitise
-            )
-            # Call through to the analysis method of PiOpticalGater
-            self.gater.analyze_pixelarray(self.pixelarray)
-            
+        if (self.gater is not None):
+            self.array = array[:, :, 0] # Y channel
+            if not self.array.all() == 0:
+                self.pixelarray = pa.PixelArray(
+                    self.array,  
+                    metadata={
+                        "timestamp": time.time() - self.gater.start_time
+                    },  # relative to start_time to sanitise
+                )
+                # Call through to the analysis method of PiOpticalGater
+                self.gater.analyze_pixelarray(self.pixelarray)
+ 
 class PiOpticalGater(server.OpticalGater):
     """Extends the optical gater server for the Raspberry Pi."""
 
@@ -65,6 +67,23 @@ class PiOpticalGater(server.OpticalGater):
         # By default we will take a guess at a good target frame (True)
         # rather than ask user for their preferred initial target frame (False)
         self.automatic_target_frame_selection = automatic_target_frame_selection
+        
+    def user_pick_target_frame(self):
+        """Prompts the user to select the target frame from a one-period set of reference frames"""
+        # Find the number of reference frames and send this to the main flask process
+        ref_sequence_length = str(len(self.ref_seq_manager.ref_frames) - 1)
+        self.refActivateQueue.put(ref_sequence_length)
+        
+        # Wait for a reference frame selection from the flask process
+        # Or until the user presses 'Abort' (which writes to the stopQueue)
+        while True:
+            if not self.refSelectQueue.empty():
+                choice = int(self.refSelectQueue.get())
+                print("The user has selected frame {0}".format(choice))
+                return choice, None
+            elif not self.stopQueue.empty():
+                self.stop = True
+                return
 
     def setup_pins(self):
         """Initialise Raspberry Pi hardware I/O interfaces."""     
@@ -128,7 +147,10 @@ class PiOpticalGater(server.OpticalGater):
         
         # Set the properties of the Pi Camera according to the brightfield settings
         self.camera.framerate = self.settings["brightfield"]["brightfield_framerate"]
-        self.camera.resolution = (self.settings["brightfield"]["brightfield_resolution"],self.settings["brightfield"]["brightfield_resolution"])
+        self.camera.resolution = (
+                self.settings["brightfield"]["brightfield_resolution"], 
+                self.settings["brightfield"]["brightfield_resolution"]
+                )
         self.camera.awb_mode = self.settings["brightfield"]["awb_mode"]
         self.camera.exposure_mode = self.settings["brightfield"]["exposure_mode"]
         self.camera.shutter_speed = self.settings["brightfield"]["shutter_speed_us"] 
@@ -138,8 +160,7 @@ class PiOpticalGater(server.OpticalGater):
         # store the array analysis object for later output processing
         self.analysis = PiAnalysisWrapper(self.camera, gater=self)
         
-
-    def start_sync(self, eventQueue, stopQueue, showPreview = False):
+    def start_sync(self, eventQueue, stopQueue, refActivateQueue, refSelectQueue):
         """
         The function called by the web-server 'Start' button.
         Initialises the Pi Camera, and runs until the time_limit or trigger_limit is reached.
@@ -147,6 +168,11 @@ class PiOpticalGater(server.OpticalGater):
             eventQueue = multiprocessing Queue object to hold current time, framerate, trigger number, and state
             stopQueue = multiprocessing Queue object. If it is not empty, the sync will halt.
         """
+        # Assigning the recieved queues as attributes to be used by other object functions
+        self.stopQueue = stopQueue
+        self.refActivateQueue = refActivateQueue
+        self.refSelectQueue = refSelectQueue
+        
         # Run the setup_camera function
         self.setup_camera()
         

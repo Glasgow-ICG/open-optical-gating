@@ -26,10 +26,15 @@
 		<form name = "shutter_speed_us" action ="{{url_for('update_setting')}}" method = "POST">
 			<input class = "integer_updater" style = "top:24%;" type = "number" name = "shutter_speed_us" value = "{{shutter_speed_us}}" min = "1">
 		</form>
+		
+	<div class = "integer_description" style = "top:30%;">Contrast =</div>
+		<form name = "contrast" action ="{{url_for('update_setting')}}" method = "POST">
+			<input class = "integer_updater" style = "top:30%;" type = "number" name = "contrast" value = "{{contrast}}" min = "-100" max = "100">
+		</form>
 
-	<button type="button" class="update_button" style = "top:32%"> <a href = "/send-trigger/">Send Trigger</a></button>
+	<button type="button" class="update_button" style = "top:36%"> <a href = "/send-trigger/">Send Trigger</a></button>
 	
-	<div style = "top:42%; position:absolute; width:100%; height:auto; text-align:left; font-size:2vmin;">
+	<div style = "top:45%; position:absolute; width:100%; height:auto; text-align:left; font-size:2vmin;">
 	
 		<ul style = "color:red;">
 			<li style = "color:red;"> Each setting can be changed by pressing enter when the relevent input field is selected.</li>

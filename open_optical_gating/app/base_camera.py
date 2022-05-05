@@ -58,9 +58,7 @@ class CameraEvent(object):
 
 
 class BaseCamera(object):
-
-    
-    def __init__(self, framerate = 80, resolution = 128, shutter_speed_us = 2500, stop = False):
+    def __init__(self, framerate = 80, resolution = 128, shutter_speed_us = 2500, contrast = 0, stop = False):
         """Start the background camera thread if it isn't running yet."""
         self.thread = None
         self.frame = None
@@ -71,6 +69,7 @@ class BaseCamera(object):
             self.framerate = framerate
             self.resolution = resolution
             self.shutter_speed_us = shutter_speed_us
+            self.contrast = contrast
             self.stop = stop
         
             self.last_access = time.time()
