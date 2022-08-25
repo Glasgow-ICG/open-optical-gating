@@ -17,8 +17,6 @@ from . import pixelarray as pa
 from . import determine_reference_period as ref
 from . import prospective_optical_gating as pog
 
-
-
 # Log information about the environment we are running in.
 # This module list should match those specified in pyproject.toml
 import importlib
@@ -103,6 +101,7 @@ class OpticalGater:
         self.trigger_num_total = 0
         self.frame_num = 0
         self.frame_num_total = 0
+        self.timelapse_number = 0
         
         # Object timestamp for RPi time
         self.currentTimeStamp = 0
@@ -141,7 +140,7 @@ class OpticalGater:
             pixelArray.metadata["timestamp"],
             self.state
         )
-
+        
         self.slow_action_occurred = None # Will be set to a descriptive string later, if applicable
         self.frame_num += 1 
         self.frame_num_total += 1
@@ -171,12 +170,13 @@ class OpticalGater:
 
         pixelArray.metadata["optical_gating_state"] = self.state
         
-        if (
-            ("save_first_n_frames" in self.settings) and
-            (len(self.frames_to_save) < self.settings["save_first_n_frames"])
+        if (not self.settings["brightfield"]["save_first_n_frames"] == None
+            and len(self.frames_to_save) < self.settings["brightfield"]["save_first_n_frames"] 
            ):
             self.frames_to_save.append(pixelArray)
-            if len(self.frames_to_save) == self.settings["save_first_n_frames"]:
+            if len(self.frames_to_save) == self.settings["brightfield"]["save_first_n_frames"]:
+                print(self.settings["brightfield"]["save_first_n_frames"])
+                print("Saving frames...")
                 ref.save_period(self.frames_to_save, self.settings["reference"]["reference_sequence_dir"], prefix="VID-")
             
         if self.state == "reset":
@@ -225,6 +225,7 @@ class OpticalGater:
         """
         logger.debug("Resetting for new period determination.")
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
+        self.timelapse_ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
         self.predictor = pog.LinearPredictor(self.settings["prediction"])
         self.state = "determine"
     
@@ -264,7 +265,7 @@ class OpticalGater:
 
         # Gets the phase (in frames) and arrays of SADs between the current frame and the reference sequence
         current_phase, sad = self.ref_seq_manager.identify_phase_for_frame(pixelArray)
-        logger.trace("SAD curve: {0}", sad)
+        logger.debug("SAD curve: {0}", sad)
 
         # Calculate the unwrapped phase.
         if len(self.frame_history) == 0:
@@ -480,15 +481,17 @@ class OpticalGater:
     def user_pick_target_frame(self):
         """Prompts the user to select the target frame from a one-period set of reference frames"""
         # For now it is a simple command line interface (which is not very user-friendly as you can't see the images)
-        choice = input(
-                        "Please select a target frame between 0 and "
-                        + str(len(self.ref_seq_manager.ref_frames) - 1)
-                        + "\nOr enter -1 to select a new period.\n"
-                       )
-        self.slow_action_occurred = "user selection of target frame"
+        #choice = input(
+                       # "Please select a target frame between 0 and "
+                       # + str(len(self.ref_seq_manager.ref_frames) - 1)
+                       # + "\nOr enter -1 to select a new period.\n"
+                       #)
+        #self.slow_action_occurred = "user selection of target frame"
         # JT TODO: currently we do not prompt the user about the barrier frame
         # We just let the code identify the barrier frame from scratch without reference to anything specified previously
-        return int(choice), None
+        #return int(choice), None
+        #
+        # Change to be defined by pi_optical_gater so we can have better control of the information from the app
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         """

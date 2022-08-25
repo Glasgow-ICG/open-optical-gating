@@ -78,6 +78,16 @@
 			<form name = "contrast" action ="{{url_for('update_setting_live')}}" method = "POST">
 				<input class = "integer_updater" style = "top:43%;" type = "number" name = "contrast" value = "{{contrast}}" min = "-100" max = "100">
 			</form>
+			
+		<div class = "integer_description" style = "top:50%; font-size:2.5vmin;">Framerate =</div>
+			<form name = "framerate" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:50%;" type = "number" name = "framerate" value = "{{framerate}}" min = "20" max = "88">
+			</form>
+			
+		<div class = "integer_description" style = "top:57%; font-size:2.5vmin;">Save n frames =</div>
+			<form name = "save_first_n_frames" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:57%;" type = "number" name = "save_first_n_frames" value = "{{save_first_n_frames}}" min = "0" max = "1000">
+			</form>
 		
 	{% elif index_setting == "PickRefFrame" %}
 		<button type="button" class="trigger_button" style = "top:7%;"> <a href = "/stop-live/">Abort</a></button> 

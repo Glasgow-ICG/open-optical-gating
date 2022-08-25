@@ -132,7 +132,7 @@ class PiOpticalGater(server.OpticalGater):
         """Setup logging and the attributes of the Pi Camera."""
         # Setup logging
         logger.remove()
-        logger.add("user_log_folder/oog_{time}.log", level="INFO", format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+        logger.add("user_log_folder/oog_{time}.log", level= self.settings["general"]["debug_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
         logger.enable("open_optical_gating")
         
         # Setup attributes required for framerate calculation

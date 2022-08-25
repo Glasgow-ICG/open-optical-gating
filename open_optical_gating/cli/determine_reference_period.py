@@ -80,8 +80,8 @@ class ReferenceSequenceManager:
             this is implemented for our convenience when first setting up the sync.
             Most of the time, we find that the phase selected by this function is a
             reasonable one to synchronize to (whereas some phases such as the
-            refractory phases between beats) may be less reliable if they are
-            chosen as the target sync phase.
+            refractory phases between beats may be less reliable if they are
+            chosen as the target sync phase).
          
             The function uses various heuristics in the hope of identifying a
             consistent point in the heart cycle. For side-on orientations (as seen by

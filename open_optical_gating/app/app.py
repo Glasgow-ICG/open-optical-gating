@@ -232,6 +232,8 @@ def index(index_setting = "Setup"):
         trigger_limit = settings["general"]["trigger_limit"],
         shutter_speed_us = settings["brightfield"]["shutter_speed_us"],
         contrast = settings["brightfield"]["contrast"],
+        framerate = settings["brightfield"]["brightfield_framerate"],
+        save_first_n_frames = settings["brightfield"]["save_first_n_frames"],
         index_setting = index_setting
         )
 
@@ -255,6 +257,10 @@ def update_setting_live():
         settings["brightfield"]["shutter_speed_us"] = int(changeList[0][1])
     elif changeList[0][0] == "contrast":
         settings["brightfield"]["contrast"] = int(changeList[0][1])
+    elif changeList[0][0] == "framerate":
+        settings["brightfield"]["brightfield_framerate"] = int(changeList[0][1])
+    elif changeList[0][0] == "save_first_n_frames":
+        settings["brightfield"]["save_first_n_frames"] = int(changeList[0][1])
 
     # Dump the updated settings to json
     with open(settings_file, "w") as fp:
@@ -271,6 +277,7 @@ def activate_ref_input():
     Live.html is rendered with the relevant file paths and image numbers.
     """
     # Find the most recent reference sequence folder
+    print("prompted for reference selection")
     ref_sequence_length = refActivateQueue.get()
     all_folders = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*")
     most_recent_folder = max(all_folders, key = os.path.getctime)
