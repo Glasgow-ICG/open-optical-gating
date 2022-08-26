@@ -88,6 +88,12 @@
 			<form name = "save_first_n_frames" action ="{{url_for('update_setting_live')}}" method = "POST">
 				<input class = "integer_updater" style = "top:57%;" type = "number" name = "save_first_n_frames" value = "{{save_first_n_frames}}" min = "0" max = "1000">
 			</form>
+			
+		<div class = "integer_description" style = "top:64%; font-size:2.5vmin;">Log level =</div>
+			<form name = "log_level" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:64%;" type = "text" name = "log_level" value = "{{log_level}}">
+			</form>
+		
 		
 	{% elif index_setting == "PickRefFrame" %}
 		<button type="button" class="trigger_button" style = "top:7%;"> <a href = "/stop-live/">Abort</a></button> 

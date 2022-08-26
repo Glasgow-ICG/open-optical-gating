@@ -1,6 +1,6 @@
 {
     "general": {
-        "debug_level": "DEBUG",
+        "log_level": "INFO",
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000,
@@ -14,9 +14,9 @@
         "brightfield_resolution": 128,
         "awb_mode": "off",
         "exposure_mode": "off",
-        "shutter_speed_us": 6000,
+        "shutter_speed_us": 7000,
         "image_denoise": 0,
-        "contrast": 50,
+        "contrast": 0,
         "save_first_n_frames": 1000
     },
     "trigger": {
@@ -38,7 +38,7 @@
         "target_frame_selection_method": "user",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
-        "update_after_n_criterions": 10
+        "update_after_n_criterions": 50
     },
     "prediction": {
         "minFramesForFit": 3,

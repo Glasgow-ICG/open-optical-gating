@@ -234,6 +234,7 @@ def index(index_setting = "Setup"):
         contrast = settings["brightfield"]["contrast"],
         framerate = settings["brightfield"]["brightfield_framerate"],
         save_first_n_frames = settings["brightfield"]["save_first_n_frames"],
+        log_level = settings["general"]["log_level"],
         index_setting = index_setting
         )
 
@@ -261,6 +262,9 @@ def update_setting_live():
         settings["brightfield"]["brightfield_framerate"] = int(changeList[0][1])
     elif changeList[0][0] == "save_first_n_frames":
         settings["brightfield"]["save_first_n_frames"] = int(changeList[0][1])
+    elif changeList[0][0] == "log_level":
+       print(changeList[0][1])
+       settings["general"]["log_level"] = changeList[0][1]
 
     # Dump the updated settings to json
     with open(settings_file, "w") as fp:
@@ -344,6 +348,14 @@ def post_sync_setup():
     # Find the most recent log file in the user_log_folder
     all_logs = glob.glob("/home/pi/user_log_folder/*")
     most_recent_log = max(all_logs, key = os.path.getctime)
+    
+    all_vids = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/VID*")
+    most_recent_vid = max(all_vids, key = os.path.getctime)
+    print(most_recent_vid)
+    
+    with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/first_n_frames.zip", "w") as zipObj:
+        for imagePath in glob.glob(most_recent_vid + "/*.tiff"):
+            zipObj.write(imagePath, os.path.basename(imagePath))
     
     # If the log is a real log (not empty) we move it to the static folder, overwriting the previous log
     if len(open(most_recent_log).readlines()) > 5:

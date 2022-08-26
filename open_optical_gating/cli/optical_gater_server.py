@@ -71,8 +71,8 @@ class OpticalGater:
         
         # Set up logging, now recieves level from settings
         logger.remove()
-        logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["debug_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
-        logger.add(sys.stderr, level = settings["general"]["debug_level"])
+        logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+        logger.add(sys.stderr, level = settings["general"]["log_level"])
         logger.enable("open_optical_gating")
         
         logger.debug("Instantiated OpticalGater with settings: {0}", settings)
