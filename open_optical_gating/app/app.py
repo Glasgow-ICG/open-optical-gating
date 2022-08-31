@@ -235,6 +235,8 @@ def index(index_setting = "Setup"):
         framerate = settings["brightfield"]["brightfield_framerate"],
         save_first_n_frames = settings["brightfield"]["save_first_n_frames"],
         log_level = settings["general"]["log_level"],
+        triggers_per_timelapse = settings["reference"]["triggers_between_timelapse"],
+        timelapse_pause = settings["general"]["pause_for_timelapse"],
         index_setting = index_setting
         )
 
@@ -263,8 +265,11 @@ def update_setting_live():
     elif changeList[0][0] == "save_first_n_frames":
         settings["brightfield"]["save_first_n_frames"] = int(changeList[0][1])
     elif changeList[0][0] == "log_level":
-       print(changeList[0][1])
        settings["general"]["log_level"] = changeList[0][1]
+    elif changeList[0][0] == "triggers_per_timelapse":
+       settings["reference"]["triggers_between_timelapse"] = int(changeList[0][1])
+    elif changeList[0][0] == "timelapse_pause":
+       settings["general"]["pause_for_timelapse"] = int(changeList[0][1])
 
     # Dump the updated settings to json
     with open(settings_file, "w") as fp:
@@ -345,6 +350,9 @@ def stop_live():
 def post_sync_setup():
     """A page to display relevant plots generated from the logs."""
     
+    with open(settings_file) as json_file:
+        settings = json.load(json_file)
+    
     # Find the most recent log file in the user_log_folder
     all_logs = glob.glob("/home/pi/user_log_folder/*")
     most_recent_log = max(all_logs, key = os.path.getctime)
@@ -368,6 +376,16 @@ def post_sync_setup():
     with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/plots.zip", "w") as zipObj:
         for plotPath in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/static/*.jpg"):
             zipObj.write(plotPath, os.path.basename(plotPath))
+            
+    refSequencePaths = []
+    for refFolderName in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*"):
+        if refFolderName.endswith("_" + str(settings["general"]["log_counter"])):
+            refSequencePaths.append(refFolderName)
+    
+    with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/refs.zip", "w") as zipObj:
+        for refSequencePath in refSequencePaths:
+            zipObj.write(refSequencePath, os.path.basename(refSequencePath))
+            
     return render_template("post_sync.html")
 
 def confirm(host = "http://google.com"):

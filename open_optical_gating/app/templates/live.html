@@ -84,7 +84,7 @@
 				<input class = "integer_updater" style = "top:50%;" type = "number" name = "framerate" value = "{{framerate}}" min = "20" max = "88">
 			</form>
 			
-		<div class = "integer_description" style = "top:57%; font-size:2.5vmin;">Save n frames =</div>
+		<div class = "integer_description" style = "top:57%; font-size:2.5vmin;">Save first n frames =</div>
 			<form name = "save_first_n_frames" action ="{{url_for('update_setting_live')}}" method = "POST">
 				<input class = "integer_updater" style = "top:57%;" type = "number" name = "save_first_n_frames" value = "{{save_first_n_frames}}" min = "0" max = "1000">
 			</form>
@@ -92,6 +92,16 @@
 		<div class = "integer_description" style = "top:64%; font-size:2.5vmin;">Log level =</div>
 			<form name = "log_level" action ="{{url_for('update_setting_live')}}" method = "POST">
 				<input class = "integer_updater" style = "top:64%;" type = "text" name = "log_level" value = "{{log_level}}">
+			</form>
+			
+		<div class = "integer_description" style = "top:71%; font-size:2.5vmin;">Triggers per timepoint =</div>
+			<form name = "triggers_per_timelapse" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:71%;" type = "number" name = "triggers_per_timelapse" value = "{{triggers_per_timelapse}}">
+			</form>
+			
+		<div class = "integer_description" style = "top:78%; font-size:2.5vmin;">Timelapse pause (s) =</div>
+			<form name = "timelapse_pause" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:78%;" type = "number" name = "timelapse_pause" value = "{{timelapse_pause}}">
 			</form>
 		
 		
@@ -140,7 +150,6 @@
 	
 		<script src="http://code.jquery.com/jquery-latest.js"></script>
 		<div id="data" style = "white-space:pre-wrap; width:100%; height:auto; top:15%; text-align:center; position:absolute; font-size:3vmin; font-weight:bold; font-family:'Courier'; background-color: #F8F8F8;"></div>
-		
 			{% for i, j, k, l in data: %}
 				<script>
 					$("#data").text(" Time = {{i}} / {{time_limit_seconds}} \n Triggers = {{j}} / {{trigger_limit}} \n Framerate = {{k}} \n State = {{l}}")

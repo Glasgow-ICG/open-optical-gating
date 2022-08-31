@@ -74,6 +74,7 @@ class PiOpticalGater(server.OpticalGater):
         ref_sequence_length = str(len(self.ref_seq_manager.ref_frames) - 1)
         self.refActivateQueue.put(ref_sequence_length)
         
+        print("prompted for reference frame")
         # Wait for a reference frame selection from the flask process
         # Or until the user presses 'Abort' (which writes to the stopQueue)
         while True:
@@ -203,8 +204,13 @@ class PiOpticalGater(server.OpticalGater):
                 # Provide a console time output to compare to web-server outputs when debugging
                 sys.stdout.write("\r Time = {0}".format(np.round(self.currentTimeStamp, 2)))
                 
+                if self.state == "timelapse_pause":
+                    timeLeft = np.round(self.settings["general"]["pause_for_timelapse"] - (self.currentTimeStamp - self.last_timelapse_time), 1)
+                    currentState = f"timelapse_pause - {timeLeft} s"
+                else:
+                    currentState = self.state
                 # Place the relevant data in the multiprocessing eventQueue
-                eventQueue.put([self.currentTimeStamp, self.framerate, self.trigger_num_total, self.state])
+                eventQueue.put([self.currentTimeStamp, self.framerate, self.trigger_num_total, currentState])
                 
             self.camera.wait_recording(0.001)  
             
@@ -218,7 +224,6 @@ class PiOpticalGater(server.OpticalGater):
         # Stop recording and kill the camera object
         self.camera.stop_recording()
         self.camera.close()
-        
         print("PI OPTICAL GATER SHUT DOWN COMPLETELY...")
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
