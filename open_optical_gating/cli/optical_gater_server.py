@@ -110,7 +110,7 @@ class OpticalGater:
         
         # Object timestamp for RPi time
         self.currentTimeStamp = 0
-        
+        self.mostRecentTriggerTime = 0
         # Flag for interrupting the program's running
         self.stop = False
         
@@ -494,9 +494,12 @@ class OpticalGater:
                     frameInterval_s,
                     estHeartPeriod_s
                 )
+                
                 if (
                     sendTriggerReason is not None
+                    and this_predicted_trigger_time_s - self.mostRecentTriggerTime >= self.settings["general"]["min_time_between_triggers"]
                     ):
+                    self.mostRecentTriggerTime = this_predicted_trigger_time_s
                     # Actually send the electrical trigger signal
                     logger.debug(
                         "Sending trigger (reason: {0}) at time ({1} + {2}) s",

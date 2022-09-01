@@ -104,6 +104,11 @@
 				<input class = "integer_updater" style = "top:78%;" type = "number" name = "timelapse_pause" value = "{{timelapse_pause}}">
 			</form>
 		
+		<div class = "integer_description" style = "top:85%; font-size:2.5vmin;">Trigger separation (s) =</div>
+			<form name = "min_time_between_triggers" action ="{{url_for('update_setting_live')}}" method = "POST">
+				<input class = "integer_updater" style = "top:85%;" type = "number" step = ".01" name = "min_time_between_triggers" value = "{{min_time_between_triggers}}", min = "0">
+			</form>
+		
 		
 	{% elif index_setting == "PickRefFrame" %}
 		<button type="button" class="trigger_button" style = "top:7%;"> <a href = "/stop-live/">Abort</a></button> 

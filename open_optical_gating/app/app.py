@@ -237,6 +237,7 @@ def index(index_setting = "Setup"):
         log_level = settings["general"]["log_level"],
         triggers_per_timelapse = settings["reference"]["triggers_between_timelapse"],
         timelapse_pause = settings["general"]["pause_for_timelapse"],
+        min_time_between_triggers = settings["general"]["min_time_between_triggers"],
         index_setting = index_setting
         )
 
@@ -271,11 +272,13 @@ def update_setting_live():
        settings["reference"]["triggers_between_timelapse"] = int(changeList[0][1])
     elif changeList[0][0] == "timelapse_pause":
        settings["general"]["pause_for_timelapse"] = int(changeList[0][1])
+    elif changeList[0][0] == "min_time_between_triggers":
+       settings["general"]["min_time_between_triggers"] = float(changeList[0][1])
 
     # Dump the updated settings to json
     with open(settings_file, "w") as fp:
         json.dump(settings, fp, indent = 4)
-        
+       
     return index() 
 
 @app.route('/activate-ref/')
