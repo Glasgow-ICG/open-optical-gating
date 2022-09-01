@@ -185,9 +185,9 @@ class ReferenceSequenceManager:
         self.barrierFrameNum = barrier
         self.targetSyncPhase = 2*np.pi * (target / self.ref_period)
 
-    def save_ref_sequence(self, ref_seq_dir, runIdentifier):
+    def save_ref_sequence(self, ref_seq_dir, runIdentifier, prefix):
         # JT TODO: should also save period.txt as I do in the C code.
-        save_period(self.ref_frames, parent_dir = self.ref_settings["reference_sequence_dir"], runIdentifier = runIdentifier)
+        save_period(self.ref_frames, parent_dir = self.ref_settings["reference_sequence_dir"], runIdentifier = runIdentifier, prefix = prefix)
 
     def identify_phase_for_frame(self, frame):
         """ Phase match a new frame based on a reference period.
@@ -438,16 +438,14 @@ def calculate_period_length(diffs, minPeriod=5, lowerThresholdFactor=0.5, upperT
 
     return diffs.size - interpolatedMatchEntry
 
-def save_period(reference_sequence, parent_dir="~/", runIdentifier = "_0", prefix="REF-"):
+def save_period(reference_sequence, parent_dir="~/", runIdentifier = "_0", prefix = "REF-"):
     """Function to save a reference period in an ISO format time-stamped folder with a parent_dir.
         Parameters:
             reference_sequence    ndarray     t by x by y 3d array of reference frames
             parent_dir          string      parent directory within which to store the period
     """
     dt = datetime.now().strftime(prefix+"%Y-%m-%dT%H%M%S" + runIdentifier)
-    print("DT:", dt)
     os.makedirs(os.path.join(parent_dir, dt), exist_ok=True)
-
     # Saves the period
     for i, frame in enumerate(reference_sequence):
         if using_skimage:

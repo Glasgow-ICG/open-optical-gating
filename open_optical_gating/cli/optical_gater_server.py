@@ -255,13 +255,14 @@ class OpticalGater:
         # Set state to target state to be moved onto in the next pass of analyze_pixelarray
         self.state = target_state
     
-    def save_ref_frames(self):
+    def save_ref_frames(self, specialPrefix = "REF-"):
         # Save the most recent reference sequence
         if "reference_sequence_dir" in self.settings["reference"]:
             logger.debug("Reference sequence has been saved to disk")
             self.ref_seq_manager.save_ref_sequence(
                 self.settings["reference"]["reference_sequence_dir"], 
-                runIdentifier = "_" + str(self.settings["general"]["log_counter"])
+                runIdentifier = "_" + str(self.settings["general"]["log_counter"]),
+                prefix = specialPrefix
                 )
         
     def full_reset_state(self, pixelArray):
@@ -285,7 +286,7 @@ class OpticalGater:
         if ref_frames is not None:
             # Set reference frames
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
-            
+            self.save_ref_frames()
             # Select a target frame automatically or by input from the user
             # as implemented by subclasses
             method = self.settings["reference"]["target_frame_selection_method"]
@@ -297,7 +298,7 @@ class OpticalGater:
                 newTargetFrame = None
                 newBarrierFrame = None
             self.set_target_frame(newTargetFrame, newBarrierFrame)
-            self.save_ref_frames()
+            
             
             
             # Add reference information to both the aligners as this first sequence will 
@@ -360,7 +361,7 @@ class OpticalGater:
         ref_frames, period_to_use = self.ref_seq_manager.establish_period_from_frames(pixelArray)
         if ref_frames is not None:
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
-
+            self.save_ref_frames(specialPrefix = "REF-timelapse-")
             # Find and set the appropriate target frame for the new z = 0 reference sequence
             newTargetFrame= self.aligner2.process_sequence(
                 self.ref_seq_manager.ref_frames, 

@@ -5,8 +5,8 @@
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
-        "pause_for_timelapse": 120,
-        "log_counter": 54
+        "pause_for_timelapse": 40,
+        "log_counter": 117
     },
     "brightfield": {
         "brightfield_framerate": 80,

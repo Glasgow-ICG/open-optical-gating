@@ -266,6 +266,7 @@ def update_setting_live():
         settings["brightfield"]["save_first_n_frames"] = int(changeList[0][1])
     elif changeList[0][0] == "log_level":
        settings["general"]["log_level"] = changeList[0][1]
+       print(changeList[0][1])
     elif changeList[0][0] == "triggers_per_timelapse":
        settings["reference"]["triggers_between_timelapse"] = int(changeList[0][1])
     elif changeList[0][0] == "timelapse_pause":
@@ -377,14 +378,22 @@ def post_sync_setup():
         for plotPath in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/static/*.jpg"):
             zipObj.write(plotPath, os.path.basename(plotPath))
             
-    refSequencePaths = []
+    refSequenceFolders = []
     for refFolderName in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*"):
         if refFolderName.endswith("_" + str(settings["general"]["log_counter"])):
-            refSequencePaths.append(refFolderName)
+            print(refFolderName)
+            refSequenceFolders.append(refFolderName)
     
-    with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/refs.zip", "w") as zipObj:
-        for refSequencePath in refSequencePaths:
-            zipObj.write(refSequencePath, os.path.basename(refSequencePath))
+    with ZipFile("/home/pi/open-optical-gating/open_optical_gating/app/static/refs.zip", "w") as zipObj:
+        for refSequenceFolder in refSequenceFolders:
+            print(f"Current ref folder = {refSequenceFolder}")
+            for dirPath, dirNames, fileNames in os.walk(refSequenceFolder):
+                print(dirPath, dirNames, fileNames)
+                for fileName in fileNames:
+                    zipObj.write(
+                        os.path.join(dirPath, fileName),
+                        os.path.relpath(os.path.join(dirPath, fileName), os.path.join(refSequenceFolders[0], "../.."))
+                        )
             
     return render_template("post_sync.html")
 
