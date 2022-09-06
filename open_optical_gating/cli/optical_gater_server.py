@@ -114,8 +114,6 @@ class OpticalGater:
         # Flag for interrupting the program's running
         self.stop = False
         
-
-
     def run_server(self):
         """ Run the OpticalGater server, acting on the supplied frame images.
             run_and_analyze_until_stopped() is implemented by subclasses, which call back into
@@ -162,8 +160,6 @@ class OpticalGater:
            ):
             self.frames_to_save.append(pixelArray)
             if len(self.frames_to_save) == self.settings["brightfield"]["save_first_n_frames"]:
-                print(self.settings["brightfield"]["save_first_n_frames"])
-                print("Saving frames...")
                 ref.save_period(self.frames_to_save, self.settings["reference"]["reference_sequence_dir"], prefix="VID-")
         
         # Initiate a timelapse reference sequence update if a certain number of triggers 
@@ -299,8 +295,6 @@ class OpticalGater:
                 newBarrierFrame = None
             self.set_target_frame(newTargetFrame, newBarrierFrame)
             
-            
-            
             # Add reference information to both the aligners as this first sequence will 
             # correspond to the z = 0 plane
             self.aligner1.process_initial_sequence(
@@ -315,7 +309,6 @@ class OpticalGater:
                 self.ref_seq_manager.drift,
                 self.ref_seq_manager.targetFrameNum
                 )
-                
             self.state = "sync"
                 
     def basic_refresh_state(self, pixelArray):
@@ -357,6 +350,7 @@ class OpticalGater:
         -> aligner 1 is re-initiased to discard the reference sequences from the previous stack
         -> the new aligner 1 is updated with the new reference sequence and target frame.
         """
+        
         logger.debug("Performing a timelapse refresh")
         ref_frames, period_to_use = self.ref_seq_manager.establish_period_from_frames(pixelArray)
         if ref_frames is not None:
@@ -370,14 +364,7 @@ class OpticalGater:
                 )
             self.set_target_frame(newTargetFrame, None)
             logger.debug(f"A new target frame ({newTargetFrame}) has been generated")
-            # Add the new sequence to aligner 2
-            self.aligner2.process_initial_sequence(
-                self.ref_seq_manager.ref_frames,
-                self.ref_seq_manager.ref_period, 
-                self.ref_seq_manager.drift,
-                self.ref_seq_manager.targetFrameNum
-            )
-
+            
             # Re-initialising aligner 1 and add new reference sequence and target frame
             self.aligner1 = oga.Aligner(self.settings["oga"])
             self.aligner1.process_initial_sequence(
@@ -386,7 +373,6 @@ class OpticalGater:
                 self.ref_seq_manager.drift,
                 self.ref_seq_manager.targetFrameNum
             )
-            
             # Return to sync state
             self.state = "sync"
             
@@ -394,6 +380,7 @@ class OpticalGater:
         """ Impose a new target frame representing the heart phase that our code will aim to synchronize to.
             If input values are None, we will make our own empirical guess of values we think should perform well
         """
+        print(f"New target frame = {new_target_frame}")
         logger.debug("set_target_frame() called with {0}, {1}", new_target_frame, new_barrier)
         defaultTarget, defaultBarrier = self.ref_seq_manager.pick_good_target_and_barrier_frames()
         if new_target_frame is None:

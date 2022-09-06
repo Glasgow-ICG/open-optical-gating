@@ -1,6 +1,6 @@
 # Open Optical Gating: open-source prospective and adaptive optical gating for 3D fluorescence microscopy of beating hearts
 
-## Alex Drysdale, Patrick Cameron, Jonathan Taylor and Chas Nelson
+## Alex Drysdale, Cameron Wilson, Patrick Cameron, Jonathan Taylor and Chas Nelson.
 
 ### School of Physics and Astronomy, University of Glasgow, UK
 
