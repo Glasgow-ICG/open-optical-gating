@@ -2,7 +2,6 @@
 
 # Python imports
 import sys, time
-import json
 
 # Module imports
 import numpy as np
@@ -69,13 +68,12 @@ class OpticalGater:
         # that's not ideal but works for now
         self.settings = settings
         
-        # Log a this run as being unique by adding to a counter -> helps with reference sequence
-        # collection
-        self.settings["general"]["log_counter"] = self.settings["general"]["log_counter"] + 1
-        with open("/home/pi/open-optical-gating/optical_gating_data/pi_settings.json", "w") as fp:
-            json.dump(self.settings, fp, indent = 4)
+        # Mark this run with a unique identifier by adding to a counter -> helps with reference sequence collection
+        if not "log_counter" in self.settings["general"]:
+            self.settings["general"]["log_counter"] = 0
+        self.settings["general"]["log_counter"] += 1
         
-        # Set up logging, now recieves level from settings
+        # Set up logging, now receives level from settings
         logger.remove()
         logger.remove()
         logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
@@ -99,6 +97,7 @@ class OpticalGater:
         """Defines all internal parameters not already initialised"""
         self.frame_history = []
         self.frames_to_save = []
+        self.slow_action_occurred = None
         self.latestTriggerPredictFrame = None
         
         # Define parameters for reference sequence update requirements
@@ -140,7 +139,8 @@ class OpticalGater:
         # For logging 
         time_init = time.perf_counter()
         self.currentTimeStamp = pixelArray.metadata["timestamp"]
-        self.frame_num += 1 
+        self.slow_action_occurred = None # Will be set to a descriptive string later, if applicable
+        self.frame_num += 1
         self.frame_num_total += 1
         
         logger.info(
@@ -283,6 +283,7 @@ class OpticalGater:
             # Set reference frames
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
             self.save_ref_frames()
+            self.slow_action_occurred = "reference frame refresh"
             # Select a target frame automatically or by input from the user
             # as implemented by subclasses
             method = self.settings["reference"]["target_frame_selection_method"]
@@ -324,7 +325,8 @@ class OpticalGater:
             logger.debug("Established reference sequence with period {0}".format(period_to_use))
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
             self.save_ref_frames()
-            
+            self.slow_action_occurred = "reference frame adaptive update"
+
             # Find and set the new target frame
             newTargetFrame = self.aligner1.process_sequence(
                 self.ref_seq_manager.ref_frames,
@@ -363,6 +365,7 @@ class OpticalGater:
                 self.ref_seq_manager.drift
                 )
             self.set_target_frame(newTargetFrame, None)
+            self.slow_action_occurred = "reference frame adaptive update"
             logger.debug(f"A new target frame ({newTargetFrame}) has been generated")
             
             # Re-initialising aligner 1 and add new reference sequence and target frame
