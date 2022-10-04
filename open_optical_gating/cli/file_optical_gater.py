@@ -68,7 +68,10 @@ class FileOpticalGater(server.OpticalGater):
         # Load
         logger.success("Loading image data...")
         self.data = None
-        singleImages = []   # Used to batch-accumulate single-page TIFF images, for performance reasons
+        # We accumulate the individual files as a list of arrays, and then concatenate them all together
+        # This copes with the wildcard case where there is more than one image being loaded,
+        # and this chosen strategy performs much better than np.append when we have lots of individual images.
+        imageList = []
         for fn in tqdm(sorted(glob.glob(filename)), desc='Loading image data'):
             logger.debug("Loading image data from file {0}", fn)
             imageData = tiffio.imread(fn)
@@ -88,17 +91,8 @@ class FileOpticalGater(server.OpticalGater):
                 # makes it easy to spot
                 warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
                 imageData = np.moveaxis(imageData, -1, 0)
-            if self.data is None:
-                self.data = imageData
-            elif imageData.shape[0] == 1:
-                singleImages.append(imageData)
-            else:
-                if len(singleImages) > 0:
-                    self.data = np.append(self.data, np.array(singleImages), axis=0)
-                self.data = np.append(self.data, imageData, axis=0)
-        if len(singleImages) > 0:
-            batch = np.squeeze(np.array(singleImages), axis=1)
-            self.data = np.append(self.data, batch, axis=0)
+            imageList.append(imageData)
+        self.data = np.concatenate(imageList)
         
         if self.data is None:
             # No files found matching the pattern 'filename'
