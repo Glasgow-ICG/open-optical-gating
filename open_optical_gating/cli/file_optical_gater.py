@@ -68,11 +68,14 @@ class FileOpticalGater(server.OpticalGater):
         # Load
         logger.success("Loading image data...")
         self.data = None
+        singleImages = []   # Used to batch-accumulate single-page TIFF images, for performance reasons
         for fn in tqdm(sorted(glob.glob(filename)), desc='Loading image data'):
             logger.debug("Loading image data from file {0}", fn)
             imageData = tiffio.imread(fn)
             if len(imageData.shape) == 2:
                 # Cope with loading a single image - convert it to a 1xMxN array
+                # We have a performance risk here: np.append is inefficient so we can't just append each image individually
+                # Instead we accumulate a list and then do a single np.array() call at the end.
                 imageData = imageData[np.newaxis,:,:]
             if (((imageData.shape[-1] == 3) or (imageData.shape[-1] == 4))
                 and (imageData.strides[-1] != 1)):
@@ -87,9 +90,16 @@ class FileOpticalGater(server.OpticalGater):
                 imageData = np.moveaxis(imageData, -1, 0)
             if self.data is None:
                 self.data = imageData
+            elif imageData.shape[0] == 1:
+                singleImages.append(imageData)
             else:
+                if len(singleImages) > 0:
+                    self.data = np.append(self.data, np.array(singleImages), axis=0)
                 self.data = np.append(self.data, imageData, axis=0)
-    
+        if len(singleImages) > 0:
+            batch = np.squeeze(np.array(singleImages), axis=1)
+            self.data = np.append(self.data, batch, axis=0)
+        
         if self.data is None:
             # No files found matching the pattern 'filename'
             if "example_url" in self.settings["file"]:
@@ -256,7 +266,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
     # (Note that os.path.join correctly handles the case where the second argument is an absolute path)
     if ("file" in settings 
         and "input_tiff_path" in settings["file"]):
-        settings["file"]["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), settings["file"]["input_tiff_path"])
+        settings["file"]["input_tiff_path"] = os.path.join(os.path.dirname(settings_file_path), os.path.expanduser(settings["file"]["input_tiff_path"]))
 
     # Provide the parsed arguments to the caller, as a way for them to access
     # any additional flags etc that they have specified

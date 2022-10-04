@@ -1,5 +1,6 @@
 **/local-data/**
 **/reference-sequence-data/**
+**/user_log_folder/**
 output.log
 **/triggers.png
 **/accuracy.png
