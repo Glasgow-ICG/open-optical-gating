@@ -92,11 +92,11 @@ class FileOpticalGater(server.OpticalGater):
                 warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
                 imageData = np.moveaxis(imageData, -1, 0)
             imageList.append(imageData)
-        self.data = np.concatenate(imageList)
-        
-        if self.data is None:
+        if len(imageList) > 0:
+            self.data = np.concatenate(imageList)
+        else:
             # No files found matching the pattern 'filename'
-            if "example_url" in self.settings["file"]:
+            if "source_url" in self.settings["file"]:
                 if (sys.platform == "win32"):
                     os.system("color")  # Make ascii color codes work
                 response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(filename))
@@ -104,7 +104,7 @@ class FileOpticalGater(server.OpticalGater):
                     # Download from the URL provided in the settings file
                     os.makedirs(os.path.dirname(filename), exist_ok=True)
                     with tqdm(unit='B', unit_scale=True, desc="Downloading") as t:
-                        urllib.request.urlretrieve(self.settings["file"]["example_url"],
+                        urllib.request.urlretrieve(self.settings["file"]["source_url"],
                                                    filename,
                                                    reporthook=tqdm_hook(t))
                     logger.info("Downloaded file {0}".format(filename))
