@@ -102,7 +102,8 @@ class FileOpticalGater(server.OpticalGater):
                 response = input("\033[1;31mFile {0} not found on disk. Do you want to download from the internet? [Y/n]\033[0m\n".format(filename))
                 if (response.startswith("Y") or response.startswith("y") or (response == "")):
                     # Download from the URL provided in the settings file
-                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    if (len(os.path.dirname(filename))) > 0:
+                        os.makedirs(os.path.dirname(filename), exist_ok=True)
                     with tqdm(unit='B', unit_scale=True, desc="Downloading") as t:
                         urllib.request.urlretrieve(self.settings["file"]["source_url"],
                                                    filename,
