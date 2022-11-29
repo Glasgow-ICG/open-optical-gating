@@ -298,16 +298,20 @@ def run(args, desc):
         Run the optical gater based on a settings.json file which includes
         the path to the .tif file to be processed.
         
-        Params:   raw_args   list    Caller should normally pass sys.argv here
+        Params:   raw_args   list    Caller should normally pass sys.argv[1:] here
                   desc       str     Description to provide as command line help description
     '''
-    settings = load_settings(args, desc)
+    
+    def add_extra_args(parser):
+        parser.add_argument("-r", "--realtime", dest="realtime", action="store_false", help="Replay in realtime (framerate as per settings file)")
+    
+    settings = load_settings(args, desc, add_extra_args)
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["file"]["input_tiff_path"],
         settings=settings,
-        force_framerate=True
+        force_framerate=settings["parsed_args"].realtime
     )
 
     logger.success("Running server...")

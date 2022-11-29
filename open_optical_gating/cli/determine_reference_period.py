@@ -51,10 +51,14 @@ class ReferenceSequenceManager:
         # in cases where we are not succeeding in identifying a period.
         # That limit is defined in terms of how many seconds of frame data we have,
         # relative to the minimum heart rate (in Hz) that we are configured to expect.
+        # Note that this logic should work when running in real time, and with file_optical_gater
+        # in force_framerate=False mode. With force_framerate=True (or indeed in real time) we will
+        # have problems if we can't keep up with the framerate frames are arriving at.
+        # We should probably be monitoring for that situation...
         ref_buffer_duration = (self.frame_history[-1].metadata["timestamp"] - self.frame_history[0].metadata["timestamp"])
         while (ref_buffer_duration > 1.0/self.ref_settings["min_heart_rate_hz"]):
             # I have coded this as a while loop, but we would normally expect to only trim one frame at a time
-            logger.debug("Trimming buffer from duration {0} to {1}".format(ref_buffer_duration, 1.0/self.ref_settings["min_heart_rate_hz"]))
+            logger.debug("Trimming buffer from duration {0}s to {1}s".format(ref_buffer_duration, 1.0/self.ref_settings["min_heart_rate_hz"]))
             del self.frame_history[0]
             ref_buffer_duration = (self.frame_history[-1].metadata["timestamp"] - self.frame_history[0].metadata["timestamp"])
         
