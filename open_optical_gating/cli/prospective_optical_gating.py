@@ -13,6 +13,8 @@ import j_py_sad_correlation as jps
 from . import pixelarray as pa
 from . import determine_reference_period as ref
 
+# Rewrite this as a parent class and have two subclasses: linear predictor and Kalman predictor
+
 class LinearPredictor:
     def __init__(self, predictor_settings):
         self.settings = predictor_settings
