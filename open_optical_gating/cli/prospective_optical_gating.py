@@ -12,10 +12,9 @@ import j_py_sad_correlation as jps
 # Local imports
 from . import pixelarray as pa
 from . import determine_reference_period as ref
+from .kalman_filter import KalmanFilter
 
-# Rewrite this as a parent class and have two subclasses: linear predictor and Kalman predictor
-
-class LinearPredictor:
+class PredictorBase:
     def __init__(self, predictor_settings):
         self.settings = predictor_settings
         self.mostRecentTriggerTime = -1000
@@ -70,6 +69,83 @@ class LinearPredictor:
         self.framesForPredictionLookup = numToUsePadding
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
+        """
+        This is just the base class for our predictor. It should be overridden by the specific predictor classes.
+        """        
+        pass
+
+    def decide_whether_to_trigger(self, timestamp, timeToWait_s, frameInterval_s, estHeartPeriod_s):
+        """ Potentially schedules a synchronization trigger for the fluorescence camera,
+            based on the caller-supplied candidate trigger time described by timeToWait_s.
+            We will do this if the trigger is due fairly soon in the future,
+            and we are not confident we will have time to make an updated prediction
+            based on the next incoming frame from the brightfield camera.
+            
+            Parameters:
+                timestamp               float   Time associated with current frame (seconds)
+                timeToWait_s            float   Time delay (in seconds) before trigger would need to be sent.
+                frameInterval_s         float   Expected time gap (in seconds) between brightfield frames
+                estHeartPeriod_s        float   Estimated period of heartbeat (in seconds)
+            Returns:
+                timeToWait_s            float   Updated time delay before trigger would need to be sent.
+                                                 Note that this return value may be modified from its input value (see code below).
+                sendTriggerReason       str     String indicates why a trigger for the fluorescence camera should be scheduled now,
+                                                 for a time timeToWait_s into the future. Or None if no trigger should be sent
+            """
+        sendTriggerReason = None
+
+        logger.debug(
+            "Time to wait: {0} s; with latency: {1} s;",
+            timeToWait_s,
+            self.settings["prediction_latency_s"],
+        )
+
+        # The parameter 'prediction_latency_s' represents how much time we *expect* to need
+        # between scheduling a trigger and actually being able to send it.
+        # That influences whether we commit to this trigger time, or wait for an updated prediction based on the next brightfield frame due to arrive soon
+        if self.mostRecentTriggerTime >= timestamp - estHeartPeriod_s / 2:
+            # We have already sent a trigger on this heartbeat, so we consider that we are now making predictions for the *next* cycle.
+            #
+            # If we've done any triggering in the last half a cycle, don't trigger again.
+            # This is quite different from JTs approach,
+            # where he keeps track of which cycle we last triggered on.
+            # JT note: the reason for my approach is because I may want to send multiple triggers at different heart phases
+            # JT TODO: I may want to update this code, and/or incorporate that concept...
+            logger.debug("Trigger already sent recently. Will not send another - extending the prediction coarsely to the next cycle")
+            timeToWait_s += estHeartPeriod_s
+        elif timeToWait_s < self.settings["prediction_latency_s"]:
+            # Haven't sent a trigger on this heartbeat.
+            # We may not have time, but we can give it a go and cross our fingers we schedule it in time
+            logger.debug("Trigger is needed with short latency, but we may as well give it a shot...")
+            sendTriggerReason = "panic"
+        elif (timeToWait_s - (1.6 * frameInterval_s)) < self.settings["prediction_latency_s"]:
+            # We don't expect to have time to wait for an updated prediction from the next frame... so schedule the trigger now!
+            # Note that the 1.6 multiplier is an empirical constant related to how much
+            # frame-to-frame variability we expect in the phase rate.
+            # Ideally it would depend on the  actual observed variability in the time estimates as successive frame data is received
+            logger.debug("Schedule trigger because target time is coming up soon")
+            sendTriggerReason = "standard"
+        else:
+            # We expect to have time to wait for an updated prediction, so we do nothing for now.
+            logger.debug("No trigger - we reckon we can wait for next frame")
+            pass
+
+        if (sendTriggerReason is not None):
+            logger.debug("Trigger scheduled to be sent, updating `mostRecentTriggerTime` to {0}+{1}.", timestamp, timeToWait_s)
+            self.mostRecentTriggerTime = timestamp + timeToWait_s
+
+        return timeToWait_s, sendTriggerReason
+
+
+class LinearPredictor(PredictorBase):
+    """
+    This class implements the linear predictor for phase prediction.
+
+    Args:
+        PredictorBase (_type_): _description_
+    """
+
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
             
             Parameters:
@@ -91,6 +167,7 @@ class LinearPredictor:
         # We try not to fit to the refractory period unless there really is no other data.
         # The intention of this is to fit to as much data as possible but only in the parts of the cycle
         # where the phase progression is highly predictable and linear with time.
+
         if framesForFit is None:
             if fitBackToBarrier:
                 allowedToExtendNumberOfFittedPoints = False
@@ -206,64 +283,51 @@ class LinearPredictor:
         # Return our prediction
         return timeToWait_s, estHeartPeriod_s
 
-    def decide_whether_to_trigger(self, timestamp, timeToWait_s, frameInterval_s, estHeartPeriod_s):
-        """ Potentially schedules a synchronization trigger for the fluorescence camera,
-            based on the caller-supplied candidate trigger time described by timeToWait_s.
-            We will do this if the trigger is due fairly soon in the future,
-            and we are not confident we will have time to make an updated prediction
-            based on the next incoming frame from the brightfield camera.
-            
-            Parameters:
-                timestamp               float   Time associated with current frame (seconds)
-                timeToWait_s            float   Time delay (in seconds) before trigger would need to be sent.
-                frameInterval_s         float   Expected time gap (in seconds) between brightfield frames
-                estHeartPeriod_s        float   Estimated period of heartbeat (in seconds)
-            Returns:
-                timeToWait_s            float   Updated time delay before trigger would need to be sent.
-                                                 Note that this return value may be modified from its input value (see code below).
-                sendTriggerReason       str     String indicates why a trigger for the fluorescence camera should be scheduled now,
-                                                 for a time timeToWait_s into the future. Or None if no trigger should be sent
-            """
-        sendTriggerReason = None
+class LinearKalmanPredictor(PredictorBase):
+    """
+    This class will implement the basic linear Kalman filter for phase prediction.
 
-        logger.debug(
-            "Time to wait: {0} s; with latency: {1} s;",
-            timeToWait_s,
-            self.settings["prediction_latency_s"],
-        )
+    Args:
+        PredictorBase (_type_): _description_
+    """
 
-        # The parameter 'prediction_latency_s' represents how much time we *expect* to need
-        # between scheduling a trigger and actually being able to send it.
-        # That influences whether we commit to this trigger time, or wait for an updated prediction based on the next brightfield frame due to arrive soon
-        if self.mostRecentTriggerTime >= timestamp - estHeartPeriod_s / 2:
-            # We have already sent a trigger on this heartbeat, so we consider that we are now making predictions for the *next* cycle.
-            #
-            # If we've done any triggering in the last half a cycle, don't trigger again.
-            # This is quite different from JTs approach,
-            # where he keeps track of which cycle we last triggered on.
-            # JT note: the reason for my approach is because I may want to send multiple triggers at different heart phases
-            # JT TODO: I may want to update this code, and/or incorporate that concept...
-            logger.debug("Trigger already sent recently. Will not send another - extending the prediction coarsely to the next cycle")
-            timeToWait_s += estHeartPeriod_s
-        elif timeToWait_s < self.settings["prediction_latency_s"]:
-            # Haven't sent a trigger on this heartbeat.
-            # We may not have time, but we can give it a go and cross our fingers we schedule it in time
-            logger.debug("Trigger is needed with short latency, but we may as well give it a shot...")
-            sendTriggerReason = "panic"
-        elif (timeToWait_s - (1.6 * frameInterval_s)) < self.settings["prediction_latency_s"]:
-            # We don't expect to have time to wait for an updated prediction from the next frame... so schedule the trigger now!
-            # Note that the 1.6 multiplier is an empirical constant related to how much
-            # frame-to-frame variability we expect in the phase rate.
-            # Ideally it would depend on the  actual observed variability in the time estimates as successive frame data is received
-            logger.debug("Schedule trigger because target time is coming up soon")
-            sendTriggerReason = "standard"
-        else:
-            # We expect to have time to wait for an updated prediction, so we do nothing for now.
-            logger.debug("No trigger - we reckon we can wait for next frame")
-            pass
+    def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
+        self.kf = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
 
-        if (sendTriggerReason is not None):
-            logger.debug("Trigger scheduled to be sent, updating `mostRecentTriggerTime` to {0}+{1}.", timestamp, timeToWait_s)
-            self.mostRecentTriggerTime = timestamp + timeToWait_s
+        super().__init__(predictor_settings)
 
-        return timeToWait_s, sendTriggerReason
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
+        """
+        Predicts how long we need to wait for the heart to be at the target phase we are triggering to based upon the Kalman filter
+        estimate of the current phase and phase progressions.
+
+        TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
+
+        Args:
+            full_frame_history (list): List of PixelArray objects, including appropriate metadata
+            targetSyncPhase (float): Phase that we are supposed to be triggering at
+            frameInterval_s (float): Not used for KF
+            fitBackToBarrier (bool): Not used for KF
+            framesForFit (int): Not used for KF
+            NOTE: that the main purpose of this parameter is for use when we recursively call ourselves
+
+        Returns:
+            tuple: Tuple of the time to wait in seconds and the estimated heart period in seconds
+        """        
+
+        
+        self.kf.predict()
+        current_state = self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
+
+        thisFramePhase = self.kf.x[0]
+        multiPhaseCounter = thisFramePhase // (2 * np.pi)
+        phaseToWait = targetSyncPhase + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
+        radsPerSec = self.kf.x[1]
+        timeToWait_s = phaseToWait / radsPerSec
+        estHeartPeriod_s = 2*np.pi/radsPerSec
+
+        return timeToWait_s, estHeartPeriod_s
+    
+class IMMPredictor(PredictorBase):
+    def __init__(self):
+        super().__init__()

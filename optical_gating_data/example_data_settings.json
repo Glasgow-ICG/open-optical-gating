@@ -35,6 +35,7 @@
     },
     
     "prediction": {
+        "prediction_method": "linear",
         "minFramesForFit": 3,
         "maxFramesForFit": 32,
         "extrapolationFactor": 1.5,

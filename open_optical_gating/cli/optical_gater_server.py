@@ -241,9 +241,21 @@ class OpticalGater:
         and one for trans-stack z = 0 reference sequences.
         """
         logger.debug("Preparing for state change")
-        # Re-initialise the ref_seq_manager and predictor
+        # Re-initialise the ref_seq_manager
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
-        self.predictor = pog.LinearPredictor(self.settings["prediction"])
+        # Initialise our predictor
+        if self.settings["prediction"]["prediction_method"] == "kalman":
+            logger.info("Initialising Kalman predictor")
+            self.predictor = pog.KalmanPredictor(self.settings["prediction"], 1/self.settings["brightfield"]["brightfield_framerate"], np.array([0,1]), np.array([[1, 0],[0, 1]]), 0.1, 0.01)
+        elif self.settings["prediction"]["prediction_method"] == "linear":
+            logger.info("Initialising linear predictor")
+            self.predictor = pog.LinearPredictor(self.settings["prediction"])
+        elif self.settings["prediction"]["prediction_method"] == "IMM":
+            logger.info("Initialising IMM predictor")
+            self.predictor = pog.IMMPredictor(self.settings["prediction"])
+        else:
+            logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
+            raise NotImplementedError("Unknown prediction method '{0}'".format(self.settings["prediction"]["prediction_method"]))
         # Initialise 2 aligners in the case that a full_reset is desired
         if target_state == "full_reset":
             self.aligner1 = oga.Aligner(self.settings["oga"])

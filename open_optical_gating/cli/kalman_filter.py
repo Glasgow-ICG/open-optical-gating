@@ -40,6 +40,9 @@ class KalmanFilter():
         
         # Residual
         self.e = z - self.H @ self.x
+
+        # Return the most recent state estimate
+        return self.x, self.P, self.e, self.d
         
 
     @classmethod
