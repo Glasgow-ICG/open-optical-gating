@@ -25,7 +25,7 @@
         "minPeriod": 5,
         "lowerThresholdFactor": 0.5,
         "upperThresholdFactor": 0.75,
-        "min_heart_rate_hz": 1.0,
+        "min_heart_rate_hz": 0.000001,
         "reference_sequence_dir": "reference-sequence-data/",
         "target_frame_selection_method": "auto",
         "target_frame_adaptive_update": 1,
