@@ -160,12 +160,12 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
-    analyser.plot_triggers()
+    #analyser.plot_triggers()
     analyser.plot_prediction()
-    analyser.plot_phase_histogram()
-    analyser.plot_phase_error_histogram()
-    analyser.plot_phase_error_with_time()
-    analyser.plot_running()
+    #analyser.plot_phase_histogram()
+    #analyser.plot_phase_error_histogram()
+    #analyser.plot_phase_error_with_time()
+    #analyser.plot_running()
 
 class Drawer():
     def __init__(self, beats = 10, reference_period = 38.156, dimensions =  (256, 256)):

@@ -71,8 +71,9 @@ class PredictorBase:
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
         This is just the base class for our predictor. It should be overridden by the specific predictor classes.
-        """        
-        pass
+        This function forward predicts when the next trigger should occur.
+        """
+        raise NotImplementedError("Subclasses must override this function")
 
     def decide_whether_to_trigger(self, timestamp, timeToWait_s, frameInterval_s, estHeartPeriod_s):
         """ Potentially schedules a synchronization trigger for the fluorescence camera,
@@ -211,6 +212,7 @@ class LinearPredictor(PredictorBase):
         # This should not rescue cases where, for some reason, the image-based
         # phase matching is erroneous.
         thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec
+        print(thisFramePhase)
         # Count how many total periods we have seen
         multiPhaseCounter = thisFramePhase // (2 * np.pi)
         # Determine how much of a cardiac cycle we have to wait till our target phase
@@ -279,11 +281,10 @@ class LinearPredictor(PredictorBase):
                 timeToWait_s, estHeartPeriod_s = self.predict_trigger_wait(
                     frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier, extendedFramesForFit
                 )
-
         # Return our prediction
         return timeToWait_s, estHeartPeriod_s
 
-class LinearKalmanPredictor(PredictorBase):
+class KalmanPredictor(PredictorBase):
     """
     This class will implement the basic linear Kalman filter for phase prediction.
 
@@ -296,12 +297,16 @@ class LinearKalmanPredictor(PredictorBase):
 
         super().__init__(predictor_settings)
 
+    def target_and_barrier_updated(self, ref_seq_manager):
+        pass
+
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
         Predicts how long we need to wait for the heart to be at the target phase we are triggering to based upon the Kalman filter
         estimate of the current phase and phase progressions.
 
         TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
+        TODO: Initialise the Kalman filter with the initial phase estimate
 
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
@@ -309,21 +314,36 @@ class LinearKalmanPredictor(PredictorBase):
             frameInterval_s (float): Not used for KF
             fitBackToBarrier (bool): Not used for KF
             framesForFit (int): Not used for KF
-            NOTE: that the main purpose of this parameter is for use when we recursively call ourselves
 
         Returns:
-            tuple: Tuple of the time to wait in seconds and the estimated heart period in seconds
+            timeToWait_s (float): Time to wait for the next camera trigger,
+            estHeartPeriod_s (float): Estimate period of the heart beat
         """        
 
-        
+        # Run KF
         self.kf.predict()
-        current_state = self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
-
-        thisFramePhase = self.kf.x[0]
-        multiPhaseCounter = thisFramePhase // (2 * np.pi)
-        phaseToWait = targetSyncPhase + (multiPhaseCounter * 2 * np.pi) - thisFramePhase
+        self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
+        
+        # Get KF Parameters
+        thisFramePhase = self.kf.x[0] % (2 * np.pi)
         radsPerSec = self.kf.x[1]
+
+        if radsPerSec < 0:
+            logger.debug(
+                "Kalman state velocity estimate is negative!"
+            )
+        elif radsPerSec == 0:
+            logger.debug(
+                "Kalman state velocity estimate is zero!"
+            )
+
+        # Estimate time til trigger
+        phaseToWait = targetSyncPhase - thisFramePhase
+        while phaseToWait < 0:
+            phaseToWait += 2 * np.pi
         timeToWait_s = phaseToWait / radsPerSec
+        timeToWait_s = max(timeToWait_s, 0.0)
+
         estHeartPeriod_s = 2*np.pi/radsPerSec
 
         return timeToWait_s, estHeartPeriod_s

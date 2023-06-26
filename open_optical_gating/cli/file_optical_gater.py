@@ -318,12 +318,12 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
-    analyser.plot_triggers()
+    #analyser.plot_triggers()
     analyser.plot_prediction()
-    analyser.plot_phase_histogram()
-    analyser.plot_phase_error_histogram()
-    analyser.plot_phase_error_with_time()
-    analyser.plot_running()
+    #analyser.plot_phase_histogram()
+    #analyser.plot_phase_error_histogram()
+    #analyser.plot_phase_error_with_time()
+    #analyser.plot_running()
 
 
 if __name__ == "__main__":

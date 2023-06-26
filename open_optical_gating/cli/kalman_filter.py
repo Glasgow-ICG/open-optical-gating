@@ -1,7 +1,19 @@
 import numpy as np
 
-class KalmanFilter():
+class KalmanFilter():    
     def __init__(self, dt, x, P, Q, R, F, H):
+        """
+        Kalman filter class based upon filterpy implementation
+
+        Args:
+            dt (_type_): Time between measurements
+            x (_type_): Initial system state vector
+            P (_type_): Initial system covariance matrix
+            Q (_type_): Process noise matrix
+            R (_type_): Measurement noise matrix
+            F (_type_): State update matrix
+            H (_type_): State measurement vector
+        """        
         # Initialise our KF variables, state vector, and model parameters
         self.dt = dt
         self.x = x
@@ -13,18 +25,19 @@ class KalmanFilter():
         
         self.e = 0
         self.d = 0
-        
-        # Weighting for past Q and R matrices
-        self.alpha = 0.3
 
-        # Arrays to store results
-        self.xs = []
-        self.Ps = []
+        self.xs_prior = []
+        self.xs_posteriori = []
         
     def predict(self):
         # Predict our state using our model of the system
         self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.transpose() + self.Q
+
+        # Store prior state estimates
+        self.xs_prior.append(self.x)
+
+        return self.x, self.P
 
     def update(self, z):       
         # Innovation and innovation covariance
@@ -37,6 +50,9 @@ class KalmanFilter():
         # Posteriori state and covariance estimate
         self.x = self.x + self.K @ self.d
         self.P = self.P - self.K @ self.H @ self.P
+
+        # Store posteriori state estimates
+        self.xs_posteriori.append(self.x)
         
         # Residual
         self.e = z - self.H @ self.x
