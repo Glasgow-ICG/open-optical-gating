@@ -246,13 +246,20 @@ class OpticalGater:
         # Initialise our predictor
         if self.settings["prediction"]["prediction_method"] == "kalman":
             logger.info("Initialising Kalman predictor")
-            self.predictor = pog.KalmanPredictor(self.settings["prediction"], 1/self.settings["brightfield"]["brightfield_framerate"], np.array([0,1]), np.array([[1, 0],[0, 1]]), 0.1, 0.01)
+            # TODO: Currently these are set to 'good enough' starting values - in future we should
+            # determine the optimal values live
+            dt = 1/self.settings["brightfield"]["brightfield_framerate"]
+            x0 = np.array([0.5809400758128899, 38 / (2 * np.pi)])
+            P0 = np.array([[0.05397904, 0.11231034],[0.11231034, 0.47395727]])
+            q = 1
+            R = 1
+            self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)
         elif self.settings["prediction"]["prediction_method"] == "linear":
             logger.info("Initialising linear predictor")
-            self.predictor = pog.LinearPredictor(self.settings["prediction"])
+            self.predictor = pog.LinearPredictor(self.settings["prediction"]["linear"])
         elif self.settings["prediction"]["prediction_method"] == "IMM":
             logger.info("Initialising IMM predictor")
-            self.predictor = pog.IMMPredictor(self.settings["prediction"])
+            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"])
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
             raise NotImplementedError("Unknown prediction method '{0}'".format(self.settings["prediction"]["prediction_method"]))
