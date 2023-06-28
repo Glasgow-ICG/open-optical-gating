@@ -26,9 +26,15 @@ from . import pixelarray as pa
 class SyntheticOpticalGater(server.OpticalGater):
     def __init__(self, settings=None):        
         super(SyntheticOpticalGater, self).__init__(settings=settings)
-        self.synthetic_source = Drawer()
+        # TODO: Pass synthetic_data_settings.json to class instances
+        if self.settings["brightfield"]["type"] == "gaussian":
+            self.synthetic_source = Gaussian()
+        elif self.settings["brightfield"]["type"] == "peristalsis":
+            self.synthetic_source = Peristalsis()
+        else:
+            raise KeyError(f"Synthetic optical gater type ({self.settings['brightfield']['type']}) is not defined ")
         self.next_frame_index = 0
-        self.number_of_frames = 1000
+        self.number_of_frames = self.settings["brightfield"]["frames"] # In future get this from the settings file
         self.progress_bar = True  # May be updated during run_server
 
 
@@ -79,6 +85,8 @@ def load_settings(raw_args, desc, add_extra_args=None):
         as relative to the *settings file*, not the current working directory.
         That seems the only sane behaviour, since when writing the settings file we cannot know
         what the current working directory will be when it is used.
+
+        # TODO: Clean this up and remove any unnecessary settings - rewrite the settings file specifically for synthetic data.
         '''
     parser = argparse.ArgumentParser(description=desc,
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -95,7 +103,7 @@ def load_settings(raw_args, desc, add_extra_args=None):
             settings = json.load(data_file)
     except FileNotFoundError:
         basename = os.path.basename(settings_file_path)
-        if (basename in ["example_data_settings.json", "pi_default_settings.json"]):
+        if (basename in ["example_data_settings.json", "pi_default_settings.json", "synthetic_data_settings.json"]):
             if (sys.platform == "win32"):
                 os.system("color")  # Make ascii color codes work
             url = os.path.join("https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data", basename)
@@ -141,6 +149,10 @@ class Drawer():
         self.dimensions = dimensions
 
         # Settings
+        # TODO: Get these from synthetic_data_settings.json
+        # TODO: Add support for saving
+        # TODO: Add background
+        # TODO: Add different Drawer modes - set this up as base
         self.settings = {
             "dimensions" : dimensions,
             "beats" : beats,
@@ -210,24 +222,7 @@ class Drawer():
         self.canvas = self.draw_to_canvas(new_canvas)
 
     def draw_frame_at_phase(self, phase):
-        """
-        Draws a frame at a given phase. Subclass this to redefine what our sequence looks like.
-        This base class uses two Gaussian blobs with a phase difference of pi/2
-
-        Args:
-            phase (float): Phase to draw the frame at
-        """        
-        self.clear_canvas()
-        self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
-        self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
-        self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
-        self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
-
-        return self.get_canvas()
+        raise NotImplementedError("Subclasses must override this function")
 
     def generate_reference_sequence(self):
         """
@@ -271,6 +266,27 @@ class Drawer():
         self.phases = np.asarray(self.phases)
         self.phase_velocities = np.asarray(self.phase_velocities)
 
+class Gaussian(Drawer):
+    def draw_frame_at_phase(self, phase):
+        """
+        Draws a frame at a given phase. Subclass this to redefine what our sequence looks like.
+        This base class uses two Gaussian blobs with a phase difference of pi/2
+
+        Args:
+            phase (float): Phase to draw the frame at
+        """        
+        self.clear_canvas()
+        self.set_drawing_method(np.add)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
+        self.set_drawing_method(np.subtract)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
+        self.set_drawing_method(np.add)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
+        self.set_drawing_method(np.subtract)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
+
+        return self.get_canvas()
+
 
 class Peristalsis(Drawer):
     """
@@ -279,7 +295,7 @@ class Peristalsis(Drawer):
     Args:
         Drawer (class): Drawer class
     """    
-    def __init__(self, beats, reference_period, dimensions):
+    def __init__(self, beats = 10, reference_period = 38.156, dimensions =  (256, 256)):
         """
         Args:
             beats (int): Number of beats to simulate
@@ -314,6 +330,9 @@ class Peristalsis(Drawer):
             _super = 2
             _br = 100
             self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
+
+        return self.get_canvas()
+
 
 def run(args, desc):
     '''

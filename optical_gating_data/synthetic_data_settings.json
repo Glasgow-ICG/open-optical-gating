@@ -10,15 +10,11 @@
         "min_time_between_triggers": 0.0
     },
     
-    "file": {
-        "input_tiff_path": "example_data.tif",
-        "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
-        "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
-    },
-    
     "brightfield": {
         "brightfield_framerate": 80,
-        "save_first_n_frames": 0
+        "save_first_n_frames": 0,
+        "frames": 1000,
+        "type": "peristalsis"
     },
     
     "reference": {
