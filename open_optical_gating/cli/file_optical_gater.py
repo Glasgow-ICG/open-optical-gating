@@ -1,7 +1,7 @@
 """Extension of optical_gater_server for emulating gating with saved brightfield data"""
 
 # Python imports
-import sys, os, time, argparse, glob, warnings
+import sys, os, time, argparse, glob, warnings, platform
 import numpy as np
 import json
 import urllib.request
@@ -31,7 +31,7 @@ class FileOpticalGater(server.OpticalGater):
         ref_frames=None,
         ref_frame_period=None,
         repeats=1,
-        force_framerate=True
+        force_framerate=False
     ):
         """Function inputs:
             source                            str     A path (which may include wildcards) to a tiff file(s)
@@ -56,6 +56,9 @@ class FileOpticalGater(server.OpticalGater):
             settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period)
 
         self.force_framerate = force_framerate
+        if force_framerate and (platform.system() == 'Windows'):
+            warnings.warn("force_framerate is unreliable on Windows due to limited granularity of sleep()")
+        
         self.progress_bar = True  # May be updated during run_server
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
@@ -303,7 +306,8 @@ def run(args, desc):
     '''
     
     def add_extra_args(parser):
-        parser.add_argument("-r", "--realtime", dest="realtime", action="store_false", help="Replay in realtime (framerate as per settings file)")
+        # Optional argument to force realtime playback (see FileOpticalGater constructor). Will default to false if command line option not specified
+        parser.add_argument("-r", "--realtime", dest="realtime", action="store_true", help="Replay in realtime (framerate as per settings file)")
     
     settings = load_settings(args, desc, add_extra_args)
 
