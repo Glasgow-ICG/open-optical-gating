@@ -24,17 +24,8 @@ from . import pixelarray as pa
 
 
 class SyntheticOpticalGater(server.OpticalGater):
-    def __init__(
-        self,
-        source=None,
-        settings=None,
-        ref_frames=None,
-        ref_frame_period=None,
-        repeats=1,
-        force_framerate=True
-    ):        
-        super(SyntheticOpticalGater, self).__init__(
-            settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period)
+    def __init__(self, settings=None):        
+        super(SyntheticOpticalGater, self).__init__(settings=settings)
         self.synthetic_source = Drawer()
         self.next_frame_index = 0
         self.number_of_frames = 1000
@@ -57,7 +48,7 @@ class SyntheticOpticalGater(server.OpticalGater):
         this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
 
         next = pa.PixelArray(
-            self.synthetic_source.draw_frame_at_phase(this_frame_timestamp * (2 * np.pi)),
+            self.synthetic_source.draw_frame_at_phase(this_frame_timestamp * (2 * np.pi) * 3),
             metadata={
                 "timestamp": this_frame_timestamp
             },
@@ -134,41 +125,17 @@ def load_settings(raw_args, desc, add_extra_args=None):
     settings["parsed_args"] = args
 
     return settings
-    
-def run(args, desc):
-    '''
-        Run the optical gater based on a settings.json file which includes
-        the path to the .tif file to be processed.
-        
-        Params:   raw_args   list    Caller should normally pass sys.argv[1:] here
-                  desc       str     Description to provide as command line help description
-    '''
-    
-    def add_extra_args(parser):
-        parser.add_argument("-r", "--realtime", dest="realtime", action="store_false", help="Replay in realtime (framerate as per settings file)")
-    
-    settings = load_settings(args, desc, add_extra_args)
-
-    logger.success("Initialising gater...")
-    analyser = SyntheticOpticalGater(
-        source=settings["file"]["input_tiff_path"],
-        settings=settings,
-        force_framerate=settings["parsed_args"].realtime
-    )
-
-    logger.success("Running server...")
-    analyser.run_server()
-
-    logger.success("Plotting summaries...")
-    #analyser.plot_triggers()
-    analyser.plot_prediction()
-    #analyser.plot_phase_histogram()
-    #analyser.plot_phase_error_histogram()
-    #analyser.plot_phase_error_with_time()
-    #analyser.plot_running()
 
 class Drawer():
     def __init__(self, beats = 10, reference_period = 38.156, dimensions =  (256, 256)):
+        """
+        Base class for generating synthetic data for use with open optical gating.
+
+        Args:
+            beats (int, optional): _description_. Defaults to 10.
+            reference_period (float, optional): _description_. Defaults to 38.156.
+            dimensions (tuple, optional): _description_. Defaults to (256, 256).
+        """        
         self.beats = beats
         self.reference_period = reference_period
         self.dimensions = dimensions
@@ -191,9 +158,6 @@ class Drawer():
 
         # Set draw mode
         self.draw = np.add
-
-        # Generate a background
-        #self.background = generate_perlin_noise_2d(dimensions, (2,2), (False, False)) * 64
 
     def generate_phase_array(self):
         return 0
@@ -228,44 +192,47 @@ class Drawer():
 
     def draw_circular_gaussian(self, _mean_x, _mean_y, _sdx, _sdy, _theta, _super, _br):
         """
-        _summary_
+        Draw a circular Gaussian at coordinates
 
         Args:
-            _mean_x (_type_): _description_
-            _mean_y (_type_): _description_
-            _sdx (_type_): _description_
-            _sdy (_type_): _description_
-            _theta (_type_): _description_
-            _super (_type_): _description_
-            _br (_type_): _description_
+            _mean_x (float): X position
+            _mean_y (float): Y-position
+            _sdx (float): X standard deviation
+            _sdy (float): y standard deviation
+            _theta (float): Angle (0-2pi)
+            _super (float): Supergaussian exponent (>=0)
+            _br (float): Brightness
         """
         # Draw a 2d gaussian
         xx, yy = np.indices(self.dimensions)#np.meshgrid(range(self.canvas.shape[0]), range(self.canvas.shape[1]))
         new_canvas = self.circular_gaussian(xx, yy, _mean_x, _mean_y, _sdx, _sdy, _theta, _super)
-        new_canvas = _br * new_canvas / np.max(new_canvas)
+        new_canvas = _br * (new_canvas / np.max(new_canvas))
         self.canvas = self.draw_to_canvas(new_canvas)
 
     def draw_frame_at_phase(self, phase):
         """
         Draws a frame at a given phase. Subclass this to redefine what our sequence looks like.
-        Currently draws two Gaussian blobs with a phase difference of pi/2
+        This base class uses two Gaussian blobs with a phase difference of pi/2
 
         Args:
             phase (float): Phase to draw the frame at
         """        
         self.clear_canvas()
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 2200)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 2200)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 2200)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 2200)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
 
         return self.get_canvas()
 
     def generate_reference_sequence(self):
+        """
+        Generate a reference sequence using the current settings.
+        """        
         phase_per_frame = 2 * np.pi / self.reference_period
         phase_min = 0
         phase_max = self.reference_sequence.shape[0] * phase_per_frame
@@ -278,6 +245,9 @@ class Drawer():
             self.reference_sequence[i] = self.get_canvas()
 
     def generate_sequence(self):
+        """
+        Generate a sequence using the current settings
+        """        
         # Generate a sequence of frames
         """phase_per_frame = 2 * np.pi / self.reference_period
         phase_min = 0
@@ -344,6 +314,33 @@ class Peristalsis(Drawer):
             _super = 2
             _br = 100
             self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
+
+def run(args, desc):
+    '''
+        Run the optical gater based on a settings.json
+        
+        Params:   raw_args   list    Caller should normally pass sys.argv[1:] here
+                  desc       str     Description to provide as command line help description
+    '''
+    
+    def add_extra_args(parser):
+        parser.add_argument("-r", "--realtime", dest="realtime", action="store_false", help="Replay in realtime (framerate as per settings file)")
+    
+    settings = load_settings(args, desc, add_extra_args)
+
+    logger.success("Initialising gater...")
+    analyser = SyntheticOpticalGater(settings=settings)
+
+    logger.success("Running server...")
+    analyser.run_server()
+
+    logger.success("Plotting summaries...")
+    analyser.plot_triggers()
+    analyser.plot_prediction()
+    analyser.plot_phase_histogram()
+    analyser.plot_phase_error_histogram()
+    analyser.plot_phase_error_with_time()
+    analyser.plot_running()
 
 if __name__ == "__main__":
     run(sys.argv[1:], "Run optical gater on image data contained in tiff file")

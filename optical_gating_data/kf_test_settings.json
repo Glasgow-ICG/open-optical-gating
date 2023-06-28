@@ -11,13 +11,13 @@
     },
     
     "file": {
-        "input_tiff_path": "example_data.tif",
-        "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
-        "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
+        "input_tiff_path": "D:/Data/2012-06-20 13.34.11 vid 2x2 multi phase single plane/brightfield/*tif",
+        "source_url": "n/a",
+        "dataset_comment": "80fps dataset"
     },
     
     "brightfield": {
-        "brightfield_framerate": 75,
+        "brightfield_framerate": 80,
         "save_first_n_frames": 0
     },
     

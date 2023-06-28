@@ -248,9 +248,9 @@ class OpticalGater:
             logger.info("Initialising Kalman predictor")
             # TODO: Currently these are set to 'good enough' starting values - in future we should
             # determine the optimal values live
-            dt = 1/self.settings["brightfield"]["brightfield_framerate"]
-            x0 = np.array([0.5809400758128899, 38 / (2 * np.pi)])
-            P0 = np.array([[0.05397904, 0.11231034],[0.11231034, 0.47395727]])
+            dt = 1/self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
+            x0 = np.array([0, 10])
+            P0 = np.array([[100, 100],[100, 100]])
             q = 1
             R = 1
             self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)

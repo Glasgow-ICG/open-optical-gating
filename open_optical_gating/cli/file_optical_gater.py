@@ -146,13 +146,18 @@ class FileOpticalGater(server.OpticalGater):
             That ensures that timings and the timestamps in plots etc are a realistic emulation
             of what would happen on a real system.
         """
+
+        # NOTE : the minimum sleep time in windows seems to be around 16ms limiting us to a framerate of around 62fps
+        # FIXME : Need to find a workaround for this - perhaps limit framerate to 60fps in windows?
+        # Tried writing a function to wait til a specific time but this didn't work and was still limited to ~16ms
         if self.force_framerate and (self.last_frame_wallclock_time is not None):
             wait_s = (1 / self.settings["brightfield"]["brightfield_framerate"]) - (
                 time.time() - self.last_frame_wallclock_time
             )
             if wait_s > 1e-9:
                 # the 1e-9 is a very small time to allow for the calculation
-                time.sleep(wait_s - 1e-9)
+                time.sleep((wait_s - 1e-9))
+            
             elif self.slow_action_occurred is not None:
                 logger.success(
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s). " \
@@ -171,7 +176,7 @@ class FileOpticalGater(server.OpticalGater):
                         wait_s,
                     )
                 )
-
+ 
         if self.progress_bar is not None:
             self.progress_bar.update(1)
         
@@ -206,6 +211,7 @@ class FileOpticalGater(server.OpticalGater):
         )
         self.next_frame_index += 1
         self.last_frame_wallclock_time = time.time()
+
         return next
 
 def load_settings(raw_args, desc, add_extra_args=None):
@@ -318,12 +324,12 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
-    #analyser.plot_triggers()
+    analyser.plot_triggers()
     analyser.plot_prediction()
-    #analyser.plot_phase_histogram()
-    #analyser.plot_phase_error_histogram()
-    #analyser.plot_phase_error_with_time()
-    #analyser.plot_running()
+    analyser.plot_phase_histogram()
+    analyser.plot_phase_error_histogram()
+    analyser.plot_phase_error_with_time()
+    analyser.plot_running()
 
 
 if __name__ == "__main__":

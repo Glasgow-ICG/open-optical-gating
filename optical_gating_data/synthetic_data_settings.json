@@ -17,7 +17,7 @@
     },
     
     "brightfield": {
-        "brightfield_framerate": 75,
+        "brightfield_framerate": 80,
         "save_first_n_frames": 0
     },
     

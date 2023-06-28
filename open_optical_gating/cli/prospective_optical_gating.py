@@ -212,7 +212,6 @@ class LinearPredictor(PredictorBase):
         # This should not rescue cases where, for some reason, the image-based
         # phase matching is erroneous.
         thisFramePhase = alpha + frame_history[-1, 0] * radsPerSec
-        print(thisFramePhase)
         # Count how many total periods we have seen
         multiPhaseCounter = thisFramePhase // (2 * np.pi)
         # Determine how much of a cardiac cycle we have to wait till our target phase
@@ -272,7 +271,7 @@ class LinearPredictor(PredictorBase):
         ):
             extendedFramesForFit = framesForFit * 2
             if (
-                extendedFramesForFit <= frameHistory.shape[0]
+                extendedFramesForFit <= frame_history.shape[0]
                 and extendedFramesForFit <= self.settings["maxFramesForFit"]
             ):
                 logger.debug("Repeating fit using more frames")
@@ -286,10 +285,7 @@ class LinearPredictor(PredictorBase):
 
 class KalmanPredictor(PredictorBase):
     """
-    This class will implement the basic linear Kalman filter for phase prediction.
-
-    Args:
-        PredictorBase (_type_): _description_
+    This class implements the basic linear Kalman filter for phase prediction.
     """
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
@@ -320,10 +316,16 @@ class KalmanPredictor(PredictorBase):
             estHeartPeriod_s (float): Estimate period of the heart beat
         """        
 
-        # Run KF
-        self.kf.predict()
-        self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
-        
+        if self.kf.flags["initialised"] == False:
+            # Initialise the KF
+            self.kf.x = np.array([full_frame_history[-1].metadata["unwrapped_phase"], 10])
+            self.kf.flags["initialised"] = True
+        else:
+            # Run the KF
+            self.kf.predict()
+            self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
+            #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]
+
         # Get KF Parameters
         thisFramePhase = self.kf.x[0] % (2 * np.pi)
         radsPerSec = self.kf.x[1]
