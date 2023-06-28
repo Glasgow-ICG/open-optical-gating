@@ -259,7 +259,12 @@ class OpticalGater:
             self.predictor = pog.LinearPredictor(self.settings["prediction"]["linear"])
         elif self.settings["prediction"]["prediction_method"] == "IMM":
             logger.info("Initialising IMM predictor")
-            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"])
+            dt = 1/self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
+            x0 = np.array([0, 10])
+            P0 = np.array([[100, 100],[100, 100]])
+            q = 1
+            R = 1
+            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
             raise NotImplementedError("Unknown prediction method '{0}'".format(self.settings["prediction"]["prediction_method"]))

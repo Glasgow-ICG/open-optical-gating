@@ -1,4 +1,6 @@
 import numpy as np
+from scipy.stats import multivariate_normal
+
 
 class KalmanFilter():    
     def __init__(self, dt, x, P, Q, R, F, H):
@@ -88,6 +90,8 @@ class KalmanFilter():
         # Q estimation from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8273755
         # Not entirely convinced this works as expected - IMM filter should (hopefully) replace the need for this
         #self.Q = self.alpha * self.Q + (1 - self.alpha) * (self.K * self.d**2 * self.K.transpose())
+
+        self.L = np.exp(multivariate_normal.logpdf(z, np.dot(self.H, self.x), self.S))
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S
@@ -275,13 +279,3 @@ class InteractingMultipleModelFilter():
         self.xs = np.asarray(self.xs)
         self.Ps = np.asarray(self.Ps)
         self.mus = np.asarray(self.mus)
-
-    def NEES(self, xs, est_xs, Ps):
-        est_err = xs - est_xs
-        err = []
-        for x, p in zip(est_err, Ps):
-            err.append(x.T @ np.linalg.inv(p) @ x)
-        return err
-    
-    def residuals(self, xs, est_xs):
-        return xs - est_xs

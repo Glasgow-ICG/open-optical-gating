@@ -13,6 +13,7 @@ import j_py_sad_correlation as jps
 from . import pixelarray as pa
 from . import determine_reference_period as ref
 from .kalman_filter import KalmanFilter
+from .kalman_filter import InteractingMultipleModelFilter as IMM
 
 class PredictorBase:
     def __init__(self, predictor_settings):
@@ -351,5 +352,73 @@ class KalmanPredictor(PredictorBase):
         return timeToWait_s, estHeartPeriod_s
     
 class IMMPredictor(PredictorBase):
-    def __init__(self):
-        super().__init__()
+    """
+    This class implements the basic linear Kalman filter for phase prediction.
+    """
+
+    def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
+        self.kf_cv1 = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(dt, q * 10, R, x_0, P_0)
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.9, 0.1],[0.1, 0.9]]))
+
+        super().__init__(predictor_settings)
+
+    def target_and_barrier_updated(self, ref_seq_manager):
+        pass
+
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
+        """
+        Predicts how long we need to wait for the heart to be at the target phase we are triggering to based upon the Kalman filter
+        estimate of the current phase and phase progressions.
+
+        TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
+        TODO: Initialise the Kalman filter with the initial phase estimate
+
+        Args:
+            full_frame_history (list): List of PixelArray objects, including appropriate metadata
+            targetSyncPhase (float): Phase that we are supposed to be triggering at
+            frameInterval_s (float): Not used for KF
+            fitBackToBarrier (bool): Not used for KF
+            framesForFit (int): Not used for KF
+
+        Returns:
+            timeToWait_s (float): Time to wait for the next camera trigger,
+            estHeartPeriod_s (float): Estimate period of the heart beat
+        """        
+
+        """if self.kf.flags["initialised"] == False:
+            # Initialise the KF
+            self.kf.x = np.array([full_frame_history[-1].metadata["unwrapped_phase"], 10])
+            self.kf.flags["initialised"] = True
+        else:
+            # Run the KF
+            self.imm.predict()
+            self.imm.upda(full_frame_history[-1].metadata["unwrapped_phase"])
+            #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]"""
+
+        self.imm.predict()
+        self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
+
+        # Get KF Parameters
+        thisFramePhase = self.imm.x[0] % (2 * np.pi)
+        radsPerSec = self.imm.x[1]
+
+        if radsPerSec < 0:
+            logger.debug(
+                "Kalman state velocity estimate is negative!"
+            )
+        elif radsPerSec == 0:
+            logger.debug(
+                "Kalman state velocity estimate is zero!"
+            )
+
+        # Estimate time til trigger
+        phaseToWait = targetSyncPhase - thisFramePhase
+        while phaseToWait < 0:
+            phaseToWait += 2 * np.pi
+        timeToWait_s = phaseToWait / radsPerSec
+        timeToWait_s = max(timeToWait_s, 0.0)
+
+        estHeartPeriod_s = 2*np.pi/radsPerSec
+
+        return timeToWait_s, estHeartPeriod_s
