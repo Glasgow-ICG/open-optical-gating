@@ -2,7 +2,7 @@
     "general": {
         "log_level": "WARNING",
         "analyse_time_s": 100000,
-        "frame_buffer_length": 1000,
+        "frame_buffer_length": 10000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
         "pause_for_timelapse": 40,
@@ -11,13 +11,13 @@
     },
     
     "file": {
-        "input_tiff_path": "D:/Data/2012-06-20 13.34.11 vid 2x2 multi phase single plane/brightfield/*tif",
+        "input_tiff_path": "E:/data/my data/June 2023 Higher framerate/2023-06-23 13.46.02 200 fps golden fixed framerate/Brightfield 0001f61c/*tif",
         "source_url": "n/a",
-        "dataset_comment": "80fps dataset"
+        "dataset_comment": "200fps dataset"
     },
     
     "brightfield": {
-        "brightfield_framerate": 80,
+        "brightfield_framerate": 200,
         "save_first_n_frames": 0
     },
     
@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "kalman",
+        "prediction_method": "IMM",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -44,6 +44,9 @@
         },
         "kalman": {
             "outliers" : 10,
+            "prediction_latency_s": 0.015
+        },
+        "IMM": {
             "prediction_latency_s": 0.015
         }
     },

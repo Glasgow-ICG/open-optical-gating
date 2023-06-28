@@ -358,7 +358,7 @@ class IMMPredictor(PredictorBase):
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
         self.kf_cv1 = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(dt, q * 10, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(dt, q / 100, R, x_0, P_0)
         self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.9, 0.1],[0.1, 0.9]]))
 
         super().__init__(predictor_settings)
