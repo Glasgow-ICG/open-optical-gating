@@ -460,6 +460,7 @@ class OpticalGater:
         thisFrameMetadata = pixelArray.metadata
         thisFrameMetadata["unwrapped_phase"] = phase
         thisFrameMetadata["sad_min"] = np.argmin(sad)
+        thisFrameMetadata["phase"] = current_phase
         thisFrameMetadata["delta_phase"] = delta_phase
         self.frame_history.append(pixelArray)
 
@@ -746,4 +747,14 @@ class OpticalGater:
         )
         plt.xlabel("Time (s)")
         plt.ylabel("Processing rate (fps)")
+        plt.show()
+
+    def plot_delta_phase_phase(self):
+        plt.figure()
+        plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase"), pa.get_metadata_from_list(self.frame_history, "delta_phase"))
+        plt.show()
+
+    def plot_likelihood(self):
+        plt.figure()
+        plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
         plt.show()

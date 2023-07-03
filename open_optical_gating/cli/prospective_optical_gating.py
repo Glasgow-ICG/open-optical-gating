@@ -76,7 +76,8 @@ class PredictorBase:
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
         This is just the base class for our predictor. It should be overridden by the specific predictor classes.
-        This function forward predicts when the next trigger should occur.
+        The function should return the time remaining for a trigger to be sent and the estimated heart
+        period.
         """
         raise NotImplementedError("Subclasses must override this function")
 
@@ -330,20 +331,25 @@ class KalmanPredictor(PredictorBase):
             # Initialise the KF
             self.kf.x = np.array([thisFrameMetadata["unwrapped_phase"], 10])
             self.kf.flags["initialised"] = True
+            likelihood = 0
         else:
             # Run the KF
             self.kf.predict()
-            self.kf.update(thisFrameMetadata["unwrapped_phase"])
+            current_state = self.kf.update(thisFrameMetadata["unwrapped_phase"])
+
+            likelihood = current_state[5]
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["kalman_states"] = self.kf.get_current_state()
-            
+        thisFrameMetadata["likelihood"] = likelihood
+
+
         # This code attempts to predict how long we need to wait until the next trigger by estimating the
         # phase remaining and KF estimate of phase velocity.
 
         # Get our state from our Kalman filter
-        thisFramePhase = thisFrameMetadata["kalman_states"][0] % (2 * np.pi)
-        radsPerSec = thisFrameMetadata["kalman_states"][1]
+        thisFramePhase = thisFrameMetadata["kalman_states"][0][0] % (2 * np.pi)
+        radsPerSec = thisFrameMetadata["kalman_states"][0][1]
 
         # Do some quick error checking to ensure the KF velocity estimate is reasonable
         if radsPerSec < 0:
