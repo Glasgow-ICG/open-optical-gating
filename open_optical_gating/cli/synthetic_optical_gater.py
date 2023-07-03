@@ -19,22 +19,22 @@ except:
     import tifffile as tiffio
 
 # Local imports
-from . import optical_gater_server as server
+#from . import optical_gater_server as server
+from . import file_optical_gater as server
 from . import pixelarray as pa
 
 
-class SyntheticOpticalGater(server.OpticalGater):
+class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(SyntheticOpticalGater, self).__init__(settings=settings)
-        # TODO: Pass synthetic_data_settings.json to class instances
         if self.settings["brightfield"]["type"] == "gaussian":
             self.synthetic_source = Gaussian()
         elif self.settings["brightfield"]["type"] == "peristalsis":
             self.synthetic_source = Peristalsis()
         else:
-            raise KeyError(f"Synthetic optical gater type ({self.settings['brightfield']['type']}) is not defined ")
+            raise KeyError(f"Synthetic optical gater was given an unknown type: ({self.settings['brightfield']['type']})")
         self.next_frame_index = 0
-        self.number_of_frames = self.settings["brightfield"]["frames"] # In future get this from the settings file
+        self.number_of_frames = self.settings["brightfield"]["frames"]
         self.progress_bar = True  # May be updated during run_server
 
 
@@ -42,7 +42,7 @@ class SyntheticOpticalGater(server.OpticalGater):
         while not self.stop:
             self.analyze_pixelarray(self.next_frame())
 
-    def run_server(self, show_progress_bar=True):
+    def run_server(self, show_progress_bar=False):
         if show_progress_bar:
             self.progress_bar = tqdm(total = self.number_of_frames, desc="Processing frames")
         super().run_server()

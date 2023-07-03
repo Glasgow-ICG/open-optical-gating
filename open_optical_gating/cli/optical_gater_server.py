@@ -245,23 +245,26 @@ class OpticalGater:
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
         # Initialise our predictor
         if self.settings["prediction"]["prediction_method"] == "kalman":
+            # Kalman filter-based predictor
             logger.info("Initialising Kalman predictor")
             # TODO: Currently these are set to 'good enough' starting values - in future we should
             # determine the optimal values live
-            dt = 1/self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
+            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
             x0 = np.array([0, 10])
-            P0 = np.array([[100, 100],[100, 100]])
+            P0 = np.array([[100, 100], [100, 100]])
             q = 1
             R = 1
             self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)
         elif self.settings["prediction"]["prediction_method"] == "linear":
+            # Linear predictor
             logger.info("Initialising linear predictor")
             self.predictor = pog.LinearPredictor(self.settings["prediction"]["linear"])
         elif self.settings["prediction"]["prediction_method"] == "IMM":
+            # Interacting multiple model Kalman filter predictor
             logger.info("Initialising IMM predictor")
-            dt = 1/self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
+            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
             x0 = np.array([0, 10])
-            P0 = np.array([[100, 100],[100, 100]])
+            P0 = np.array([[100, 100], [100, 100]])
             q = 1
             R = 1
             self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
@@ -457,6 +460,7 @@ class OpticalGater:
         thisFrameMetadata = pixelArray.metadata
         thisFrameMetadata["unwrapped_phase"] = phase
         thisFrameMetadata["sad_min"] = np.argmin(sad)
+        thisFrameMetadata["delta_phase"] = delta_phase
         self.frame_history.append(pixelArray)
 
         logger.debug(

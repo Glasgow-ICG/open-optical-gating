@@ -16,6 +16,10 @@ from .kalman_filter import KalmanFilter
 from .kalman_filter import InteractingMultipleModelFilter as IMM
 
 class PredictorBase:
+    """
+    Base class for predicting when to trigger the camera at a specific phase of the heart
+    """
+
     def __init__(self, predictor_settings):
         self.settings = predictor_settings
         self.mostRecentTriggerTime = -1000
@@ -142,9 +146,6 @@ class PredictorBase:
 class LinearPredictor(PredictorBase):
     """
     This class implements the linear predictor for phase prediction.
-
-    Args:
-        PredictorBase (_type_): _description_
     """
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
@@ -303,7 +304,7 @@ class KalmanPredictor(PredictorBase):
         estimate of the current phase and phase progressions.
 
         TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
-        TODO: Initialise the Kalman filter with the initial phase estimate
+        TODO: Add parameters for KF performance evaluation
 
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
@@ -317,20 +318,34 @@ class KalmanPredictor(PredictorBase):
             estHeartPeriod_s (float): Estimate period of the heart beat
         """        
 
+        # Get the current frame's metadata
+        thisFrameMetadata = full_frame_history[-1].metadata
+
+        # We need to initialise the KF with an initial state estimate. For this we use the first phase estimate from
+        # open optical gating. If the Kalman filter is already initialised we run the KF.
+        # NOTE: Currently, we don't provide an estimate for our phase velocity. Possible choices include,
+        # calculating the expected velocity from our known brightfield framerate or using the first two phase
+        # estimates from OOG
         if self.kf.flags["initialised"] == False:
             # Initialise the KF
-            self.kf.x = np.array([full_frame_history[-1].metadata["unwrapped_phase"], 10])
+            self.kf.x = np.array([thisFrameMetadata["unwrapped_phase"], 10])
             self.kf.flags["initialised"] = True
         else:
             # Run the KF
             self.kf.predict()
-            self.kf.update(full_frame_history[-1].metadata["unwrapped_phase"])
-            #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]
+            self.kf.update(thisFrameMetadata["unwrapped_phase"])
 
-        # Get KF Parameters
-        thisFramePhase = self.kf.x[0] % (2 * np.pi)
-        radsPerSec = self.kf.x[1]
+        # Add KF state estimates to our pixelarray metadata
+        thisFrameMetadata["kalman_states"] = self.kf.get_current_state()
+            
+        # This code attempts to predict how long we need to wait until the next trigger by estimating the
+        # phase remaining and KF estimate of phase velocity.
 
+        # Get our state from our Kalman filter
+        thisFramePhase = thisFrameMetadata["kalman_states"][0] % (2 * np.pi)
+        radsPerSec = thisFrameMetadata["kalman_states"][1]
+
+        # Do some quick error checking to ensure the KF velocity estimate is reasonable
         if radsPerSec < 0:
             logger.debug(
                 "Kalman state velocity estimate is negative!"
@@ -340,15 +355,17 @@ class KalmanPredictor(PredictorBase):
                 "Kalman state velocity estimate is zero!"
             )
 
-        # Estimate time til trigger
+        # Estimate time remaining until we need to trigger our camera
         phaseToWait = targetSyncPhase - thisFramePhase
         while phaseToWait < 0:
             phaseToWait += 2 * np.pi
         timeToWait_s = phaseToWait / radsPerSec
         timeToWait_s = max(timeToWait_s, 0.0)
 
-        estHeartPeriod_s = 2*np.pi/radsPerSec
+        # Use our KF estimate of phase velocity to calculate the heart period
+        estHeartPeriod_s = 2 * np.pi / radsPerSec
 
+        # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s
     
 class IMMPredictor(PredictorBase):
@@ -395,7 +412,7 @@ class IMMPredictor(PredictorBase):
             self.imm.predict()
             self.imm.upda(full_frame_history[-1].metadata["unwrapped_phase"])
             #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]"""
-
+        
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
 
@@ -419,6 +436,7 @@ class IMMPredictor(PredictorBase):
         timeToWait_s = phaseToWait / radsPerSec
         timeToWait_s = max(timeToWait_s, 0.0)
 
-        estHeartPeriod_s = 2*np.pi/radsPerSec
+        # Get the estimated heart period
+        estHeartPeriod_s = 2 * np.pi / radsPerSec
 
         return timeToWait_s, estHeartPeriod_s
