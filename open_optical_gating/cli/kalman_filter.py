@@ -94,7 +94,17 @@ class KalmanFilter():
         self.L = np.exp(multivariate_normal.logpdf(z, np.dot(self.H, self.x), self.S))
 
         # Return the most recent state estimate
-        return self.x, self.P, self.e, self.d, self.S
+        return self.x, self.P, self.e, self.d, self.S, self.L
+    
+    def get_current_state(self):
+        """
+        Returns the current Kalman filter state vector and covariance matrix
+
+        Returns:
+            _type_: _description_
+        """
+
+        return self.x, self.P
         
 
     @classmethod
@@ -200,6 +210,17 @@ class InteractingMultipleModelFilter():
             models (list): Instances of Kalman filter class in a list or tuple of length n
             mu (np.array): Initial filter probabilities of length n
             M (np.array): Filter transition matrix of length n x n
+
+            NOTE: This is problematic if our different filter models are of different order (e.g we have a constant
+            acceleration filter and a constant-velocity filter.
+            Few solutions:
+                Stick to filters of matching dimensions and vary our process noise in our models
+                Augment our lower dimensional filter with zeros in the higher order states
+                A few papers have alternative solutions:
+                    https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6324701
+                    https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5717415
+
+                First two are very easy to implement so will work on this 
         """        
         # Add our models
         # Instances of the KalmanFilter class
@@ -213,6 +234,10 @@ class InteractingMultipleModelFilter():
 
         self.compute_mixing_probabilities()
         self.compute_state_estimate()
+
+        self.settings = {
+            "inhomogeneousfix" : "augmented"
+        }
         
     def predict(self):       
         xs, Ps = [], []
