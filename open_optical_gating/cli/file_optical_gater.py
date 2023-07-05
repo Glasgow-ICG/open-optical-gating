@@ -91,7 +91,7 @@ class FileOpticalGater(server.OpticalGater):
                 # and undo it.
                 # The test of 'strides' is an empirical one - clearly imread tweaks that to
                 # reinterpret the original data in a different way to what was intended, but that
-                # makes it easy to spot
+                # makes it easy to spot
                 warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
                 imageData = np.moveaxis(imageData, -1, 0)
             imageList.append(imageData)
@@ -133,7 +133,7 @@ class FileOpticalGater(server.OpticalGater):
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
-    def run_server(self, show_progress_bar=True):
+    def run_server(self, show_progress_bar = True):
         if show_progress_bar:
             self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
         super().run_server()

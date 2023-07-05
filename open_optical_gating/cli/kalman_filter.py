@@ -38,6 +38,20 @@ class KalmanFilter():
         self.flags = {
             "initialised" : False
         }
+
+        self.settings = {
+            "gating_method" : "mahalanobis", # Method to use for gating. Options are none, mahalanobis
+            "gating_level" : 5 # If measurement is more than this many standard deviations away from current state estimate ignore it
+        }
+
+    def predict_and_update(self, z):
+        self.predict()
+        if self.settings["gating_method"] == "mahalanobis":
+            dist = self.mahalonobis_distance(z, self.x, self.S)
+            if dist > self.settings["gating_level"]:
+                return self.x, self.P
+        else:
+            return self.update(z)
         
     def predict(self):
         """
@@ -71,15 +85,27 @@ class KalmanFilter():
             S: Innovation covariance
         """        
         # Innovation and innovation covariance
+        d = z - self.H @ self.x
         self.d = z - self.H @ self.x
         self.S = self.H @ self.P @ self.H.transpose() + self.R
         
         # Kalman Gain
         self.K = self.P @ self.H.transpose() @ np.linalg.inv(self.S)
         
-        # Posteriori state and covariance estimate
-        self.x = self.x + self.K @ self.d
-        self.P = self.P - self.K @ self.H @ self.P
+        # This code attempts to detect outliers by ignoring measurements which are more than "gating_level" away
+        # using the mahalanobis distance.
+        if self.settings["gating_method"] == "mahalanobis":
+            dist = np.sqrt(np.dot(np.dot((self.d), np.linalg.inv(self.S)), (self.d)))
+            if dist < self.settings["gating_level"]:
+                # Posteriori state and covariance estimate
+                self.x = self.x + self.K @ self.d
+                self.P = self.P - self.K @ self.H @ self.P
+            else:
+                print("Outlier ignored")
+        else:
+            # If not using a gating method then peform the usual update step
+            self.x = self.x + self.K @ self.d
+            self.P = self.P - self.K @ self.H @ self.P
 
         # Store posteriori state estimates
         self.xs_posteriori.append(self.x)
@@ -236,7 +262,7 @@ class InteractingMultipleModelFilter():
         self.compute_state_estimate()
 
         self.settings = {
-            "inhomogeneousfix" : "augmented"
+            "inhomogeneousfix" : "augmented" # Fix for when the IMM model state vectors have differing dimensions. Options are none, zero-augmented, augmented
         }
         
     def predict(self):       

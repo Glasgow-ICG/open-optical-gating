@@ -26,7 +26,7 @@ from . import pixelarray as pa
 
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
-        super(SyntheticOpticalGater, self).__init__(settings=settings)
+        super(server.FileOpticalGater, self).__init__(settings=settings)
         if self.settings["brightfield"]["type"] == "gaussian":
             self.synthetic_source = Gaussian()
         elif self.settings["brightfield"]["type"] == "peristalsis":
@@ -42,10 +42,10 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         while not self.stop:
             self.analyze_pixelarray(self.next_frame())
 
-    def run_server(self, show_progress_bar=False):
+    def run_server(self, show_progress_bar = True):
         if show_progress_bar:
             self.progress_bar = tqdm(total = self.number_of_frames, desc="Processing frames")
-        super().run_server()
+        super(server.FileOpticalGater, self).run_server()
 
     def next_frame(self):
         if self.progress_bar is not None:
@@ -333,6 +333,29 @@ class Peristalsis(Drawer):
 
         return self.get_canvas()
 
+
+# This next function taken from tqdm example code, to report progress during urlretrieve()
+def tqdm_hook(t):
+    """ Wraps tqdm instance for use with urlretrieve()    """
+    last_b = [0]
+    
+    def update_to(b=1, bsize=1, tsize=None):
+        """
+            b  : int, optional
+            Number of blocks transferred so far [default: 1].
+            bsize  : int, optional
+            Size of each block (in tqdm units) [default: 1].
+            tsize  : int, optional
+            Total size (in tqdm units). If [default: None] or -1,
+            remains unchanged.
+            """
+        if tsize not in (None, -1):
+            t.total = tsize
+        displayed = t.update((b - last_b[0]) * bsize)
+        last_b[0] = b
+        return displayed
+    
+    return update_to
 
 def run(args, desc):
     '''
