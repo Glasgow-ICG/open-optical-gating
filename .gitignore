@@ -7,7 +7,6 @@ output.log
 **/running.png
 **/prediction.png
 **/period-data/**
-**/cli/IMMHO.ipynb**
 
 # Caches
 **/.ipynb_checkpoints/**

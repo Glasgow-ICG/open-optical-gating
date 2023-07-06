@@ -37,6 +37,10 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         self.number_of_frames = self.settings["brightfield"]["frames"]
         self.progress_bar = True  # May be updated during run_server
 
+        self.flags = {
+            "phase_locked": False
+        }
+
 
     def run_and_analyze_until_stopped(self):
         while not self.stop:
@@ -53,10 +57,12 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
 
+        frame_at_phase = self.synthetic_source.draw_frame_at_phase(this_frame_timestamp * (2 * np.pi) * 3)
         next = pa.PixelArray(
-            self.synthetic_source.draw_frame_at_phase(this_frame_timestamp * (2 * np.pi) * 3),
+            frame_at_phase[0],
             metadata={
-                "timestamp": this_frame_timestamp
+                "timestamp": this_frame_timestamp,
+                "true_phase": frame_at_phase[1]
             },
         )
 
@@ -65,10 +71,33 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         if self.number_of_frames <= self.next_frame_index:
             self.stop = True
 
+        #print(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="phase") - (pa.get_metadata_from_list(self.frame_history, "true_phase", onlyIfKeyPresent="true_phase") % (2 * np.pi)))
+
+
         return next
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         return super().trigger_fluorescence_image_capture(trigger_time_s)
+    
+    def analyze_pixelarray(self, pixelArray):
+        super().analyze_pixelarray(pixelArray)
+
+        # Here we need to take the first frame which has a phase estimate and replace it with the true phase
+        # This fixes the problem where our synthetic data phases and OOG phases are not synchronised making
+        # analysis difficult
+        if self.flags["phase_locked"] == False:
+            if len(self.frame_history) > 0:
+                if "phase" in self.frame_history[-1].metadata:
+                    self.phase_offset = self.frame_history[-1].metadata["true_phase"] % (2*np.pi) - self.frame_history[-1].metadata["phase"]
+                    self.flags["phase_locked"] = True
+        else:
+            self.frame_history[-1].metadata["phase"] += self.phase_offset
+            self.frame_history[-1].metadata["phase"] = self.frame_history[-1].metadata["phase"] % (2 * np.pi)
+
+            print(f"Phase: {self.frame_history[-1].metadata['phase']}")
+            print(f"True phase: {self.frame_history[-1].metadata['true_phase'] % (2 * np.pi)}")
+
+        
     
 
 def load_settings(raw_args, desc, add_extra_args=None):
@@ -285,7 +314,7 @@ class Gaussian(Drawer):
         self.set_drawing_method(np.subtract)
         self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
 
-        return self.get_canvas()
+        return self.get_canvas(), phase
 
 
 class Peristalsis(Drawer):
@@ -331,7 +360,7 @@ class Peristalsis(Drawer):
             _br = 100
             self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
 
-        return self.get_canvas()
+        return self.get_canvas(), phase
 
 
 # This next function taken from tqdm example code, to report progress during urlretrieve()
@@ -377,6 +406,7 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
+    analyser.plot_true_predicted_phase()
     analyser.plot_triggers()
     analyser.plot_prediction()
     analyser.plot_phase_histogram()

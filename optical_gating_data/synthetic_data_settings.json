@@ -14,7 +14,7 @@
         "brightfield_framerate": 80,
         "save_first_n_frames": 0,
         "frames": 1000,
-        "type": "peristalsis"
+        "type": "gaussian"
     },
     
     "reference": {

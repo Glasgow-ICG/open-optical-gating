@@ -371,9 +371,19 @@ class KalmanPredictor(PredictorBase):
         # Use our KF estimate of phase velocity to calculate the heart period
         estHeartPeriod_s = 2 * np.pi / radsPerSec
 
+        # Finally get the true phase at the trigger time if using synthetic optical gating
+        true_predicted_phase = (thisFrameMetadata["timestamp"] + timeToWait_s) * (2 * np.pi) * 3
+        thisFrameMetadata["true_predicted_phase"] = true_predicted_phase % (2 * np.pi)
+
+        #print(f"Targ: {targetSyncPhase}")
+        #print(f"Pred: {thisFrameMetadata['true_predicted_phase'] - 3.396}")
+        #print(f"True: {thisFrameMetadata['true_phase'] % (2 * np.pi)}")
+        #print(f"Esti: {thisFramePhase % (2 * np.pi)}")
+
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s
     
+
 class IMMPredictor(PredictorBase):
     """
     This class implements the basic linear Kalman filter for phase prediction.

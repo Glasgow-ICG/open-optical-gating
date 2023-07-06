@@ -101,6 +101,7 @@ class KalmanFilter():
                 self.x = self.x + self.K @ self.d
                 self.P = self.P - self.K @ self.H @ self.P
             else:
+                # TODO: Add support for logger
                 print("Outlier ignored")
         else:
             # If not using a gating method then peform the usual update step

@@ -758,3 +758,15 @@ class OpticalGater:
         plt.figure()
         plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
         plt.show()
+
+    def plot_true_predicted_phase(self):
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history,
+            "predicted_trigger_time_s",
+            onlyIfKeyPresent="trigger_sent"
+        )
+        plt.figure()
+        for sent_trigger_time in sent_trigger_times:
+            plt.axvline(sent_trigger_time)
+        plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="true_predicted_phase"), pa.get_metadata_from_list(self.frame_history, "true_predicted_phase", onlyIfKeyPresent="true_predicted_phase"))
+        plt.show()

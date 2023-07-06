@@ -209,7 +209,7 @@ class FileOpticalGater(server.OpticalGater):
         next = pa.PixelArray(
             self.data[self.next_frame_index, :, :],
             metadata={
-                "timestamp": this_frame_timestamp
+                "timestamp": this_frame_timestamp,
             },
         )
         self.next_frame_index += 1
