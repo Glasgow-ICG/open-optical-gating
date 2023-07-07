@@ -283,6 +283,12 @@ class LinearPredictor(PredictorBase):
                 timeToWait_s, estHeartPeriod_s = self.predict_trigger_wait(
                     frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier, extendedFramesForFit
                 )
+
+        # Finally get the true phase at the trigger time if using synthetic optical gating
+        thisFrameMetadata = full_frame_history[-1].metadata
+        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
+        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
+
         # Return our prediction
         return timeToWait_s, estHeartPeriod_s
 
@@ -372,13 +378,8 @@ class KalmanPredictor(PredictorBase):
         estHeartPeriod_s = 2 * np.pi / radsPerSec
 
         # Finally get the true phase at the trigger time if using synthetic optical gating
-        true_predicted_phase = (thisFrameMetadata["timestamp"] + timeToWait_s) * (2 * np.pi) * 3
-        thisFrameMetadata["true_predicted_phase"] = true_predicted_phase % (2 * np.pi)
-
-        #print(f"Targ: {targetSyncPhase}")
-        #print(f"Pred: {thisFrameMetadata['true_predicted_phase'] - 3.396}")
-        #print(f"True: {thisFrameMetadata['true_phase'] % (2 * np.pi)}")
-        #print(f"Esti: {thisFramePhase % (2 * np.pi)}")
+        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
+        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
 
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s
@@ -392,7 +393,7 @@ class IMMPredictor(PredictorBase):
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
         self.kf_cv1 = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
         self.kf_cv2 = KalmanFilter.constant_velocity_2(dt, q / 100, R, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.9, 0.1],[0.1, 0.9]]))
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.95, 0.05],[0.05, 0.95]]))
 
         super().__init__(predictor_settings)
 
@@ -426,7 +427,7 @@ class IMMPredictor(PredictorBase):
         else:
             # Run the KF
             self.imm.predict()
-            self.imm.upda(full_frame_history[-1].metadata["unwrapped_phase"])
+            self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
             #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]"""
         
         self.imm.predict()
@@ -454,5 +455,10 @@ class IMMPredictor(PredictorBase):
 
         # Get the estimated heart period
         estHeartPeriod_s = 2 * np.pi / radsPerSec
+
+        # Finally get the true phase at the trigger time if using synthetic optical gating
+        thisFrameMetadata = full_frame_history[-1].metadata
+        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
+        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
 
         return timeToWait_s, estHeartPeriod_s
