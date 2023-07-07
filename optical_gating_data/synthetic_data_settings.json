@@ -41,6 +41,9 @@
         "kalman": {
             "outliers" : 10,
             "prediction_latency_s": 0.015
+        },
+        "IMM": {
+            "prediction_latency_s": 0.015
         }
     },
     

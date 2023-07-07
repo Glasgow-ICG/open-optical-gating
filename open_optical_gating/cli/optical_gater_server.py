@@ -264,9 +264,9 @@ class OpticalGater:
             logger.info("Initialising IMM predictor")
             dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
             x0 = np.array([0, 10])
-            P0 = np.array([[100, 100], [100, 100]])
+            P0 = np.array([[1000, 1000], [1000, 1000]])
             q = 1
-            R = 1
+            R = 0.1
             self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
@@ -759,7 +759,7 @@ class OpticalGater:
         plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
         plt.show()
 
-    def plot_true_predicted_phase(self):
+    def plot_true_predicted_phase_residual(self):
         sent_trigger_times = pa.get_metadata_from_list(
             self.frame_history,
             "predicted_trigger_time_s",
@@ -768,5 +768,5 @@ class OpticalGater:
         plt.figure()
         for sent_trigger_time in sent_trigger_times:
             plt.axvline(sent_trigger_time)
-        plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="true_predicted_phase"), pa.get_metadata_from_list(self.frame_history, "true_predicted_phase", onlyIfKeyPresent="true_predicted_phase"))
+        plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="true_predicted_phase_residual"), pa.get_metadata_from_list(self.frame_history, "true_predicted_phase_residual", onlyIfKeyPresent="true_predicted_phase_residual"))
         plt.show()

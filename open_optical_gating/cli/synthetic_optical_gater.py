@@ -57,7 +57,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
 
-        frame_at_phase = self.synthetic_source.draw_frame_at_phase(this_frame_timestamp * (2 * np.pi) * 3)
+        frame_at_phase = self.synthetic_source.draw_frame_at_phase((this_frame_timestamp) * (2 * np.pi))
         next = pa.PixelArray(
             frame_at_phase[0],
             metadata={
@@ -71,8 +71,6 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         if self.number_of_frames <= self.next_frame_index:
             self.stop = True
 
-        #print(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="phase") - (pa.get_metadata_from_list(self.frame_history, "true_phase", onlyIfKeyPresent="true_phase") % (2 * np.pi)))
-
 
         return next
 
@@ -81,22 +79,27 @@ class SyntheticOpticalGater(server.FileOpticalGater):
     
     def analyze_pixelarray(self, pixelArray):
         super().analyze_pixelarray(pixelArray)
-
-        # Here we need to take the first frame which has a phase estimate and replace it with the true phase
-        # This fixes the problem where our synthetic data phases and OOG phases are not synchronised making
-        # analysis difficult
+        # Our OOG phase and true phase from our synthetic data are not aligned. Here we fix this
+        # by saving the difference for the initial frame and subtracting this phase difference
+        # from subsequent frames.
+        # This fixes the problem where our synthetic data phases and OOG phases are not synchronised.
         if self.flags["phase_locked"] == False:
             if len(self.frame_history) > 0:
                 if "phase" in self.frame_history[-1].metadata:
-                    self.phase_offset = self.frame_history[-1].metadata["true_phase"] % (2*np.pi) - self.frame_history[-1].metadata["phase"]
+                    self.phase_offset = self.frame_history[-1].metadata["true_phase"] - self.frame_history[-1].metadata["phase"]
+                    print(f"Phase offset set to: {self.phase_offset}")
                     self.flags["phase_locked"] = True
-        else:
+                    self.predictor.phase_offset = self.frame_history[-1].metadata["true_phase"] - self.frame_history[-1].metadata["phase"]
+        """else:
+            #print(self.phase_offset)
+            # NOTE: This doesn't work. The phase is corrected but in our residuals plot we still have an offset equal
+            # to self.phase_offset?
+            print(f"Phase before correction: {self.frame_history[-1].metadata['phase']}")
             self.frame_history[-1].metadata["phase"] += self.phase_offset
             self.frame_history[-1].metadata["phase"] = self.frame_history[-1].metadata["phase"] % (2 * np.pi)
-
-            print(f"Phase: {self.frame_history[-1].metadata['phase']}")
-            print(f"True phase: {self.frame_history[-1].metadata['true_phase'] % (2 * np.pi)}")
-
+            self.frame_history[-1].metadata["unwrapped_phase"] += self.phase_offset
+            print(f"Phase after correction: {self.frame_history[-1].metadata['phase']}")
+            print(f"True phase: {self.frame_history[-1].metadata['true_phase']}")"""
         
     
 
@@ -199,6 +202,9 @@ class Drawer():
 
         # Set draw mode
         self.draw = np.add
+
+        #
+        self.phase_offset = 0
 
     def generate_phase_array(self):
         return 0
@@ -304,6 +310,8 @@ class Gaussian(Drawer):
         Args:
             phase (float): Phase to draw the frame at
         """        
+
+        phase = phase % (2 * np.pi)
         self.clear_canvas()
         self.set_drawing_method(np.add)
         self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
@@ -314,7 +322,7 @@ class Gaussian(Drawer):
         self.set_drawing_method(np.subtract)
         self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
 
-        return self.get_canvas(), phase
+        return self.get_canvas(), phase + self.phase_offset
 
 
 class Peristalsis(Drawer):
@@ -337,6 +345,8 @@ class Peristalsis(Drawer):
         self.xs = np.linspace(0, self.sequence.shape[1], 10)
 
     def draw_frame_at_phase(self, phase):
+        phase = phase % (2 * np.pi)
+
         self.clear_canvas()
         for i in range(self.xs.shape[0]):
             velocity_scale = 22
@@ -360,7 +370,7 @@ class Peristalsis(Drawer):
             _br = 100
             self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
 
-        return self.get_canvas(), phase
+        return self.get_canvas(), phase + self.phase_offset
 
 
 # This next function taken from tqdm example code, to report progress during urlretrieve()
@@ -406,7 +416,8 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
-    analyser.plot_true_predicted_phase()
+    analyser.plot_true_predicted_phase_residual()
+    analyser.plot_delta_phase_phase()
     analyser.plot_triggers()
     analyser.plot_prediction()
     analyser.plot_phase_histogram()

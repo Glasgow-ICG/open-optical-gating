@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "kalman",
+        "prediction_method": "IMM",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
