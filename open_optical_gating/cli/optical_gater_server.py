@@ -211,16 +211,20 @@ class OpticalGater:
         # Logging crucial information
         if self.state == 'sync':
             if len(self.frame_history) > 0:
+                predict = self.frame_history[-1].metadata["predicted_trigger_time_s"]
+                if predict is None:
+                    predict = -1.0
                 logger.info(
-                    "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                    "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2:.3f} | Predict = {3:.6f} | Target Phase = {4:.3f}",
                     pixelArray.metadata["timestamp"],
                     self.state,
                     self.frame_history[-1].metadata["unwrapped_phase"],
+                    predict,
                     self.frame_history[-1].metadata["targetSyncPhase"]
                 )
         else:
             logger.info(
-                "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2} | Predict = 0 | Target Phase = {3}",
                 pixelArray.metadata["timestamp"],
                 self.state,
                 None,

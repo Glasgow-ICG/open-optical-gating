@@ -25,6 +25,7 @@ def LogFileScraper(logFilePath, keyDictPath, zeroTimes = True):
         'states',
         'phases',
         'targetPhases',
+        'predictedTimes',
         'triggerTimes'
     ]
     scrapedDict= dict(zip(scrapedDictKeys, [[] for i in range(len(scrapedDictKeys))]))
@@ -37,6 +38,11 @@ def LogFileScraper(logFilePath, keyDictPath, zeroTimes = True):
                 if not line.split()[keyDict["phaseIndex"]] == 'None':
                     scrapedDict["phases"].append(float(line.split()[keyDict["phaseIndex"]]))
                     
+                if not line.split()[keyDict["predictedTime"]] == 'None':
+                    scrapedDict["predictedTimes"].append(float(line.split()[keyDict["predictedTime"]]))
+                else:
+                    scrapedDict["predictedTimes"].append(-1)
+
                 if not line.split()[keyDict["targetPhaseIndex"]] == 'None':
                     scrapedDict["targetPhases"].append(float(line.split()[keyDict["targetPhaseIndex"]]))
            
@@ -49,9 +55,12 @@ def LogFileScraper(logFilePath, keyDictPath, zeroTimes = True):
     
     if zeroTimes:
         scrapedDict["triggerTimes"] = np.asarray(scrapedDict["triggerTimes"]) - np.asarray(scrapedDict["timeStamps"][0])
+        scrapedDict["predictedTimes"] = np.asarray(scrapedDict["predictedTimes"]) - np.asarray(scrapedDict["timeStamps"][0])
+        # Zero the timestamps last, as we were relying on its absolute value until this point
         scrapedDict["timeStamps"] = np.asarray(scrapedDict["timeStamps"]) - np.asarray(scrapedDict["timeStamps"][0])
     else:
-        scrapedDict["timeStamps"] = np.asarray(scrapedDict["timeStamps"])
         scrapedDict["triggerTimes"] = np.asarray(scrapedDict["triggerTimes"])
+        scrapedDict["predictedTimes"] = np.asarray(scrapedDict["predictedTimes"])
+        scrapedDict["timeStamps"] = np.asarray(scrapedDict["timeStamps"])
 
     return scrapedDict
