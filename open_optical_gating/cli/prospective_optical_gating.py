@@ -284,10 +284,10 @@ class LinearPredictor(PredictorBase):
                     frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier, extendedFramesForFit
                 )
 
-        # Finally get the true phase at the trigger time if using synthetic optical gating
+        # Add wait time to metadata
         thisFrameMetadata = full_frame_history[-1].metadata
-        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
-        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
+        thisFrameMetadata["states"] = np.array([alpha, radsPerSec])
+        thisFrameMetadata["wait_times"] = timeToWait_s
 
         # Return our prediction
         return timeToWait_s, estHeartPeriod_s
@@ -298,7 +298,7 @@ class KalmanPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
-        self.kf = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
+        self.kf = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
 
         super().__init__(predictor_settings)
 
@@ -335,8 +335,7 @@ class KalmanPredictor(PredictorBase):
         # estimates from OOG
         if self.kf.flags["initialised"] == False:
             # Initialise the KF
-            self.kf.x = np.array([thisFrameMetadata["unwrapped_phase"], 10])
-            self.kf.flags["initialised"] = True
+            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 6.29]), self.kf.P)
             likelihood = 0
         else:
             # Run the KF
@@ -346,40 +345,15 @@ class KalmanPredictor(PredictorBase):
             likelihood = current_state[5]
 
         # Add KF state estimates to our pixelarray metadata
-        thisFrameMetadata["kalman_states"] = self.kf.get_current_state()
+        thisFrameMetadata["states"] = self.kf.get_current_state_vector()
         thisFrameMetadata["likelihood"] = likelihood
-
 
         # This code attempts to predict how long we need to wait until the next trigger by estimating the
         # phase remaining and KF estimate of phase velocity.
+        timeToWait_s, estHeartPeriod_s = KalmanFilter.get_time_til_phase(self.kf.x, targetSyncPhase)
 
-        # Get our state from our Kalman filter
-        thisFramePhase = thisFrameMetadata["kalman_states"][0][0] % (2 * np.pi)
-        radsPerSec = thisFrameMetadata["kalman_states"][0][1]
-
-        # Do some quick error checking to ensure the KF velocity estimate is reasonable
-        if radsPerSec < 0:
-            logger.debug(
-                "Kalman state velocity estimate is negative!"
-            )
-        elif radsPerSec == 0:
-            logger.debug(
-                "Kalman state velocity estimate is zero!"
-            )
-
-        # Estimate time remaining until we need to trigger our camera
-        phaseToWait = targetSyncPhase - thisFramePhase
-        while phaseToWait < 0:
-            phaseToWait += 2 * np.pi
-        timeToWait_s = phaseToWait / radsPerSec
-        timeToWait_s = max(timeToWait_s, 0.0)
-
-        # Use our KF estimate of phase velocity to calculate the heart period
-        estHeartPeriod_s = 2 * np.pi / radsPerSec
-
-        # Finally get the true phase at the trigger time if using synthetic optical gating
-        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
-        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
+        # Add wait time to metadata
+        thisFrameMetadata["wait_times"] = timeToWait_s
 
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s
@@ -391,8 +365,8 @@ class IMMPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
-        self.kf_cv1 = KalmanFilter.constant_velocity_2(dt, q, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(dt, q / 100, R, x_0, P_0)
+        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / 100, R, x_0, P_0)
         self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.95, 0.05],[0.05, 0.95]]))
 
         super().__init__(predictor_settings)
@@ -435,7 +409,7 @@ class IMMPredictor(PredictorBase):
 
         # Get KF Parameters
         thisFramePhase = self.imm.x[0] % (2 * np.pi)
-        radsPerSec = self.imm.x[1]
+        radsPerSec = self.imm.x[1] # NOTE: should really encode acceleration into this
 
         if radsPerSec < 0:
             logger.debug(
@@ -455,10 +429,5 @@ class IMMPredictor(PredictorBase):
 
         # Get the estimated heart period
         estHeartPeriod_s = 2 * np.pi / radsPerSec
-
-        # Finally get the true phase at the trigger time if using synthetic optical gating
-        thisFrameMetadata = full_frame_history[-1].metadata
-        true_predicted_phase = ((thisFrameMetadata["timestamp"] + timeToWait_s)) * (2 * np.pi)
-        thisFrameMetadata["true_predicted_phase_residual"] = ((true_predicted_phase - self.phase_offset) % (2 * np.pi)) - targetSyncPhase
 
         return timeToWait_s, estHeartPeriod_s

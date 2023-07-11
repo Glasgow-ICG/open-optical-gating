@@ -5,6 +5,7 @@ Extension of optical_gater_server for emulating gating with a synthetic video so
 # Python imports
 import sys, os, time, argparse, glob, warnings
 import numpy as np
+import matplotlib.pyplot as plt
 import json
 import urllib.request
 import math
@@ -37,10 +38,6 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         self.number_of_frames = self.settings["brightfield"]["frames"]
         self.progress_bar = True  # May be updated during run_server
 
-        self.flags = {
-            "phase_locked": False
-        }
-
 
     def run_and_analyze_until_stopped(self):
         while not self.stop:
@@ -57,7 +54,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
 
-        frame_at_phase = self.synthetic_source.draw_frame_at_phase((this_frame_timestamp) * (2 * np.pi))
+        frame_at_phase = self.synthetic_source.draw_frame_at_phase(this_frame_timestamp)
         next = pa.PixelArray(
             frame_at_phase[0],
             metadata={
@@ -77,31 +74,48 @@ class SyntheticOpticalGater(server.FileOpticalGater):
     def trigger_fluorescence_image_capture(self, trigger_time_s):
         return super().trigger_fluorescence_image_capture(trigger_time_s)
     
-    def analyze_pixelarray(self, pixelArray):
-        super().analyze_pixelarray(pixelArray)
-        # Our OOG phase and true phase from our synthetic data are not aligned. Here we fix this
-        # by saving the difference for the initial frame and subtracting this phase difference
-        # from subsequent frames.
-        # This fixes the problem where our synthetic data phases and OOG phases are not synchronised.
-        if self.flags["phase_locked"] == False:
-            if len(self.frame_history) > 0:
-                if "phase" in self.frame_history[-1].metadata:
-                    self.phase_offset = self.frame_history[-1].metadata["true_phase"] - self.frame_history[-1].metadata["phase"]
-                    print(f"Phase offset set to: {self.phase_offset}")
-                    self.flags["phase_locked"] = True
-                    self.predictor.phase_offset = self.frame_history[-1].metadata["true_phase"] - self.frame_history[-1].metadata["phase"]
-        """else:
-            #print(self.phase_offset)
-            # NOTE: This doesn't work. The phase is corrected but in our residuals plot we still have an offset equal
-            # to self.phase_offset?
-            print(f"Phase before correction: {self.frame_history[-1].metadata['phase']}")
-            self.frame_history[-1].metadata["phase"] += self.phase_offset
-            self.frame_history[-1].metadata["phase"] = self.frame_history[-1].metadata["phase"] % (2 * np.pi)
-            self.frame_history[-1].metadata["unwrapped_phase"] += self.phase_offset
-            print(f"Phase after correction: {self.frame_history[-1].metadata['phase']}")
-            print(f"True phase: {self.frame_history[-1].metadata['true_phase']}")"""
+    def plot_true_predicted_phase_residual(self):
+        from . import prospective_optical_gating as pog
+
+        if type(self.predictor) is pog.KalmanPredictor or type(self.predictor) is pog.IMMPredictor:
+            kf_states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="wait_times")
+            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="wait_times")
+            wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
+            uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+            first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
+            phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_phase_at_timestamp(first_timestamp)
+            print(phase_offset)
+            trigger_times = timestamps + wait_times
+
+            plot_timestamps = []
+            residuals = []
+
+            for i, state in enumerate(kf_states):
+                # Get the true phase at each trigger
+                true_phase_at_trigger_time = self.synthetic_source.get_phase_at_timestamp(trigger_times[i]) % (2 * np.pi)
+
+                # Get the Kalman filter's estimate of the phase at each trigger
+                estimated_phase_at_trigger_time = (self.predictor.kf.make_forward_prediction(state, timestamps[i], trigger_times[i])[0][0] - phase_offset) % (2 * np.pi)
+
+                # Get the residual between the two
+                residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time
+
+                residuals.append(residual)
+                plot_timestamps.append(timestamps[i])
+
+            # Plot the residual
+            plt.figure()
+            plt.scatter(plot_timestamps, residuals, label="Residual")
+            plt.xlabel("Time (s)")
+            plt.ylabel("Residual (rad)")
+            plt.title("True vs predicted phase residual")
+            plt.legend()
+            plt.show()
+        elif type(self.predictor) is pog.LinearPredictor:
+            print("Linear predictor code goes here")
+
+
         
-    
 
 def load_settings(raw_args, desc, add_extra_args=None):
     '''
@@ -301,8 +315,12 @@ class Drawer():
         self.phases = np.asarray(self.phases)
         self.phase_velocities = np.asarray(self.phase_velocities)
 
+    @staticmethod
+    def get_phase_at_timestamp(timestamp):
+        return timestamp * 2 * np.pi
+
 class Gaussian(Drawer):
-    def draw_frame_at_phase(self, phase):
+    def draw_frame_at_phase(self, timestamp):
         """
         Draws a frame at a given phase. Subclass this to redefine what our sequence looks like.
         This base class uses two Gaussian blobs with a phase difference of pi/2
@@ -311,7 +329,7 @@ class Gaussian(Drawer):
             phase (float): Phase to draw the frame at
         """        
 
-        phase = phase % (2 * np.pi)
+        phase = self.get_phase_at_timestamp(timestamp) % (2 * np.pi)
         self.clear_canvas()
         self.set_drawing_method(np.add)
         self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
@@ -344,8 +362,8 @@ class Peristalsis(Drawer):
         # Defines an array for our heart wall position
         self.xs = np.linspace(0, self.sequence.shape[1], 10)
 
-    def draw_frame_at_phase(self, phase):
-        phase = phase % (2 * np.pi)
+    def draw_frame_at_phase(self, timestamp):
+        phase = self.get_phase_at_timestamp(timestamp) % (2 * np.pi)
 
         self.clear_canvas()
         for i in range(self.xs.shape[0]):
@@ -417,6 +435,7 @@ def run(args, desc):
 
     logger.success("Plotting summaries...")
     analyser.plot_true_predicted_phase_residual()
+    analyser.plot_likelihood()
     analyser.plot_delta_phase_phase()
     analyser.plot_triggers()
     analyser.plot_prediction()

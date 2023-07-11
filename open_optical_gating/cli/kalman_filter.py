@@ -3,7 +3,7 @@ from scipy.stats import multivariate_normal
 
 
 class KalmanFilter():    
-    def __init__(self, dt, x, P, Q, R, F, H):
+    def __init__(self, settings, dt, x, P, Q, R, F, H):
         """
         Kalman filter class based upon filterpy implementation
 
@@ -16,6 +16,8 @@ class KalmanFilter():
             F (np.ndarray): State update matrix
             H (np.ndarray): State measurement vector
         """        
+
+        # TODO: Remove Q and F setting - set these manually using methods / params
         # Initialise our KF variables, state vector, and model parameters
         self.dt = dt
         self.x = x
@@ -24,10 +26,6 @@ class KalmanFilter():
         self.R = R
         self.F = F
         self.H = H
-        
-        # Weighting for past Q and R matrices
-        # Used for tuning our R matrix
-        #self.alpha = 0.3
 
         self.e = 0
         self.d = 0
@@ -39,20 +37,74 @@ class KalmanFilter():
             "initialised" : False
         }
 
-        self.settings = {
-            "gating_method" : "mahalanobis", # Method to use for gating. Options are none, mahalanobis
-            "gating_level" : 5 # If measurement is more than this many standard deviations away from current state estimate ignore it
-        }
+        self.settings = settings
 
-    def predict_and_update(self, z):
-        self.predict()
-        if self.settings["gating_method"] == "mahalanobis":
-            dist = self.mahalonobis_distance(z, self.x, self.S)
-            if dist > self.settings["gating_level"]:
-                return self.x, self.P
-        else:
-            return self.update(z)
-        
+    def initialise(self, x, P):
+        """
+        Initialise the Kalman filter with a new state vector and covariance matrix
+
+        Args:
+            x (np.ndarray): Initial system state vector
+            P (np.ndarray): Initial system covariance matrix
+        """        
+        self.x = x
+        self.P = P
+
+        self.flags["initialised"] = True
+
+    def set_process_noise_covariance_matrix(self, dt_matrix, float_matrix, q_matrix, dt, q):
+        """
+        Set the process noise covariance matrix.
+        We use a slightly non-standard method here but this allows us to modify dt and q on the fly
+        by splitting our Q matrix into three parts.
+        The first part gives the powers to raise our dt to, the second part is our float array, and the third
+        part is the process noise value.
+
+        TODO: We should enforce the use of this for setting the Q matrix by using the @property decorator
+        """
+        self.Q_dt = dt_matrix
+        self.Q_f = float_matrix
+        self.Q_q = q_matrix
+        self.q = q
+
+        self.Q = dt**self.Q_dt * self.Q_f * self.q * self.Q_q
+
+        return self.Q
+
+    def get_process_noise_covariance_matrix(self, dt):
+        """
+        Get the process noise covariance matrix with the given dt
+
+        Args:
+            dt (_type_): 
+        """
+
+        Q = dt**self.Q_dt * self.Q_f * self.q * self.Q_q
+
+        return Q
+
+    def set_state_transition_matrix(self, dt_matrix, float_matrix, dt):
+        """
+        Set the state transition matrix.
+        We use a slightly non-standard method here but this allows us to modify dt on the fly
+        by splitting our F matrix into two parts.
+        The first part gives the powers to raise our dt to, the second part defines what to multiply
+        each value of the matrix by.
+        """
+
+        self.F_dt = dt_matrix
+        self.F_f = float_matrix
+
+        self.F = dt**dt_matrix * float_matrix
+
+    def get_state_transition_matrix(self, dt):
+        """
+        Return the state transition matrix with the given dt. 
+        As with above this allows us to modify dt on the fly for forward predction
+        """
+        return dt**self.F_dt * self.F_f
+
+
     def predict(self):
         """
         Predict next state from current state vector.
@@ -114,28 +166,33 @@ class KalmanFilter():
         # Residual
         self.e = z - self.H @ self.x
 
-        # Q estimation from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8273755
-        # Not entirely convinced this works as expected - IMM filter should (hopefully) replace the need for this
-        #self.Q = self.alpha * self.Q + (1 - self.alpha) * (self.K * self.d**2 * self.K.transpose())
-
+        # Get likelihood
         self.L = np.exp(multivariate_normal.logpdf(z, np.dot(self.H, self.x), self.S))
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
     
-    def get_current_state(self):
-        """
-        Returns the current Kalman filter state vector and covariance matrix
 
-        Returns:
-            _type_: _description_
+        """
+        TODO: Fix this. For metadata it doesn't seem to work when the metadata is an array.
+        """
+    def get_current_state_vector(self):
+        """
+        Returns the current Kalman filter state vector
         """
 
-        return self.x, self.P
+        return self.x
+    
+    def get_current_covariance_matrix(self):
+        """
+        Returns the current Kalman filter covariance matrix
+        """
+
+        return self.P
         
 
     @classmethod
-    def constant_acceleration(cls, dt, q, R, x_0, P_0):
+    def constant_acceleration(cls, settings, dt, q, R, x_0, P_0):
         """
         Create a constant acceleration filter with 3 dimensions
 
@@ -148,8 +205,7 @@ class KalmanFilter():
 
         Returns:
             KalmanFilter: Instance of the Kalman filter class
-        """        
-
+        """
         # Set params
         x = x_0
         P = P_0
@@ -162,10 +218,31 @@ class KalmanFilter():
         H = np.array([[1, 0, 0]])
         # Return an instance of the class with params
 
-        return cls(dt, x, P, Q, R, F, H)
-    
+        # Create the instance
+        kf = cls(settings, dt, x, P, Q, R, F, H)
+
+        # Set the process noise covariance matrix
+        dt_matrix = np.array([[5, 4, 3],
+                              [4, 3, 2],
+                              [3, 2, 1]])
+        float_matrix = np.array([[1/20, 1/8, 1/6],
+                                [1/8, 1/3, 1/2],
+                                [1/6, 1/2, 1]])
+        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, q, dt, q)
+
+        # Set the state transition matrix
+        dt_matrix = np.array([[0, 1, 2],
+                            [0, 0, 1],
+                            [0, 0, 0]])
+        float_matrix = np.array([[1, 1, 1],
+                                [0, 1, 1],
+                                [0, 0, 1]])
+        kf.set_state_transition_matrix(dt_matrix, float_matrix, dt)
+
+        return kf
+
     @classmethod
-    def constant_velocity_3(cls, dt, q, R, x_0, P_0):
+    def constant_velocity_3(cls, settings, dt, q, R, x_0, P_0):
         """
         Create a constant velocity filter with 3 dimensions
 
@@ -194,11 +271,31 @@ class KalmanFilter():
                     [0, 0, 0]])
         H = np.array([[1, 0, 0]])
 
-        # Return an instance of the class with params
-        return cls(dt, x, P, Q, R, F, H)
+        # Create the instance
+        kf = cls(settings, dt, x, P, Q, R, F, H)
+
+        # Set the process noise covariance matrix
+        dt_matrix = np.array([[3, 2, 0],
+                              [2, 1, 0],
+                              [0, 0, 0]])
+        float_matrix = np.array([[1/3, 1/2, 0],
+                                [1/2, 1, 0],
+                                [0, 0, 0]])
+        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, q, dt, q)
+
+        # Set the state transition matrix
+        dt_matrix = np.array([[0, 1, 0],
+                            [0, 0, 0],
+                            [0, 0, 0]])
+        float_matrix = np.array([[1, 1, 0],
+                                [0, 1, 0],
+                                [0, 0, 0]])
+        kf.set_state_transition_matrix(dt_matrix, float_matrix, dt)
+
+        return kf
     
     @classmethod
-    def constant_velocity_2(cls, dt, q, R, x_0, P_0):
+    def constant_velocity_2(cls, settings, dt, q, R, x_0, P_0):
         """
         Create a constant velocity filter with 2 dimensions
 
@@ -221,13 +318,71 @@ class KalmanFilter():
                     [0, 1]])
         H = np.array([[1, 0]])
 
-        # Return an instance of the class with params
-        return cls(dt, x, P, Q, R, F, H)
+        # Create the instance
+        kf = cls(settings, dt, x, P, Q, R, F, H)
+
+        # Set the process noise covariance matrix
+        dt_matrix = np.array([[3, 2],
+                              [2, 1]])
+        float_matrix = np.array([[1/3, 1/2],
+                                [1/2, 1]])
+        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, q, dt, q)
+
+        # Set the state transition matrix
+        dt_matrix = np.array([[0, 1],
+                            [0, 0]])
+        float_matrix = np.array([[1, 1],
+                                [0, 1]])
+        kf.set_state_transition_matrix(dt_matrix, float_matrix, dt)
+
+        return kf
     
+    @staticmethod
+    def get_time_til_phase(x, targetSyncPhase):
+        # Get KF Parameters
+        thisFramePhase = x[0] % (2 * np.pi)
+        radsPerSec = x[1]
+
+        # Estimate time til trigger
+        phaseToWait = targetSyncPhase - thisFramePhase
+        while phaseToWait < 0:
+            phaseToWait += 2 * np.pi
+        timeToWait_s = phaseToWait / radsPerSec
+        timeToWait_s = max(timeToWait_s, 0.0)
+
+        # Get the estimated heart period
+        estHeartPeriod_s = 2 * np.pi / radsPerSec
+
+        return timeToWait_s, estHeartPeriod_s
     
+    def make_forward_prediction(self, x, t0, t):
+        """
+        Attempt to forward predict using a custom dt.
+
+        Args:
+            x (_type_): _description_
+            t0 (_type_): _description_
+            t (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        # First get our timestep
+        dt = t - t0
+
+        # Get our matrices with the new dt
+        Q = self.get_process_noise_covariance_matrix(dt)
+        F = self.get_state_transition_matrix(dt)
+
+        # Predict our future state
+        x = F @ x
+        P = F @ self.P @ F.transpose() + Q
+
+        return x, P
+
+
 class InteractingMultipleModelFilter():
     # IMM adapted from filterpy implementation
-    
     
     def __init__(self, models, mu, M):
         """
@@ -262,6 +417,7 @@ class InteractingMultipleModelFilter():
         self.compute_mixing_probabilities()
         self.compute_state_estimate()
 
+        # NOTE : The inhomogeneous fix is not implemented yet - will see how current method performs to see if it's necessary.
         self.settings = {
             "inhomogeneousfix" : "augmented" # Fix for when the IMM model state vectors have differing dimensions. Options are none, zero-augmented, augmented
         }
@@ -316,18 +472,3 @@ class InteractingMultipleModelFilter():
         for i, model in enumerate(self.models):
             y = model.x - self.x
             self.P += self.mu[i] * np.outer(y, y) + model.P
-
-    def run(self):
-        self.xs = []
-        self.Ps = []
-        self.mus = []
-        for i in range(self.data.shape[0]):
-            self.predict()
-            self.update(self.data[i])
-            self.xs.append(self.x)
-            self.Ps.append(self.P)
-            self.mus.append(self.mu)
-
-        self.xs = np.asarray(self.xs)
-        self.Ps = np.asarray(self.Ps)
-        self.mus = np.asarray(self.mus)
