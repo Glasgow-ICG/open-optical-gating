@@ -205,7 +205,7 @@ class PiOpticalGater(server.OpticalGater):
                 sys.stdout.write("\r Time = {0}".format(np.round(self.currentTimeStamp, 2)))
                 
                 if self.state == "timelapse_pause":
-                    timeLeft = np.round(self.settings["general"]["pause_for_timelapse"] - (self.currentTimeStamp - self.last_timelapse_time), 1)
+                    timeLeft = np.round(self.next_timelapse_time - self.currentTimeStamp, 1)
                     currentState = f"timelapse_pause - {timeLeft} s"
                 else:
                     currentState = self.state

@@ -168,7 +168,9 @@ class OpticalGater:
             self.frame_num = 0
             self.trigger_num = 0
             self.timelapse_trigger_num = 0
-            self.last_timelapse_time = self.currentTimeStamp
+            if self.currentTimeStamp >= self.next_timelapse_time:
+                logger.warning(f"Next timelapse was due at {self.next_timelapse_time}, but frame timestamp is already {self.currentTimeStamp}")
+            print(f"Pausing for timelapse ({self.settings['general']['pause_for_timelapse']}s interval). Next timepoint coming up in {self.next_timelapse_time - self.currentTimeStamp:.3f}")
             self.state = "timelapse_pause"
           
         # Initiate a "normal" reference sequence update if a certain number of triggers
@@ -252,6 +254,9 @@ class OpticalGater:
         if target_state == "full_reset":
             self.aligner1 = oga.Aligner(self.settings["oga"])
             self.aligner2 = oga.Aligner(self.settings["oga"])
+            # Keep track of when the next timelapse timepoint will come up
+            print(f"Starting a timelapse - interval {self.settings['general']['pause_for_timelapse']}s")
+            self.next_timelapse_time = self.currentTimeStamp + self.settings["general"]["pause_for_timelapse"]
         # Set state to target state to be moved onto in the next pass of analyze_pixelarray
         self.state = target_state
     
@@ -342,8 +347,14 @@ class OpticalGater:
     
     def timelapse_pause_state(self):
         logger.debug("Pausing for timelapse...")
-        if self.currentTimeStamp - self.last_timelapse_time >= self.settings["general"]["pause_for_timelapse"]:
+        if self.currentTimeStamp >= self.next_timelapse_time:
+            # Move on to the timelapse_refresh state.
             self.state = "prep_timelapse_refresh"
+            # The Zeiss Zen software will start a new timelapse religiously every N seconds,
+            # so it's important that we don't lose any time here.
+            # We therefore just add the appropriate pause time on to the value of next_timelapse_time.
+            self.next_timelapse_time += self.settings["general"]["pause_for_timelapse"]
+            print("Commencing next timelapse timepoint")
             
     def timelapse_refresh_state(self, pixelArray):
         """

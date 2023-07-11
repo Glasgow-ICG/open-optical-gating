@@ -209,7 +209,7 @@ def index(index_setting = "Setup"):
         ):
         os.system("sudo reboot")
         
-    # Initialise global queues to send/recieved data from the concurrent sync process
+    # Initialise global queues to send/receive data from the concurrent sync process
     global eventQueue
     eventQueue = Queue()
     global stopQueue
