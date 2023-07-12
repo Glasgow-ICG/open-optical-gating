@@ -31,7 +31,7 @@
     },
     
     "prediction": {
-        "prediction_method": "linear",
+        "prediction_method": "kalman",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -41,7 +41,8 @@
         "kalman": {
             "gating_method" : "none",
             "gating_level" : 5,
-            "prediction_latency_s": 0.015
+            "prediction_latency_s": 0.015,
+            "alpha" : 1.1
         },
         "IMM": {
             "gating_method" : "none",

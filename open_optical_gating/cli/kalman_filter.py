@@ -17,6 +17,8 @@ class KalmanFilter():
             H (np.ndarray): State measurement vector
         """        
 
+        self.settings = settings
+
         # TODO: Remove Q and F setting - set these manually using methods / params
         # Initialise our KF variables, state vector, and model parameters
         self.dt = dt
@@ -33,11 +35,12 @@ class KalmanFilter():
         self.xs_prior = []
         self.xs_posteriori = []
 
+        self.alpha = self.settings["alpha"]**2 # used for fading memory Kalman filter. Set to a value close to 1 such as 1.01
+
         self.flags = {
             "initialised" : False
         }
 
-        self.settings = settings
 
     def initialise(self, x, P):
         """
@@ -115,7 +118,7 @@ class KalmanFilter():
         """        
         # Predict our state using our model of the system
         self.x = self.F @ self.x
-        self.P = self.F @ self.P @ self.F.transpose() + self.Q
+        self.P = self.alpha * (self.F @ self.P @ self.F.transpose()) + self.Q
 
         # Store prior state estimates
         self.xs_prior.append(self.x)

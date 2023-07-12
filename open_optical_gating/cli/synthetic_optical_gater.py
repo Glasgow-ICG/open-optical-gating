@@ -84,7 +84,6 @@ class SyntheticOpticalGater(server.FileOpticalGater):
             uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
             first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
             phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_phase_at_timestamp(first_timestamp)
-            print(phase_offset)
             trigger_times = timestamps + wait_times
 
             plot_timestamps = []
@@ -105,6 +104,13 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
             # Plot the residual
             plt.figure()
+            sent_trigger_times = pa.get_metadata_from_list(
+                self.frame_history,
+                "predicted_trigger_time_s",
+                onlyIfKeyPresent="trigger_sent"
+            )
+            for trigger_time in sent_trigger_times:
+                plt.axvline(trigger_time)
             plt.scatter(plot_timestamps, residuals, label="Residual")
             plt.xlabel("Time (s)")
             plt.ylabel("Residual (rad)")
@@ -198,7 +204,6 @@ class Drawer():
         # TODO: Get these from synthetic_data_settings.json
         # TODO: Add support for saving
         # TODO: Add background
-        # TODO: Add different Drawer modes - set this up as base
         self.settings = {
             "dimensions" : dimensions,
             "beats" : beats,
@@ -206,7 +211,7 @@ class Drawer():
             "phase_progression" : "linear", # "acceleration"
             "phase_progression_noise" : False,
             "image_noise" : "normal", # "none", "normal"
-            "image_noise_amount" : 10
+            "image_noise_amount" : 0
         }
 
         # Initialise our arrays
