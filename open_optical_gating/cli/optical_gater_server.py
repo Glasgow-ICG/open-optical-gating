@@ -756,5 +756,5 @@ class OpticalGater:
 
     def plot_likelihood(self):
         plt.figure()
-        plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
+        plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
         plt.show()
