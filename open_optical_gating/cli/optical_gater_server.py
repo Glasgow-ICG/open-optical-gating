@@ -247,13 +247,13 @@ class OpticalGater:
         if self.settings["prediction"]["prediction_method"] == "kalman":
             # Kalman filter-based predictor
             logger.info("Initialising Kalman predictor")
-            # TODO: Currently these are set to 'good enough' starting values - in future we should
-            # determine the optimal values live
+            # TODO: Currently these are set to 'good enough' starting values - set to better estimates
+            # TODO: initialise KF in predictor - don't need to define these here
             dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
             x0 = np.array([0, 10])
             P0 = np.array([[100, 100], [100, 100]])
             q = 1
-            R = 1
+            R = 0.1
             self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)
         elif self.settings["prediction"]["prediction_method"] == "linear":
             # Linear predictor
@@ -266,7 +266,7 @@ class OpticalGater:
             x0 = np.array([0, 10])
             P0 = np.array([[1000, 1000], [1000, 1000]])
             q = 1
-            R = 0.1
+            R = 0.00001
             self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])

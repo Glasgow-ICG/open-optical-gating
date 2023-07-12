@@ -355,6 +355,8 @@ class KalmanPredictor(PredictorBase):
         # Add wait time to metadata
         thisFrameMetadata["wait_times"] = timeToWait_s
 
+        thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
+
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s
     

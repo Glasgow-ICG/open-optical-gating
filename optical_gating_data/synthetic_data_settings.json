@@ -42,7 +42,7 @@
             "gating_method" : "none",
             "gating_level" : 5,
             "prediction_latency_s": 0.015,
-            "alpha" : 1.1
+            "alpha" : 1
         },
         "IMM": {
             "gating_method" : "none",

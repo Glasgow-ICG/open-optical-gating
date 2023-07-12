@@ -31,6 +31,7 @@ class KalmanFilter():
 
         self.e = 0
         self.d = 0
+        self.S = None
 
         self.xs_prior = []
         self.xs_posteriori = []
@@ -40,7 +41,6 @@ class KalmanFilter():
         self.flags = {
             "initialised" : False
         }
-
 
     def initialise(self, x, P):
         """
@@ -140,7 +140,6 @@ class KalmanFilter():
             S: Innovation covariance
         """        
         # Innovation and innovation covariance
-        d = z - self.H @ self.x
         self.d = z - self.H @ self.x
         self.S = self.H @ self.P @ self.H.transpose() + self.R
         
@@ -192,6 +191,11 @@ class KalmanFilter():
         """
 
         return self.P
+    
+    def get_normalised_innovation_squared(self):
+        if self.S is not None:
+            NIS = self.e @ np.linalg.inv(self.S) @ self.e
+            return NIS
         
 
     @classmethod

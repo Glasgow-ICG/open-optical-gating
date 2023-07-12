@@ -24,16 +24,171 @@ except:
 from . import file_optical_gater as server
 from . import pixelarray as pa
 
+class DynamicDrawer():
+    def __init__(self, width, height, frames, noise_type, noise_level) -> None:
+        """
+        Drawer class used to simulate the zebrafish heart for use with open optical gating.
+        Takes a model describing our phase progression and then generates frames at a given timestamp.
+        Used with the SyntheticOpticalGater class.
+
+        Args:
+            width (_type_): _description_
+            height (_type_): _description_
+            frames (_type_): _description_
+            noise_type (_type_): _description_
+            noise_level (_type_): _description_
+        """
+
+        self.settings = {
+            "width" : width,
+            "height" : height,
+            "frames" : frames,
+            "noise_type" : noise_type,
+            "noise_level" : noise_level
+        }
+
+        self.dimensions = (width, height)
+
+        self.phase_offset = 0
+
+        # Initialise our canvas
+        self.canvas = np.zeros((self.settings["width"], self.settings["height"]), dtype = np.uint8)
+
+        # The motion model defines our heart phase progression. The key is the timestamp and the value is the acceleration at that
+        # timestamp
+        initial_velocity = 5
+        motion_model = {
+            0: 0,
+            10: 0.01,
+            15: 0,
+            20: 0,
+        }
+        self.set_motion_model(initial_velocity, motion_model)
+ 
+    def clear_canvas(self):
+        self.canvas = np.zeros_like(self.canvas)
+
+    def set_motion_model(self, initial_velocity, motion_model):
+        """
+        Define how are timestamps is converted to phase.
+
+        Args:
+            initial_velocity (float) : Initial phase velocity of the simulation.
+            motion_model (dict) : Dictionary of timestamps and accelerations.
+        """
+
+        self.initial_velocity = initial_velocity
+        self.motion_model = motion_model
+
+    def get_state_at_timestamp(self, timestamp):
+        """
+        Uses equations of motion to determine the system state at a given timestamp with the
+        drawers motion model. The function set_motion_model must be called before using this function.
+
+        Args:
+            timestamp (_type_): _description_
+
+        Returns:
+            tuple: Tuple of the timestamp, position, velocity, and acceleration
+        """
+
+        # Get our timestamps and corresponding accelerations from our dictionary
+        times = [*self.motion_model.keys()]
+        accelerations = [*self.motion_model.values()]
+
+        velocity = self.initial_velocity
+        position = 0
+
+        end = False
+        for i in range(len(times) - 1):
+            if end == False:
+                # First we check if we are within the time period of interest
+                if times[i] <= timestamp and times[i + 1] >= timestamp:
+                    delta_time = timestamp - times[i]
+                    end = True
+                else:
+                    delta_time = times[i + 1] - times[i]
+                    end = False
+
+                # Next we calculate the velocity and position.
+                acceleration = accelerations[i]
+                position += velocity * delta_time + 0.5 * accelerations[i] * delta_time**2
+                velocity += delta_time * accelerations[i]
+
+        return timestamp, position, velocity, acceleration
+
+    def set_drawing_method(self, draw_mode):
+        self.draw = draw_mode
+
+    def draw_to_canvas(self, new_canvas):
+        return self.draw(self.canvas, new_canvas)
+    
+    def get_canvas(self):
+        self.canvas[self.canvas < 0] = 0
+        self.canvas[self.canvas > 255] = 255
+        return self.canvas.astype(np.uint8)
+
+    # Gaussian
+    def circular_gaussian(self, _x, _y, _mean_x, _mean_y, _sdx, _sdy, _theta, _super):
+        # Takes an array of x and y coordinates and returns an image array containing a 2d rotated Gaussian
+        _xd = (_x - _mean_x)
+        _yd = (_y - _mean_y)
+        _xdr = _xd * np.cos(_theta) - _yd * np.sin(_theta)
+        _ydr = _xd * np.sin(_theta) + _yd * np.cos(_theta)
+        return np.exp(-((_xdr**2 / (2 * _sdx**2)) + (_ydr**2 / (2 * _sdy**2)))**_super)
+
+    def draw_circular_gaussian(self, _mean_x, _mean_y, _sdx, _sdy, _theta, _super, _br):
+        """
+        Draw a circular Gaussian at coordinates
+
+        Args:
+            _mean_x (float): X position
+            _mean_y (float): Y-position
+            _sdx (float): X standard deviation
+            _sdy (float): y standard deviation
+            _theta (float): Angle (0-2pi)
+            _super (float): Supergaussian exponent (>=0)
+            _br (float): Brightness
+        """
+        # Draw a 2d gaussian
+        xx, yy = np.indices(self.dimensions)#np.meshgrid(range(self.canvas.shape[0]), range(self.canvas.shape[1]))
+        new_canvas = self.circular_gaussian(xx, yy, _mean_x, _mean_y, _sdx, _sdy, _theta, _super)
+        new_canvas = _br * (new_canvas / np.max(new_canvas))
+        self.canvas = self.draw_to_canvas(new_canvas)
+
+    def draw_frame_at_timestamp(self, timestamp):
+        """
+        Draws a frame at a given timestamp.
+
+        Args:
+            phase (float): Phase to draw the frame at
+        """
+
+        phase = self.get_state_at_timestamp(timestamp)[1] % (2 * np.pi)
+        self.clear_canvas()
+        self.set_drawing_method(np.add)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
+        self.set_drawing_method(np.subtract)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
+        self.set_drawing_method(np.add)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
+        self.set_drawing_method(np.subtract)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
+
+        return self.get_canvas(), phase + self.phase_offset
+    
+
 
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(server.FileOpticalGater, self).__init__(settings=settings)
-        if self.settings["brightfield"]["type"] == "gaussian":
+        self.synthetic_source = DynamicDrawer(256, 256, 1000, "normal", 1)
+        """if self.settings["brightfield"]["type"] == "gaussian":
             self.synthetic_source = Gaussian()
         elif self.settings["brightfield"]["type"] == "peristalsis":
             self.synthetic_source = Peristalsis()
         else:
-            raise KeyError(f"Synthetic optical gater was given an unknown type: ({self.settings['brightfield']['type']})")
+            raise KeyError(f"Synthetic optical gater was given an unknown type: ({self.settings['brightfield']['type']})")"""
         self.next_frame_index = 0
         self.number_of_frames = self.settings["brightfield"]["frames"]
         self.progress_bar = True  # May be updated during run_server
@@ -54,7 +209,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
 
-        frame_at_phase = self.synthetic_source.draw_frame_at_phase(this_frame_timestamp)
+        frame_at_phase = self.synthetic_source.draw_frame_at_timestamp(this_frame_timestamp)
         next = pa.PixelArray(
             frame_at_phase[0],
             metadata={
@@ -83,7 +238,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
             wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
             uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
             first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
-            phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_phase_at_timestamp(first_timestamp)
+            phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
             trigger_times = timestamps + wait_times
 
             plot_timestamps = []
@@ -91,7 +246,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
             for i, state in enumerate(kf_states):
                 # Get the true phase at each trigger
-                true_phase_at_trigger_time = self.synthetic_source.get_phase_at_timestamp(trigger_times[i]) % (2 * np.pi)
+                true_phase_at_trigger_time = self.synthetic_source.get_state_at_timestamp(trigger_times[i])[1] % (2 * np.pi)
 
                 # Get the Kalman filter's estimate of the phase at each trigger
                 estimated_phase_at_trigger_time = (self.predictor.kf.make_forward_prediction(state, timestamps[i], trigger_times[i])[0][0] - phase_offset) % (2 * np.pi)
@@ -120,8 +275,11 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         elif type(self.predictor) is pog.LinearPredictor:
             print("Linear predictor code goes here")
 
+    def plot_NIS(self):
+        timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="NIS")
+        NIS = pa.get_metadata_from_list(self.frame_history, "NIS", onlyIfKeyPresent="NIS")
 
-        
+        plt.scatter(timestamps, NIS)        
 
 def load_settings(raw_args, desc, add_extra_args=None):
     '''
@@ -186,216 +344,6 @@ def load_settings(raw_args, desc, add_extra_args=None):
 
     return settings
 
-class Drawer():
-    def __init__(self, beats = 10, reference_period = 38.156, dimensions =  (256, 256)):
-        """
-        Base class for generating synthetic data for use with open optical gating.
-
-        Args:
-            beats (int, optional): _description_. Defaults to 10.
-            reference_period (float, optional): _description_. Defaults to 38.156.
-            dimensions (tuple, optional): _description_. Defaults to (256, 256).
-        """        
-        self.beats = beats
-        self.reference_period = reference_period
-        self.dimensions = dimensions
-
-        # Settings
-        # TODO: Get these from synthetic_data_settings.json
-        # TODO: Add support for saving
-        # TODO: Add background
-        self.settings = {
-            "dimensions" : dimensions,
-            "beats" : beats,
-            "reference_period" : reference_period,
-            "phase_progression" : "linear", # "acceleration"
-            "phase_progression_noise" : False,
-            "image_noise" : "normal", # "none", "normal"
-            "image_noise_amount" : 0
-        }
-
-        # Initialise our arrays
-        self.sequence = np.zeros((int(math.ceil(self.settings["beats"] * self.settings["reference_period"])), *self.settings["dimensions"]), dtype = np.uint8)
-        self.reference_sequence = np.zeros((int(math.ceil(self.settings["reference_period"]) + 4), *self.settings["dimensions"]), dtype = np.uint8)
-        self.canvas = np.zeros(self.settings["dimensions"], dtype = np.uint8)
-
-        # Set draw mode
-        self.draw = np.add
-
-        #
-        self.phase_offset = 0
-
-    def generate_phase_array(self):
-        return 0
- 
-    def clear_canvas(self):
-        self.canvas = np.zeros_like(self.canvas)
-        #self.canvas = self.background
-
-    def get_canvas(self):
-        self.canvas[self.canvas < 0] = 0
-        self.canvas[self.canvas > 255] = 255
-        if self.settings["image_noise"] == "normal":
-            self.canvas += np.random.normal(0, self.settings["image_noise_amount"], self.canvas.shape)
-            self.canvas[self.canvas < 0] = 0
-            self.canvas[self.canvas > 255] = 255
-        return self.canvas.astype(np.uint8)
-    
-    def draw_to_canvas(self, new_canvas):
-        return self.draw(self.canvas, new_canvas)
-    
-    def set_drawing_method(self, draw_mode):
-        self.draw = draw_mode
-
-    # Gaussian
-    def circular_gaussian(self, _x, _y, _mean_x, _mean_y, _sdx, _sdy, _theta, _super):
-        # Takes an array of x and y coordinates and returns an image array containing a 2d rotated Gaussian
-        _xd = (_x - _mean_x)
-        _yd = (_y - _mean_y)
-        _xdr = _xd * np.cos(_theta) - _yd * np.sin(_theta)
-        _ydr = _xd * np.sin(_theta) + _yd * np.cos(_theta)
-        return np.exp(-((_xdr**2 / (2 * _sdx**2)) + (_ydr**2 / (2 * _sdy**2)))**_super)
-
-    def draw_circular_gaussian(self, _mean_x, _mean_y, _sdx, _sdy, _theta, _super, _br):
-        """
-        Draw a circular Gaussian at coordinates
-
-        Args:
-            _mean_x (float): X position
-            _mean_y (float): Y-position
-            _sdx (float): X standard deviation
-            _sdy (float): y standard deviation
-            _theta (float): Angle (0-2pi)
-            _super (float): Supergaussian exponent (>=0)
-            _br (float): Brightness
-        """
-        # Draw a 2d gaussian
-        xx, yy = np.indices(self.dimensions)#np.meshgrid(range(self.canvas.shape[0]), range(self.canvas.shape[1]))
-        new_canvas = self.circular_gaussian(xx, yy, _mean_x, _mean_y, _sdx, _sdy, _theta, _super)
-        new_canvas = _br * (new_canvas / np.max(new_canvas))
-        self.canvas = self.draw_to_canvas(new_canvas)
-
-    def draw_frame_at_phase(self, phase):
-        raise NotImplementedError("Subclasses must override this function")
-
-    def generate_reference_sequence(self):
-        """
-        Generate a reference sequence using the current settings.
-        """        
-        phase_per_frame = 2 * np.pi / self.reference_period
-        phase_min = 0
-        phase_max = self.reference_sequence.shape[0] * phase_per_frame
-
-        phases = np.arange(phase_min, phase_max, phase_per_frame)
-        phases = phases - phases[2]
-
-        for i, phase in enumerate(phases):
-            self.draw_frame_at_phase(phase)
-            self.reference_sequence[i] = self.get_canvas()
-
-    def generate_sequence(self):
-        """
-        Generate a sequence using the current settings
-        """        
-        # Generate a sequence of frames
-        """phase_per_frame = 2 * np.pi / self.reference_period
-        phase_min = 0
-        phase_max = self.sequence.shape[0] * phase_per_frame
-
-        self.phases = np.arange(phase_min, phase_max, phase_per_frame)
-        self.phases = self.phases"""
-
-        phase_min = 0
-        phase_max = 2 * np.pi * self.settings["beats"]
-        phases = np.linspace(phase_min, phase_max, self.sequence.shape[0])
-
-        self.phases = [0]
-        self.phase_velocities = []
-        for i, phase in enumerate(phases):
-            self.draw_frame_at_phase(phase)
-            self.sequence[i] = self.get_canvas()
-            self.phase_velocities.append(phase - self.phases[-1])
-            self.phases.append(phase)
-
-        self.phases = np.asarray(self.phases)
-        self.phase_velocities = np.asarray(self.phase_velocities)
-
-    @staticmethod
-    def get_phase_at_timestamp(timestamp):
-        return timestamp * 2 * np.pi
-
-class Gaussian(Drawer):
-    def draw_frame_at_phase(self, timestamp):
-        """
-        Draws a frame at a given phase. Subclass this to redefine what our sequence looks like.
-        This base class uses two Gaussian blobs with a phase difference of pi/2
-
-        Args:
-            phase (float): Phase to draw the frame at
-        """        
-
-        phase = self.get_phase_at_timestamp(timestamp) % (2 * np.pi)
-        self.clear_canvas()
-        self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
-        self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
-        self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
-        self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
-
-        return self.get_canvas(), phase + self.phase_offset
-
-
-class Peristalsis(Drawer):
-    """
-    Single tube heart simulation
-
-    Args:
-        Drawer (class): Drawer class
-    """    
-    def __init__(self, beats = 10, reference_period = 38.156, dimensions =  (256, 256)):
-        """
-        Args:
-            beats (int): Number of beats to simulate
-            reference_period (float): Length of reference sequence
-            dimensions ((int, int)): tuple of dimensions of simulation canvas
-        """        
-        super().__init__(beats, reference_period, dimensions)
-
-        # Defines an array for our heart wall position
-        self.xs = np.linspace(0, self.sequence.shape[1], 10)
-
-    def draw_frame_at_phase(self, timestamp):
-        phase = self.get_phase_at_timestamp(timestamp) % (2 * np.pi)
-
-        self.clear_canvas()
-        for i in range(self.xs.shape[0]):
-            velocity_scale = 22
-
-            self.set_drawing_method(np.add)
-            _x = self.xs[i]# + 2 * np.sin(phase)
-            _y = 8 + velocity_scale *  np.sin(phase / 2 + self.xs[i] / 256)**2
-            _sdx = 6
-            _sdy = 6
-            _theta = 0
-            _super = 2
-            _br = 100
-            self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
-            self.set_drawing_method(np.add)
-            _x = self.xs[i]# + 2 * np.sin(phase)
-            _y = self.dimensions[1] - (8 + velocity_scale *  np.sin(phase / 2 + self.xs[i] / 256)**2)
-            _sdx = 6
-            _sdy = 6
-            _theta = 0
-            _super = 2
-            _br = 100
-            self.draw_circular_gaussian(_x, _y, _sdx, _sdy, _theta, _super, _br)
-
-        return self.get_canvas(), phase + self.phase_offset
-
-
 # This next function taken from tqdm example code, to report progress during urlretrieve()
 def tqdm_hook(t):
     """ Wraps tqdm instance for use with urlretrieve()    """
@@ -439,6 +387,7 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
+    analyser.plot_NIS()
     analyser.plot_true_predicted_phase_residual()
     analyser.plot_likelihood()
     analyser.plot_delta_phase_phase()
