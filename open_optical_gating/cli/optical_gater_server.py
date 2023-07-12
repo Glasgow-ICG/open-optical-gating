@@ -335,6 +335,14 @@ class OpticalGater:
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
             self.save_ref_frames()
             self.slow_action_occurred = "reference frame adaptive update"
+            
+            # We must not fit too far back in the frame history
+            # Otherwise we will be trying to fit to nonsense phases from before the reset - many beats ago,
+            # and when our phase reference point was different.
+            # We don't want to completely delete the frame history
+            # (we use it for performance analysis at the end of a FileOpticalGater run for example),
+            # so instead we mark the frame we should not fit back past.
+            self.frame_history[-1].metadata["fit_barrier"] = 1.0
 
             # Find and set the new target frame
             newTargetFrame = self.aligner1.process_sequence(
@@ -446,6 +454,7 @@ class OpticalGater:
 
         # Append our current PixelArray object (including its metadata) to our frame_history list
         thisFrameMetadata = pixelArray.metadata
+        thisFrameMetadata["fit_barrier"] = 0.0
         thisFrameMetadata["unwrapped_phase"] = phase
         thisFrameMetadata["sad_min"] = np.argmin(sad)
         self.frame_history.append(pixelArray)

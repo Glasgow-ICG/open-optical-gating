@@ -103,16 +103,20 @@ class LinearPredictor:
 
         if len(full_frame_history) < framesForFit:
             logger.debug("Fit failed due to too few frames")
-            return -1
+            return -1, -1
         
         # We need to look back through the recent frame history and pick out 'framesForFit' frames
         # to use in our linear fit. Note the care taken here to only pass those relevant frames
         # to get_metadata_from_list, so that the time taken inside that function doesn't get longer
         # and longer as the experiment continues (when our history is large)
         frame_history = pa.get_metadata_from_list(
-                          full_frame_history[-framesForFit:], ["timestamp", "unwrapped_phase", "sad_min"]
+                          full_frame_history[-framesForFit:], ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"]
                         )
 
+        if np.sum(frame_history[:, 3]) > 0:
+            logger.debug("Fit failed due to too few frames (due to presence of fit barrier)")
+            return -1, -1
+        
         # Perform a linear fit to the past phases. We will use this for our forward-prediction
         logger.trace("Phase history times: {0}", frame_history[:, 0])
         logger.trace("Phase history phases: {0}", frame_history[:, 1])
