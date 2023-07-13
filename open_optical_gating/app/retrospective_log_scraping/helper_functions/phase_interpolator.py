@@ -30,23 +30,21 @@ def TriggerPhaseInterpolation(timeStamps, states, phases, triggerTimes, targetPh
         behindTime = timeDifferences[behindTimeLoc] + triggerTime
         behindPhaseLoc = np.where(syncTimeStamps == behindTime)[0][0]
         behindPhase = phases[behindPhaseLoc]
-        try:
-            behind2Time = timeDifferences[behindTimeLoc-1] + triggerTime
-            behind2Phase = phases[behindPhaseLoc-1]
-        except:
-            behind2Time = -1.0
-            behind2Phase = -1.0
             
         if not timeDifferences[-1] < 0:
             aheadTime = timeDifferences[timeDifferences > 0][0] + triggerTime
             aheadPhase = phases[syncTimeStamps == aheadTime][0]
             
-            if aheadTime - behindTime < 0.1:
-                t1,t2 = behindTime,aheadTime
-                p1,p2 = behindPhase,aheadPhase
-            else:
-                t1,t2 = behind2Time,behindTime
-                p1,p2 = behind2Phase,behindPhase
+            t1,t2 = behindTime,aheadTime
+            p1,p2 = behindPhase,aheadPhase
+            if aheadTime - behindTime > 0.1:
+                try:
+                    behind2Time = timeDifferences[behindTimeLoc-1] + triggerTime
+                    behind2Phase = phases[behindPhaseLoc-1]
+                    t1,t2 = behind2Time,behindTime
+                    p1,p2 = behind2Phase,behindPhase
+                except:
+                    print("Failed to get earlier datapoints to resolve interpolation issue")
             triggerPhase = interpolate.interp1d([t1, t2], [p1, p2], fill_value='extrapolate')(triggerTime)
             triggerPhaseError = triggerPhase % (2 * np.pi) - targetPhases[syncTimeStamps == aheadTime][0]
             if triggerPhaseError > np.pi:

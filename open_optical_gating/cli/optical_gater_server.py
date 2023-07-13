@@ -7,6 +7,7 @@ import sys, time
 import numpy as np
 import matplotlib.pyplot as plt
 from loguru import logger
+from scipy import interpolate
 
 # Optical Gating Alignment module
 import optical_gating_alignment.optical_gating_alignment as oga
@@ -576,7 +577,7 @@ class OpticalGater:
         """
         Fluorescence triggers will rarely (if ever) overlap exactly in time with brightfield frames. 
         To achieve an accurate phase estimate at the time a fluorescence image was captured,
-        it is necessary to interpolated between times of known phase.
+        it is necessary to interpolate between times of known phase.
         
         This function interpolates phase between the TWO CLOSEST brightfield frames
         to a given sent trigger time in order to the estimate phase
@@ -593,15 +594,28 @@ class OpticalGater:
             triggerTime = self.latestTriggerPredictFrame.metadata["predicted_trigger_time_s"]
             if (aheadTime >= triggerTime        # Ensure the latest brightfield image is 'ahead' of the recently-sent trigger time
                 and behindTime <= triggerTime): # Ensure the previous brightfield image is 'behind' the recently-sent trigger time
+                # TODO: the following logic is largely duplicated in TriggerPhaseInterpolation. Can we consolidate duplicate code?
             
                 aheadPhase = self.frame_history[-1].metadata["unwrapped_phase"]
                 behindPhase = self.frame_history[-2].metadata["unwrapped_phase"]
 
-                interpolatedPhase = np.interp(triggerTime, [behindTime, aheadTime], [behindPhase, aheadPhase])
+                t1,t2 = behindTime,aheadTime
+                p1,p2 = behindPhase,aheadPhase
+                if aheadTime - behindTime > 0.1:
+                    try:
+                        behind2Time = self.frame_history[-3].metadata["timestamp"]
+                        behind2Phase = self.frame_history[-3].metadata["unwrapped_phase"]
+                        t1,t2 = behind2Time,behindTime
+                        p1,p2 = behind2Phase,behindPhase
+                    except:
+                        print("Failed to use earlier datapoints to resolve interpolation issue")
+                interpolatedPhase = interpolate.interp1d([t1, t2], [p1, p2], fill_value='extrapolate')(triggerTime)
                 wrappedPhaseAtSentTriggerTime = interpolatedPhase % (2 * np.pi)
             
                 # Compute the error between the target phase and the estimated phase
-                phaseError = wrappedPhaseAtSentTriggerTime - self.ref_seq_manager.targetSyncPhase
+                # Note that we must not use the *current* target phase, we must use the one
+                # in force at the time we scheduled the trigger (we might since have done a sync refresh)
+                phaseError = wrappedPhaseAtSentTriggerTime - self.latestTriggerPredictFrame.metadata["targetSyncPhase"]
             
                 # Adjust the phase error to lie in (-pi, pi)
                 if phaseError > np.pi:
@@ -686,9 +700,12 @@ class OpticalGater:
         )
         plt.figure()
         plt.title("Histogram of triggered phase errors")
+        histBins = np.linspace(np.min(phaseErrorList), np.max(phaseErrorList),  20) # Suitable for when it goes well
+        if (histBins[1]-histBins[0] > 0.03):
+            histBins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList),  0.03) # Suitable for when it goes less well!
         plt.hist(
             phaseErrorList,
-            bins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList) + 0.1,  0.03), 
+            bins = histBins,
             color = "tab:green", 
             label = "Triggered phase"
         )
