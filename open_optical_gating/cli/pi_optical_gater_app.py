@@ -72,7 +72,8 @@ class PiOpticalGater(server.OpticalGater):
         """Prompts the user to select the target frame from a one-period set of reference frames"""
         # Find the number of reference frames and send this to the main flask process
         ref_sequence_length = str(len(self.ref_seq_manager.ref_frames) - 1)
-        self.refActivateQueue.put(ref_sequence_length)
+        defaultTarget, defaultBarrier = self.ref_seq_manager.pick_good_target_and_barrier_frames()
+        self.refActivateQueue.put((ref_sequence_length, int(np.round(defaultTarget, 0))))
         
         print("prompted for reference frame")
         # Wait for a reference frame selection from the flask process

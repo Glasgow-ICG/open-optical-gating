@@ -291,7 +291,7 @@ def activate_ref_input():
     """
     # Find the most recent reference sequence folder
     print("prompted for reference selection")
-    ref_sequence_length = refActivateQueue.get()
+    ref_sequence_length,defaultTarget = refActivateQueue.get()
     all_folders = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*")
     most_recent_folder = max(all_folders, key = os.path.getctime)
     
@@ -304,7 +304,8 @@ def activate_ref_input():
 
     return render_template(
         "live.html", 
-        index_setting = "PickRefFrame", 
+        index_setting = "PickRefFrame",
+        recommended_ref_value = defaultTarget,
         ref_sequence_length = ref_sequence_length, 
         ref_frame_paths = ref_frame_paths
     )
