@@ -475,3 +475,35 @@ class InteractingMultipleModelFilter():
         for i, model in enumerate(self.models):
             y = model.x - self.x
             self.P += self.mu[i] * np.outer(y, y) + model.P
+
+    def get_current_state_vector(self):
+        """
+        Returns the current Kalman filter state vector
+        """
+
+        return self.x
+    
+    def make_forward_prediction(self, x, t0, t):
+        """
+        Attempt to forward predict using a custom dt.
+
+        Args:
+            x (_type_): _description_
+            t0 (_type_): _description_
+            t (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        # First get our timestep
+        dt = t - t0
+
+        # Get our matrices with the new dt
+        Q = self.models[0].get_process_noise_covariance_matrix(dt)
+        F = self.models[0].get_state_transition_matrix(dt)
+
+        # Predict our future state
+        x = F @ x
+        P = F @ self.P @ F.transpose() + Q
+
+        return x, P

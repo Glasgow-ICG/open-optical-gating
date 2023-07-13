@@ -42,6 +42,7 @@ class DynamicDrawer():
         """
 
         self.settings = {
+            "frames" : 1000,
             "width" : width,
             "height" : height,
             "frames" : frames,
@@ -62,12 +63,22 @@ class DynamicDrawer():
         # FIXME: Temporary fix here by setting our last timestamp in our motion model to a large number
         motion_model = {
             0: 0,
-            5: 0.01,
-            10: 0,
+            10: 0.2,
+            11: 0,
+            15: 0,
             20: 0,
             1000000: 0
         }
         self.set_motion_model(initial_velocity, motion_model)
+
+        frames = []
+        for i in range(self.settings["frames"]):
+            # TODO: Get the framerate from our settings dictionary
+            # Will need to pass settings dictionary to drawer class
+            frames.append(self.draw_frame_at_timestamp(i / 75)[0])
+        import tifffile as tf
+        frames = np.array(frames)
+        tf.imwrite("test.tif", frames)
  
     def clear_canvas(self):
         self.canvas = np.zeros_like(self.canvas)
@@ -125,12 +136,27 @@ class DynamicDrawer():
         return timestamp, position, velocity, acceleration
 
     def set_drawing_method(self, draw_mode):
+        """
+        Define the method used to draw new pixels to the canvas.
+        Can use np.add, np.subtract, etc. or pass a function.
+        Function should take two inputs: existing canvas and an array
+        to draw.
+
+        Args:
+            draw_mode (function): Function to use for drawing
+        """        
         self.draw = draw_mode
 
     def draw_to_canvas(self, new_canvas):
         return self.draw(self.canvas, new_canvas)
     
     def get_canvas(self):
+        """
+        Get the current canvas. Adds noise and ensures correct bit-depth.
+
+        Returns:
+            np.array: Canvas
+        """        
         self.canvas[self.canvas < 0] = 0
         self.canvas[self.canvas > 255] = 255
 
@@ -181,13 +207,13 @@ class DynamicDrawer():
         phase = self.get_state_at_timestamp(timestamp)[1] % (2 * np.pi)
         self.clear_canvas()
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32, 32, 0, 1, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32 + 16 * np.cos(phase), 32 + 16 * np.cos(phase), 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26, 26, 0, 1, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26 + 16 * np.cos(phase), 26 + 16 * np.cos(phase), 0, 1, 1000)
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32, 32, 0, 1, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32 + 16 * np.sin(phase), 32 + 16 * np.sin(phase), 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26, 26, 0, 1, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26 + 16 * np.sin(phase), 26 + 16 * np.sin(phase), 0, 1, 1000)
 
         return self.get_canvas(), phase + self.phase_offset
     
@@ -196,7 +222,7 @@ class DynamicDrawer():
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(server.FileOpticalGater, self).__init__(settings=settings)
-        self.synthetic_source = DynamicDrawer(256, 256, 1000, "normal", 16)
+        self.synthetic_source = DynamicDrawer(196, 196, 1000, "normal", 10)
         """if self.settings["brightfield"]["type"] == "gaussian":
             self.synthetic_source = Gaussian()
         elif self.settings["brightfield"]["type"] == "peristalsis":
@@ -204,7 +230,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         else:
             raise KeyError(f"Synthetic optical gater was given an unknown type: ({self.settings['brightfield']['type']})")"""
         self.next_frame_index = 0
-        self.number_of_frames = self.settings["brightfield"]["frames"]
+        self.number_of_frames = self.synthetic_source.settings["frames"]
         self.progress_bar = True  # May be updated during run_server
 
 
@@ -246,86 +272,108 @@ class SyntheticOpticalGater(server.FileOpticalGater):
     def plot_true_predicted_phase_residual(self):
         from . import prospective_optical_gating as pog
 
-        if type(self.predictor) is pog.KalmanPredictor or type(self.predictor) is pog.IMMPredictor:
-            kf_states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="wait_times")
-            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="wait_times")
-            wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
-            uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
-            first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
-            phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
-            trigger_times = timestamps + wait_times
+        states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="wait_times")
+        timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="wait_times")
+        wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
 
-            plot_timestamps = []
-            residuals = []
+        # Get phase offset
+        uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+        first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
+        phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
+        trigger_times = timestamps + wait_times
 
-            for i, state in enumerate(kf_states):
-                # Get the true phase at each trigger
-                true_phase_at_trigger_time = self.synthetic_source.get_state_at_timestamp(trigger_times[i])[1] % (2 * np.pi)
+        plot_timestamps = []
+        residuals = []
 
-                # Get the Kalman filter's estimate of the phase at each trigger
+        for i, state in enumerate(states):
+            # Get the true phase at the predicted trigger time
+            true_phase_at_trigger_time = self.synthetic_source.get_state_at_timestamp(trigger_times[i])[1] % (2 * np.pi)
+
+            if type(self.predictor) is pog.KalmanPredictor:
+                # Get the Kalman filter's estimate of the phase at the predicted trigger time
                 estimated_phase_at_trigger_time = (self.predictor.kf.make_forward_prediction(state, timestamps[i], trigger_times[i])[0][0] - phase_offset) % (2 * np.pi)
-
-                # Get the residual between the two
-                residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time
-
-                residuals.append(residual)
-                plot_timestamps.append(timestamps[i])
-
-            # Plot the residual
-            plt.figure()
-            sent_trigger_times = pa.get_metadata_from_list(
-                self.frame_history,
-                "predicted_trigger_time_s",
-                onlyIfKeyPresent="trigger_sent"
-            )
-            for trigger_time in sent_trigger_times:
-                plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
-            plt.scatter(plot_timestamps, residuals, label="Residual")
-            plt.xlabel("Time (s)")
-            plt.ylabel("Residual (rad)")
-            plt.title("True vs predicted phase residual")
-            plt.show()
-        elif type(self.predictor) is pog.LinearPredictor:
-            kf_states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="wait_times")
-            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="wait_times")
-            wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
-            uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
-            first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
-            phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
-            trigger_times = timestamps + wait_times
-
-            plot_timestamps = []
-            residuals = []
-
-            for i, state in enumerate(kf_states):
-                # Get the true phase at each trigger
-                true_phase_at_trigger_time = self.synthetic_source.get_state_at_timestamp(trigger_times[i])[1] % (2 * np.pi)
-
-                # Get the Kalman filter's estimate of the phase at each trigger
-                #estimated_phase_at_trigger_time = (self.predictor.kf.make_forward_prediction(state, timestamps[i], trigger_times[i])[0][0] - phase_offset) % (2 * np.pi)
-                print(state)
+            elif type(self.predictor) is pog.IMMPredictor:
+                estimated_phase_at_trigger_time = (self.predictor.imm.make_forward_prediction(state, timestamps[i], trigger_times[i])[0][0] - phase_offset) % (2 * np.pi)
+            elif type(self.predictor) is pog.LinearPredictor:
+                # Get the linear filter estimate of the phase at the predicted trigger time
                 estimated_phase_at_trigger_time = (state[1] + state[0] * trigger_times[i] - phase_offset) % (2 * np.pi)
+            else:
+                raise TypeError("Predictor is not of a valid type")
 
-                # Get the residual between the two
-                residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time
+            # Get the difference between the two
+            residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time
 
-                residuals.append(residual)
-                plot_timestamps.append(timestamps[i])
+            # Save for plotting
+            residuals.append(residual)
+            plot_timestamps.append(timestamps[i])
 
-            # Plot the residual
-            plt.figure()
-            sent_trigger_times = pa.get_metadata_from_list(
-                self.frame_history,
-                "predicted_trigger_time_s",
-                onlyIfKeyPresent="trigger_sent"
-            )
-            for trigger_time in sent_trigger_times:
-                plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
-            plt.scatter(plot_timestamps, residuals, label="Residual")
-            plt.xlabel("Time (s)")
-            plt.ylabel("Residual (rad)")
-            plt.title("True vs predicted phase residual")
-            plt.show()
+        # Plot the residual
+        plt.figure()
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history,
+            "predicted_trigger_time_s",
+            onlyIfKeyPresent="trigger_sent"
+        )
+        for trigger_time in sent_trigger_times:
+            plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
+        plt.scatter(plot_timestamps, residuals, label="Residual")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Residual (rad)")
+        plt.title("True vs predicted phase residual")
+        plt.show()
+
+        # Plot the residual
+        plt.figure()
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history,
+            "predicted_trigger_time_s",
+            onlyIfKeyPresent="trigger_sent"
+        )
+        for trigger_time in sent_trigger_times:
+            plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
+        plt.scatter(plot_timestamps, residuals, label="Residual")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Residual (rad)")
+        plt.title("True vs predicted phase residual")
+        plt.show()
+
+    def plot_future_predictions(self, prediction_s):
+        from . import prospective_optical_gating as pog
+
+        states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="states")
+        timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states")
+        uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+        first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
+        phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
+
+        residuals = []
+        for i, timestamp in enumerate(timestamps):
+            true_phase = self.synthetic_source.get_state_at_timestamp(timestamp + prediction_s)[1] % (2 * np.pi)
+
+            if type(self.predictor) is pog.KalmanPredictor:
+                # Make a forward prediction
+                estimated_phase = (self.predictor.kf.make_forward_prediction(states[i], timestamp, timestamp + prediction_s)[0][0] - phase_offset) % (2 * np.pi)
+            elif type(self.predictor) is pog.IMMPredictor:
+                estimated_phase = (self.predictor.imm.make_forward_prediction(states[i], timestamp, timestamp + prediction_s)[0][0] - phase_offset) % (2 * np.pi)
+            elif type(self.predictor) is pog.LinearPredictor:
+                estimated_phase = ((timestamp + prediction_s) * states[i][0] + states[i][1] - phase_offset) % (2 * np.pi)
+
+            residual = estimated_phase - true_phase - (2 * np.pi)
+            while residual < - np.pi:
+                residual += 2 * np.pi
+            residuals.append(residual)
+
+        plt.figure()
+        plt.scatter(timestamps, residuals)
+        sent_trigger_times = pa.get_metadata_from_list(
+            self.frame_history,
+            "predicted_trigger_time_s",
+            onlyIfKeyPresent="trigger_sent"
+        )
+        for trigger_time in sent_trigger_times:
+            plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
+        plt.show()
+
 
     def plot_NIS(self):
         if self.settings["prediction"]["prediction_method"] == "KF":
@@ -445,16 +493,17 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
+    analyser.plot_future_predictions(0.015)
     #analyser.plot_NIS()
     analyser.plot_true_predicted_phase_residual()
-    #analyser.plot_likelihood()
-    #analyser.plot_delta_phase_phase()
-    #analyser.plot_triggers()
-    #analyser.plot_prediction()
-    #analyser.plot_phase_histogram()
-    #analyser.plot_phase_error_histogram()
-    #analyser.plot_phase_error_with_time()
-    #analyser.plot_running()
+    analyser.plot_likelihood()
+    analyser.plot_delta_phase_phase()
+    analyser.plot_triggers()
+    analyser.plot_prediction()
+    analyser.plot_phase_histogram()
+    analyser.plot_phase_error_histogram()
+    analyser.plot_phase_error_with_time()
+    analyser.plot_running()
 
 if __name__ == "__main__":
     run(sys.argv[1:], "Run optical gater on image data contained in tiff file")

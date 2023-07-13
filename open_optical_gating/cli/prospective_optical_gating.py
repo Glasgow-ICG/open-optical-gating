@@ -368,8 +368,9 @@ class IMMPredictor(PredictorBase):
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
         self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / 100, R, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.95, 0.05],[0.05, 0.95]]))
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * 10, R, x_0, P_0)
+        self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R * 10, x_0, P_0)
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2, self.kf_cv3]), np.array([0.33, 0.33, 0.33]), np.array([[0.95, 0.025, 0.025],[0.025, 0.95, 0.025], [0.025, 0.025, 0.95]]))
 
         super().__init__(predictor_settings)
 
@@ -406,6 +407,14 @@ class IMMPredictor(PredictorBase):
             self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
             #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]"""
         
+        # Get the current frame's metadata
+        thisFrameMetadata = full_frame_history[-1].metadata
+
+        for model in self.imm.models:
+            if model.flags["initialised"] == False:
+                # Initialise the KF
+                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 5.0]), model.P)
+        
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
 
@@ -431,5 +440,18 @@ class IMMPredictor(PredictorBase):
 
         # Get the estimated heart period
         estHeartPeriod_s = 2 * np.pi / radsPerSec
+
+        # Add KF state estimates to our pixelarray metadata
+        thisFrameMetadata["states"] = self.imm.get_current_state_vector()
+        #thisFrameMetadata["likelihood"] = likelihood
+
+        # This code attempts to predict how long we need to wait until the next trigger by estimating the
+        # phase remaining and KF estimate of phase velocity.
+        timeToWait_s, estHeartPeriod_s = KalmanFilter.get_time_til_phase(self.imm.x, targetSyncPhase)
+
+        # Add wait time to metadata
+        thisFrameMetadata["wait_times"] = timeToWait_s
+
+        #thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         return timeToWait_s, estHeartPeriod_s
