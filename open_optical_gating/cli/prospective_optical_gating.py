@@ -103,7 +103,7 @@ class LinearPredictor:
 
         if len(full_frame_history) < framesForFit:
             logger.debug("Fit failed due to too few frames")
-            return -1, -1
+            return -1, -1, -1
         
         # We need to look back through the recent frame history and pick out 'framesForFit' frames
         # to use in our linear fit. Note the care taken here to only pass those relevant frames
@@ -113,9 +113,26 @@ class LinearPredictor:
                           full_frame_history[-framesForFit:], ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"]
                         )
 
+        # JT: this was an attempt to prevent fitting back past a frame gap.
+        # It wasn't fully effective (for reasons I didn't diagnose in detail), and this code
+        # has likely been superseded by the next test on tsdiffs.
+        # I can probably remove this first test now
+        # (but to be sure I should monitor if it would ever be hit where the second test would not...)
         if np.sum(frame_history[:, 3]) > 0:
-            logger.debug("Fit failed due to too few frames (due to presence of fit barrier)")
-            return -1, -1
+            logger.info("Fit failed due to too few frames (due to presence of fit barrier)")
+            return -1, -1, -1
+        ts = frame_history[:, 0]
+        
+        # Test for gaps in the timestamps of the frames we are using.
+        # Really we are looking to detect large gaps that indicate we stopped acquiring (e.g. while doing a LTU),
+        # because that means the phase unwrapping is probably not correct across the time gap.
+        # But it's probably also no bad thing that this will detect any serious jitted in frame arrival times
+        # (which would make me nervous when fitting)
+        if (len(ts) > 1):
+            tsdiffs = ts[1:] - ts[:-1]
+            if (np.max(tsdiffs) > np.min(tsdiffs) * 2.5):
+                logger.info("Fit failed due to gap in frame history of time {0} ({1}, {2}, {3})", np.max(tsdiffs), len(tsdiffs), np.min(tsdiffs), np.median(tsdiffs))
+                return -1, -1, -1
         
         # Perform a linear fit to the past phases. We will use this for our forward-prediction
         logger.trace("Phase history times: {0}", frame_history[:, 0])
@@ -206,7 +223,7 @@ class LinearPredictor:
                 )
 
         # Return our prediction
-        return timeToWait_s, estHeartPeriod_s
+        return timeToWait_s, estHeartPeriod_s, frame_history.shape[0]
 
     def decide_whether_to_trigger(self, timestamp, timeToWait_s, frameInterval_s, estHeartPeriod_s):
         """ Potentially schedules a synchronization trigger for the fluorescence camera,

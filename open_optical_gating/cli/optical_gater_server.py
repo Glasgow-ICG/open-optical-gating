@@ -216,17 +216,22 @@ class OpticalGater:
                 predict = self.frame_history[-1].metadata["predicted_trigger_time_s"]
                 if predict is None:
                     predict = -1.0
+                try:
+                    numUsed = self.frame_history[-1].metadata["frames_used_for_fit"]
+                except:
+                    numUsed = 0
                 logger.info(
-                    "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2:.3f} | Predict = {3:.6f} | Target Phase = {4:.3f}",
+                    "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2:.3f} | Predict = {3:.6f} | Target Phase = {4:.3f} | Used {5}",
                     pixelArray.metadata["timestamp"],
                     self.state,
                     self.frame_history[-1].metadata["unwrapped_phase"],
                     predict,
-                    self.frame_history[-1].metadata["targetSyncPhase"]
+                    self.frame_history[-1].metadata["targetSyncPhase"],
+                    numUsed
                 )
         else:
             logger.info(
-                "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2} | Predict = 0 | Target Phase = {3}",
+                "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2} | Predict = 0 | Target Phase = {3} | Used 0",
                 pixelArray.metadata["timestamp"],
                 self.state,
                 None,
@@ -480,7 +485,7 @@ class OpticalGater:
 
             # Make a future prediction
             logger.trace("Predicting next trigger.")
-            timeToWait_s, estHeartPeriod_s = self.predictor.predict_trigger_wait(
+            timeToWait_s, estHeartPeriod_s, frames_used_for_fit = self.predictor.predict_trigger_wait(
                 self.frame_history,
                 self.ref_seq_manager.targetSyncPhase,
                 frameInterval_s,
@@ -489,6 +494,7 @@ class OpticalGater:
             logger.trace("Time to wait to trigger: {0} s.".format(timeToWait_s))
 
             this_predicted_trigger_time_s = thisFrameMetadata["timestamp"] + timeToWait_s
+            thisFrameMetadata["frames_used_for_fit"] = frames_used_for_fit;
 
             # If we have a prediction, consider actually sending the trigger
             if timeToWait_s > 0:
