@@ -144,12 +144,13 @@ class OpticalGater:
         self.frame_num += 1
         self.frame_num_total += 1
         
-        logger.info(
-            "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
-            self.frame_num_total,
-            pixelArray.metadata["timestamp"],
-            self.state
-        )
+        if self.state != "timelapse_pause":
+            logger.info(
+                "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
+                self.frame_num_total,
+                pixelArray.metadata["timestamp"],
+                self.state
+            )
         # Specify the reference sequence update criterion and initialise update_criterion accordingly
         if (self.settings["reference"]["ref_update_criterion"] == "frames"):
             self.update_criterion = self.frame_num
@@ -192,27 +193,31 @@ class OpticalGater:
         
         pixelArray.metadata["optical_gating_state"] = self.state
         if self.state == "prep_full_reset":
-            self.prepare_for_state_change("full_reset")
+            newState = self.prepare_for_state_change("full_reset")
         elif self.state == "full_reset":
-            self.full_reset_state(pixelArray)
+            newState = self.full_reset_state(pixelArray)
         elif self.state == "prep_basic_refresh":
-            self.prepare_for_state_change("basic_refresh")
+            newState = self.prepare_for_state_change("basic_refresh")
         elif self.state == "basic_refresh":
-            self.basic_refresh_state(pixelArray)
+            newState = self.basic_refresh_state(pixelArray)
         elif self.state == "timelapse_pause":
-            self.timelapse_pause_state()
+            newState = self.timelapse_pause_state()
         elif self.state == "prep_timelapse_refresh":
-            self.prepare_for_state_change("timelapse_refresh")
+            newState = self.prepare_for_state_change("timelapse_refresh")
         elif self.state == "timelapse_refresh":
-            self.timelapse_refresh_state(pixelArray)
+            newState = self.timelapse_refresh_state(pixelArray)
+        elif self.state == "sync-imminent":
+            # This state exists purely to discard the first frame in sync state,
+            # which may be a stale image if coming from the RPi camera
+            newState = "sync"
         elif self.state == "sync":
-            self.sync_state(pixelArray)
+            newState = self.sync_state(pixelArray)
         else:
             logger.critical("Unknown state '{0}'", self.state)
             raise NotImplementedError("Unknown state '{0}'".format(self.state))
         
         # Logging crucial information
-        if self.state == 'sync':
+        if self.state == "sync":
             if len(self.frame_history) > 0:
                 predict = self.frame_history[-1].metadata["predicted_trigger_time_s"]
                 if predict is None:
@@ -230,7 +235,7 @@ class OpticalGater:
                     self.frame_history[-1].metadata["targetSyncPhase"],
                     numUsed
                 )
-        else:
+        elif self.state != "timelapse_pause":
             logger.info(
                 "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2} | Predict = 0 | Target Phase = {3} | Used 0",
                 pixelArray.metadata["timestamp"],
@@ -238,6 +243,9 @@ class OpticalGater:
                 None,
                 None
             )
+        if newState is not None:
+            logger.info("Transition from {0} to {1}", self.state, newState)
+            self.state = newState
             
         # take a note of our processing rate (useful for deciding what camera framerate is viable to use)
         time_fin = time.perf_counter()
@@ -264,7 +272,7 @@ class OpticalGater:
             print(f"Starting a timelapse - interval {self.settings['general']['pause_for_timelapse']}s")
             self.next_timelapse_time = self.currentTimeStamp + self.settings["general"]["pause_for_timelapse"]
         # Set state to target state to be moved onto in the next pass of analyze_pixelarray
-        self.state = target_state
+        return target_state
     
     def save_ref_frames(self, specialPrefix = "REF-"):
         # Save the most recent reference sequence
@@ -325,7 +333,7 @@ class OpticalGater:
                 self.ref_seq_manager.drift,
                 self.ref_seq_manager.targetFrameNum
                 )
-            self.state = "sync"
+            return "sync-imminent"
                 
     def basic_refresh_state(self, pixelArray):
         """
@@ -357,18 +365,18 @@ class OpticalGater:
                 self.ref_seq_manager.drift
                 )
             self.set_target_frame(newTargetFrame, None)
-            self.state = "sync"
+            return "sync-imminent"
     
     def timelapse_pause_state(self):
         logger.debug("Pausing for timelapse...")
         if self.currentTimeStamp >= self.next_timelapse_time:
             # Move on to the timelapse_refresh state.
-            self.state = "prep_timelapse_refresh"
             # The Zeiss Zen software will start a new timelapse religiously every N seconds,
             # so it's important that we don't lose any time here.
             # We therefore just add the appropriate pause time on to the value of next_timelapse_time.
             self.next_timelapse_time += self.settings["general"]["pause_for_timelapse"]
             print("Commencing next timelapse timepoint")
+            return "prep_timelapse_refresh"
             
     def timelapse_refresh_state(self, pixelArray):
         """
@@ -406,7 +414,7 @@ class OpticalGater:
                 self.ref_seq_manager.targetFrameNum
             )
             # Return to sync state
-            self.state = "sync"
+            return "sync-imminent"
             
     def set_target_frame(self, new_target_frame, new_barrier):
         """ Impose a new target frame representing the heart phase that our code will aim to synchronize to.
