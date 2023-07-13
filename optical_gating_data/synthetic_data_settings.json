@@ -2,7 +2,7 @@
     "general": {
         "log_level": "WARNING",
         "analyse_time_s": 100000,
-        "frame_buffer_length": 1000,
+        "frame_buffer_length": 2000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
         "pause_for_timelapse": 40,
@@ -13,7 +13,7 @@
     "brightfield": {
         "brightfield_framerate": 80,
         "save_first_n_frames": 0,
-        "frames": 1000,
+        "frames": 2000,
         "type": "gaussian"
     },
     
@@ -39,14 +39,14 @@
             "prediction_latency_s": 0.015
         },
         "kalman": {
-            "gating_method" : "none",
-            "gating_level" : 5,
+            "gating_method": "none",
+            "gating_level": 5,
             "prediction_latency_s": 0.015,
-            "alpha" : 1
+            "alpha": 1
         },
         "IMM": {
-            "gating_method" : "none",
-            "gating_level" : 5,
+            "gating_method": "none",
+            "gating_level": 5,
             "prediction_latency_s": 0.015
         }
     },

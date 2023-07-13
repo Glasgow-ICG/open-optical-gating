@@ -266,7 +266,7 @@ class OpticalGater:
             x0 = np.array([0, 10])
             P0 = np.array([[1000, 1000], [1000, 1000]])
             q = 1
-            R = 0.00001
+            R = 1
             self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
@@ -755,6 +755,7 @@ class OpticalGater:
         plt.show()
 
     def plot_likelihood(self):
-        plt.figure()
-        plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
-        plt.show()
+        if self.settings["prediction"]["prediction_method"] == "KF":
+            plt.figure()
+            plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
+            plt.show()

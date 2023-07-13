@@ -286,7 +286,7 @@ class LinearPredictor(PredictorBase):
 
         # Add wait time to metadata
         thisFrameMetadata = full_frame_history[-1].metadata
-        thisFrameMetadata["states"] = np.array([alpha, radsPerSec])
+        thisFrameMetadata["states"] = np.array([radsPerSec, alpha])
         thisFrameMetadata["wait_times"] = timeToWait_s
 
         # Return our prediction
@@ -335,7 +335,7 @@ class KalmanPredictor(PredictorBase):
         # estimates from OOG
         if self.kf.flags["initialised"] == False:
             # Initialise the KF
-            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 6.29]), self.kf.P)
+            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 5.0]), self.kf.P)
             likelihood = 0
         else:
             # Run the KF

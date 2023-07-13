@@ -174,10 +174,6 @@ class KalmanFilter():
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
     
-
-        """
-        TODO: Fix this. For metadata it doesn't seem to work when the metadata is an array.
-        """
     def get_current_state_vector(self):
         """
         Returns the current Kalman filter state vector
@@ -255,7 +251,7 @@ class KalmanFilter():
 
         NOTE: This is not a good solution for use with the IMM filter as it results in a bias due to the zero acceleration with this velocity model
         TODO: Implement paper by Yuan et al (2012) to fix this (https://ieeexplore.ieee.org/abstract/document/6324701) for now we can just use two 
-        constant velocity filters with different process noise levels for our adaptive filter
+        constant velocity filters with different process noise levels for our adaptive filter.
 
         Args:
             dt (float): Time between measurements
