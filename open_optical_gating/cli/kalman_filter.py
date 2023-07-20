@@ -416,6 +416,7 @@ class InteractingMultipleModelFilter():
         self.M = M
         
         self.omega = np.zeros((len(self.models), len(self.models)))
+        self.likelihood = np.zeros(len(self.models))
 
         self.compute_mixing_probabilities()
         self.compute_state_estimate()
@@ -433,7 +434,7 @@ class InteractingMultipleModelFilter():
                 x += kf.x * wj
             xs.append(x)
 
-            P = np.zeros(self.P.shape)
+            P = np.zeros_like(self.P)
             for kf, wj in zip(self.models, w):
                 y = kf.x - x
                 P += wj * (np.outer(y, y) + kf.P)
@@ -454,7 +455,10 @@ class InteractingMultipleModelFilter():
         
         for i, model in enumerate(self.models):
             model.update(z)
-            self.mu[i] = model.L * self.cbar[i]
+            #self.mu[i] = model.L * self.cbar[i]
+            self.likelihood[i] = model.L
+
+        self.mu = self.likelihood * self.cbar
         self.mu /= np.sum(self.mu)
         
         self.compute_mixing_probabilities()
@@ -482,6 +486,13 @@ class InteractingMultipleModelFilter():
         """
 
         return self.x
+    
+    def get_current_covariance_matrix(self):
+        """
+        Returns the current Kalman filter covariance matrix
+        """
+
+        return self.P
     
     def make_forward_prediction(self, x, t0, t):
         """
