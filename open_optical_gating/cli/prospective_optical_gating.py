@@ -333,9 +333,11 @@ class KalmanPredictor(PredictorBase):
         # NOTE: Currently, we don't provide an estimate for our phase velocity. Possible choices include,
         # calculating the expected velocity from our known brightfield framerate or using the first two phase
         # estimates from OOG
-        if self.kf.flags["initialised"] == False:
-            # Initialise the KF
-            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 5.0]), self.kf.P)
+        if self.kf.flags["initialised"] == 0:
+            # Initialise the using the current phase and velocity estimate
+            # TODO: Replace the number 75 with the correct framerate
+            # We can get this from the example_data_settings.json
+            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 75]), self.kf.P)
             likelihood = 0
         else:
             # Run the KF
@@ -346,6 +348,7 @@ class KalmanPredictor(PredictorBase):
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.kf.get_current_state_vector()
+        thisFrameMetadata["covariance"] = self.kf.get_current_covariance_matrix()
         thisFrameMetadata["likelihood"] = likelihood
 
         # This code attempts to predict how long we need to wait until the next trigger by estimating the
@@ -358,8 +361,7 @@ class KalmanPredictor(PredictorBase):
         thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         # Return the remaining time and the estimated heart period
-        return timeToWait_s, estHeartPeriod_s
-    
+        return timeToWait_s, estHeartPeriod_s    
 
 class IMMPredictor(PredictorBase):
     """
@@ -369,8 +371,8 @@ class IMMPredictor(PredictorBase):
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
         self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
         self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * 10, R, x_0, P_0)
-        self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R * 10, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2, self.kf_cv3]), np.array([0.33, 0.33, 0.33]), np.array([[0.95, 0.025, 0.025],[0.025, 0.95, 0.025], [0.025, 0.025, 0.95]]))
+        #self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R * 10, x_0, P_0)
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.95, 0.05],[0.05, 0.95]]))
 
         super().__init__(predictor_settings)
 
@@ -413,10 +415,12 @@ class IMMPredictor(PredictorBase):
         for model in self.imm.models:
             if model.flags["initialised"] == False:
                 # Initialise the KF
-                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 5.0]), model.P)
+                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 10.77]), model.P)
         
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
+
+        print(self.imm.models[0].x)
 
         # Get KF Parameters
         thisFramePhase = self.imm.x[0] % (2 * np.pi)
@@ -443,6 +447,7 @@ class IMMPredictor(PredictorBase):
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.imm.get_current_state_vector()
+        thisFrameMetadata["covariance"] = self.imm.get_current_covariance_matrix()
         #thisFrameMetadata["likelihood"] = likelihood
 
         # This code attempts to predict how long we need to wait until the next trigger by estimating the

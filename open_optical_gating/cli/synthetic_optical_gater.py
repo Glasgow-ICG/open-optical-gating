@@ -41,6 +41,9 @@ class DynamicDrawer():
             noise_level (_type_): _description_
         """
 
+        # For reproducibility of our synthetic data we set the random seed
+        np.random.seed(0)
+
         self.settings = {
             "frames" : 1000,
             "width" : width,
@@ -61,24 +64,16 @@ class DynamicDrawer():
         # timestamp
         initial_velocity = 5
         # FIXME: Temporary fix here by setting our last timestamp in our motion model to a large number
+
+        # Create a noisy motion model
         motion_model = {
-            0: 0,
-            10: 0.2,
-            11: 0,
-            15: 0,
-            20: 0,
-            1000000: 0
+            0.0: 0,
         }
+        for i in np.linspace(0, 100, 10000):
+            motion_model[i] = np.random.normal(0, 0.6)
         self.set_motion_model(initial_velocity, motion_model)
 
-        frames = []
-        for i in range(self.settings["frames"]):
-            # TODO: Get the framerate from our settings dictionary
-            # Will need to pass settings dictionary to drawer class
-            frames.append(self.draw_frame_at_timestamp(i / 75)[0])
-        import tifffile as tf
-        frames = np.array(frames)
-        tf.imwrite("test.tif", frames)
+        self.plot_motion_model()
  
     def clear_canvas(self):
         self.canvas = np.zeros_like(self.canvas)
@@ -107,6 +102,8 @@ class DynamicDrawer():
             tuple: Tuple of the timestamp, position, velocity, and acceleration
         """
 
+        print(timestamp)
+
         # Get our timestamps and corresponding accelerations from our dictionary
         times = [*self.motion_model.keys()]
         accelerations = [*self.motion_model.values()]
@@ -132,6 +129,8 @@ class DynamicDrawer():
                 acceleration = accelerations[i]
                 position += velocity * delta_time + 0.5 * accelerations[i] * delta_time**2
                 velocity += delta_time * accelerations[i]
+
+        #print(f"{timestamp:.2f}:{velocity:.2f}")
 
         return timestamp, position, velocity, acceleration
 
@@ -207,22 +206,45 @@ class DynamicDrawer():
         phase = self.get_state_at_timestamp(timestamp)[1] % (2 * np.pi)
         self.clear_canvas()
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32 + 16 * np.cos(phase), 32 + 16 * np.cos(phase), 0, 1, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32 + 8 * np.cos(phase), 32 + 8 * np.cos(phase), 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26 + 16 * np.cos(phase), 26 + 16 * np.cos(phase), 0, 1, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26 + 8 * np.cos(phase), 26 + 8 * np.cos(phase), 0, 1, 1000)
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32 + 16 * np.sin(phase), 32 + 16 * np.sin(phase), 0, 1, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32 + 8 * np.sin(phase), 32 + 8 * np.sin(phase), 0, 1, 1000)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26 + 16 * np.sin(phase), 26 + 16 * np.sin(phase), 0, 1, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26 + 8 * np.sin(phase), 26 + 8 * np.sin(phase), 0, 1, 1000)
 
         return self.get_canvas(), phase + self.phase_offset
+    
+
+    def plot_motion_model(self):
+        """
+        Plot the motion model
+        """
+        xs = np.linspace(0, 15, 1000)
+        positions = []
+        velocities = []
+        accelerations = []
+        for x in xs:
+            positions.append(self.get_state_at_timestamp(x)[1])
+            velocities.append(self.get_state_at_timestamp(x)[2])
+            accelerations.append(self.get_state_at_timestamp(x)[3])
+
+        plt.figure()
+        plt.title("Motion model")
+        plt.plot(xs, positions, label = "Position (m)")
+        plt.plot(xs, velocities, label = "Velocity (m/s)")
+        plt.plot(xs, accelerations, label = "Acceleration (m/s^2)")
+        plt.legend()
+        plt.show()
+    
     
 
 
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(server.FileOpticalGater, self).__init__(settings=settings)
-        self.synthetic_source = DynamicDrawer(196, 196, 1000, "normal", 10)
+        self.synthetic_source = DynamicDrawer(196, 196, 1000, "normal", 32)
         """if self.settings["brightfield"]["type"] == "gaussian":
             self.synthetic_source = Gaussian()
         elif self.settings["brightfield"]["type"] == "peristalsis":
@@ -267,6 +289,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         return next
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
+        # TODO: We can trigger synthetic fluorescence images here (maybe worth doing?)
         return super().trigger_fluorescence_image_capture(trigger_time_s)
     
     def plot_true_predicted_phase_residual(self):
@@ -277,9 +300,9 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         wait_times = pa.get_metadata_from_list(self.frame_history, "wait_times", onlyIfKeyPresent="wait_times")
 
         # Get phase offset
-        uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+        unwrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
         first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
-        phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
+        phase_offset = unwrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
         trigger_times = timestamps + wait_times
 
         plot_timestamps = []
@@ -301,26 +324,14 @@ class SyntheticOpticalGater(server.FileOpticalGater):
                 raise TypeError("Predictor is not of a valid type")
 
             # Get the difference between the two
-            residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time
+            residual = estimated_phase_at_trigger_time - true_phase_at_trigger_time - 2 * np.pi
+
+            while residual < - np.pi:
+                residual += 2 * np.pi
 
             # Save for plotting
             residuals.append(residual)
             plot_timestamps.append(timestamps[i])
-
-        # Plot the residual
-        plt.figure()
-        sent_trigger_times = pa.get_metadata_from_list(
-            self.frame_history,
-            "predicted_trigger_time_s",
-            onlyIfKeyPresent="trigger_sent"
-        )
-        for trigger_time in sent_trigger_times:
-            plt.axvline(trigger_time, ls = ":", c = "black", label = "Triggers")
-        plt.scatter(plot_timestamps, residuals, label="Residual")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Residual (rad)")
-        plt.title("True vs predicted phase residual")
-        plt.show()
 
         # Plot the residual
         plt.figure()
@@ -342,9 +353,9 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         states = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="states")
         timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states")
-        uwnrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+        unwrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
         first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
-        phase_offset = uwnrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
+        phase_offset = unwrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
 
         residuals = []
         for i, timestamp in enumerate(timestamps):
@@ -365,6 +376,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
         plt.figure()
         plt.scatter(timestamps, residuals)
+        plt.title(f"Prediction residual at t+{prediction_s}")
         sent_trigger_times = pa.get_metadata_from_list(
             self.frame_history,
             "predicted_trigger_time_s",
@@ -386,6 +398,45 @@ class SyntheticOpticalGater(server.FileOpticalGater):
             plt.xlabel("Timestamps (s)")
             plt.ylabel("NIS")
             plt.show()
+
+    def plot_state_residuals(self):
+        # TODO: Make this work for linear fit
+
+        #if self.settings["prediction"]["prediction_method"] == "kalman" or self.settings["prediction"]["prediction_method"] == "IMM":
+        timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states")
+        state_estimates = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="states")
+        state_residuals = []
+
+        unwrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="unwrapped_phase")
+        first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "unwrapped_phase")[0]
+        state_offset = [0, 0]
+        state_offset[0] = unwrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
+        if self.settings["prediction"]["prediction_method"] == "linear":
+            delta_phases = pa.get_metadata_from_list(self.frame_history, "delta_phase", onlyIfKeyPresent="unwrapped_phase")
+            state_offset[1] = delta_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[2]
+
+        for i, state in enumerate(state_estimates):
+            # Get the true phase at the predicted trigger time
+            true_state = self.synthetic_source.get_state_at_timestamp(timestamps[i])[1:3]
+
+            if self.settings["prediction"]["prediction_method"] == "linear":
+                state[0] = unwrapped_phases[i]
+                state[1] = state_estimates[i][1]
+
+            state_residual = true_state - state + state_offset
+
+            state_residuals.append(state_residual)
+
+        state_residuals = np.array(state_residuals)
+        plt.figure()
+        plt.title("Estimated state vs true state")
+        plt.plot(timestamps, state_residuals[:, 0], label = "Position (m)")
+        plt.plot(timestamps, state_residuals[:, 1], label = "velocity (m/s)")
+        plt.legend()
+        plt.xlabel("Timestamp (s)")
+        plt.ylabel("State residual")
+        plt.show()
+
 
 def load_settings(raw_args, desc, add_extra_args=None):
     '''
@@ -493,6 +544,8 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
+    analyser.plot_residuals()
+    analyser.plot_state_residuals()
     analyser.plot_future_predictions(0.015)
     #analyser.plot_NIS()
     analyser.plot_true_predicted_phase_residual()

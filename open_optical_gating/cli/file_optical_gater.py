@@ -328,6 +328,7 @@ def run(args, desc):
     analyser.run_server()
 
     logger.success("Plotting summaries...")
+    analyser.plot_residuals()
     analyser.plot_likelihood()
     analyser.plot_delta_phase_phase()
     analyser.plot_triggers()

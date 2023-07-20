@@ -264,7 +264,7 @@ class OpticalGater:
             logger.info("Initialising IMM predictor")
             dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
             x0 = np.array([0, 10])
-            P0 = np.array([[1000, 1000], [1000, 1000]])
+            P0 = np.array([[100, 0], [1000, 0]])
             q = 1
             R = 1
             self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
@@ -441,8 +441,8 @@ class OpticalGater:
             # we just calculate (current_phase - previous_phase) and add that to the unwrapped phase of the previous frame.
             # But some care is needed to handle the case where the current phase has just wrapped,
             # or there is a slight backward step from e.g. 0.01 to 2π-0.01.
-            previous_phase = self.frame_history[-1].metadata["unwrapped_phase"] % (2*np.pi)
-            delta_phase = current_phase - previous_phase
+            previous_phase = self.frame_history[-1].metadata["unwrapped_phase"] % (2*np.pi) 
+            delta_phase = current_phase - previous_phase - (2 * np.pi)
             # Handle phase wraps in the most sensible way possible
             # (when mapped to [0,2π], we consider [0,π] to be a forward step and [π,2π] to be backwards.
             while delta_phase < -np.pi:
@@ -751,11 +751,43 @@ class OpticalGater:
 
     def plot_delta_phase_phase(self):
         plt.figure()
+        plt.title("Delta phase vs phase plot")
         plt.scatter(pa.get_metadata_from_list(self.frame_history, "phase"), pa.get_metadata_from_list(self.frame_history, "delta_phase"))
+        plt.xlabel("Phase (rad)")
+        plt.ylabel("Delta phase (rad/s)")
         plt.show()
 
     def plot_likelihood(self):
-        if self.settings["prediction"]["prediction_method"] == "KF":
+        if self.settings["prediction"]["prediction_method"] == "kalman":
             plt.figure()
+            plt.title("Likelihood")
             plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
+            plt.xlabel("Timestamp (s)")
+            plt.ylabel("Likelihood")
+            plt.show()
+
+    def plot_residuals(self):
+        if type(self.predictor) is pog.LinearPredictor:
+            print("Linear predictor residuals cannot be plotted")
+        elif type(self.predictor is pog.KalmanPredictor) or type(self.predictor is pog.IMMPredictor):
+            kalman_estimates = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="states")
+            kalman_covariance = pa.get_metadata_from_list(self.frame_history, "covariance", onlyIfKeyPresent="covariance")
+            phase_measurements = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="states")
+            residuals = []
+            uncertainties = []
+            for i in range(len(kalman_estimates)):
+                residual = phase_measurements[i] - kalman_estimates[i][0]
+                uncertainty = kalman_covariance[i][0][0]**0.5
+
+                residuals.append(residual)
+                uncertainties.append(uncertainty)
+
+            residuals = np.array(residuals)
+            uncertainties = np.array(uncertainties)
+
+            plt.figure()
+            plt.title("Kalman residuals")
+            plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states"), residuals, label="Residuals")
+            plt.plot(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states"), uncertainties, label="Uncertainties", ls = ":", c = "black")
+            plt.plot(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states"), -uncertainties, label="Uncertainties", ls = ":", c = "black")
             plt.show()

@@ -11,13 +11,13 @@
     },
     
     "file": {
-        "input_tiff_path": "example_data.tif",
+        "input_tiff_path": "D:/Data/2016-10-12 13.17.39 vid single plane/Brightfield - Prosilica/*tif",
         "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
         "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
     },
     
     "brightfield": {
-        "brightfield_framerate": 75,
+        "brightfield_framerate": 100,
         "save_first_n_frames": 0
     },
     
@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "kalman",
+        "prediction_method": "IMM",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -46,7 +46,7 @@
             "gating_method": "none",
             "gating_level": 5,
             "prediction_latency_s": 0.015,
-            "alpha": 1.01
+            "alpha": 1
         },
         "IMM": {
             "gating_method": "none",
