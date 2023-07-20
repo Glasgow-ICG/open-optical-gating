@@ -7,6 +7,7 @@ import sys, time
 import numpy as np
 import matplotlib.pyplot as plt
 from loguru import logger
+from scipy import interpolate
 
 # Optical Gating Alignment module
 import optical_gating_alignment.optical_gating_alignment as oga
@@ -143,12 +144,13 @@ class OpticalGater:
         self.frame_num += 1
         self.frame_num_total += 1
         
-        logger.info(
-            "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
-            self.frame_num_total,
-            pixelArray.metadata["timestamp"],
-            self.state
-        )
+        if self.state != "timelapse_pause":
+            logger.info(
+                "\n \n ################################################ Frame = {0} | Timestamp =  {1} s | State = {2} ################################################",
+                self.frame_num_total,
+                pixelArray.metadata["timestamp"],
+                self.state
+            )
         # Specify the reference sequence update criterion and initialise update_criterion accordingly
         if (self.settings["reference"]["ref_update_criterion"] == "frames"):
             self.update_criterion = self.frame_num
@@ -168,7 +170,9 @@ class OpticalGater:
             self.frame_num = 0
             self.trigger_num = 0
             self.timelapse_trigger_num = 0
-            self.last_timelapse_time = self.currentTimeStamp
+            if self.currentTimeStamp >= self.next_timelapse_time:
+                logger.warning(f"Next timelapse was due at {self.next_timelapse_time}, but frame timestamp is already {self.currentTimeStamp}")
+            print(f"Pausing for timelapse ({self.settings['general']['pause_for_timelapse']}s interval). Next timepoint coming up in {self.next_timelapse_time - self.currentTimeStamp:.3f}")
             self.state = "timelapse_pause"
           
         # Initiate a "normal" reference sequence update if a certain number of triggers
@@ -189,43 +193,59 @@ class OpticalGater:
         
         pixelArray.metadata["optical_gating_state"] = self.state
         if self.state == "prep_full_reset":
-            self.prepare_for_state_change("full_reset")
+            newState = self.prepare_for_state_change("full_reset")
         elif self.state == "full_reset":
-            self.full_reset_state(pixelArray)
+            newState = self.full_reset_state(pixelArray)
         elif self.state == "prep_basic_refresh":
-            self.prepare_for_state_change("basic_refresh")
+            newState = self.prepare_for_state_change("basic_refresh")
         elif self.state == "basic_refresh":
-            self.basic_refresh_state(pixelArray)
+            newState = self.basic_refresh_state(pixelArray)
         elif self.state == "timelapse_pause":
-            self.timelapse_pause_state()
+            newState = self.timelapse_pause_state()
         elif self.state == "prep_timelapse_refresh":
-            self.prepare_for_state_change("timelapse_refresh")
+            newState = self.prepare_for_state_change("timelapse_refresh")
         elif self.state == "timelapse_refresh":
-            self.timelapse_refresh_state(pixelArray)
+            newState = self.timelapse_refresh_state(pixelArray)
+        elif self.state == "sync-imminent":
+            # This state exists purely to discard the first frame in sync state,
+            # which may be a stale image if coming from the RPi camera
+            newState = "sync"
         elif self.state == "sync":
-            self.sync_state(pixelArray)
+            newState = self.sync_state(pixelArray)
         else:
             logger.critical("Unknown state '{0}'", self.state)
             raise NotImplementedError("Unknown state '{0}'".format(self.state))
         
         # Logging crucial information
-        if self.state == 'sync':
+        if self.state == "sync":
             if len(self.frame_history) > 0:
+                predict = self.frame_history[-1].metadata["predicted_trigger_time_s"]
+                if predict is None:
+                    predict = -1.0
+                try:
+                    numUsed = self.frame_history[-1].metadata["frames_used_for_fit"]
+                except:
+                    numUsed = 0
                 logger.info(
-                    "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                    "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2:.3f} | Predict = {3:.6f} | Target Phase = {4:.3f} | Used {5}",
                     pixelArray.metadata["timestamp"],
                     self.state,
                     self.frame_history[-1].metadata["unwrapped_phase"],
-                    self.frame_history[-1].metadata["targetSyncPhase"]
+                    predict,
+                    self.frame_history[-1].metadata["targetSyncPhase"],
+                    numUsed
                 )
-        else:
+        elif self.state != "timelapse_pause":
             logger.info(
-                "LOG TYPE A: Timestamp = {0} | State = {1} | Phase = {2} | Target Phase = {3}", 
+                "LOG TYPE A: Timestamp = {0:.6f} | State = {1} | Phase = {2} | Predict = 0 | Target Phase = {3} | Used 0",
                 pixelArray.metadata["timestamp"],
                 self.state,
                 None,
                 None
             )
+        if newState is not None:
+            logger.info("Transition from {0} to {1}", self.state, newState)
+            self.state = newState
             
         # take a note of our processing rate (useful for deciding what camera framerate is viable to use)
         time_fin = time.perf_counter()
@@ -275,8 +295,11 @@ class OpticalGater:
         if target_state == "full_reset":
             self.aligner1 = oga.Aligner(self.settings["oga"])
             self.aligner2 = oga.Aligner(self.settings["oga"])
+            # Keep track of when the next timelapse timepoint will come up
+            print(f"Starting a timelapse - interval {self.settings['general']['pause_for_timelapse']}s")
+            self.next_timelapse_time = self.currentTimeStamp + self.settings["general"]["pause_for_timelapse"]
         # Set state to target state to be moved onto in the next pass of analyze_pixelarray
-        self.state = target_state
+        return target_state
     
     def save_ref_frames(self, specialPrefix = "REF-"):
         # Save the most recent reference sequence
@@ -337,7 +360,7 @@ class OpticalGater:
                 self.ref_seq_manager.drift,
                 self.ref_seq_manager.targetFrameNum
                 )
-            self.state = "sync"
+            return "sync-imminent"
                 
     def basic_refresh_state(self, pixelArray):
         """
@@ -353,6 +376,14 @@ class OpticalGater:
             self.ref_seq_manager.set_ref_frames(ref_frames, period_to_use)
             self.save_ref_frames()
             self.slow_action_occurred = "reference frame adaptive update"
+            
+            # We must not fit too far back in the frame history
+            # Otherwise we will be trying to fit to nonsense phases from before the reset - many beats ago,
+            # and when our phase reference point was different.
+            # We don't want to completely delete the frame history
+            # (we use it for performance analysis at the end of a FileOpticalGater run for example),
+            # so instead we mark the frame we should not fit back past.
+            self.frame_history[-1].metadata["fit_barrier"] = 1.0
 
             # Find and set the new target frame
             newTargetFrame = self.aligner1.process_sequence(
@@ -361,12 +392,18 @@ class OpticalGater:
                 self.ref_seq_manager.drift
                 )
             self.set_target_frame(newTargetFrame, None)
-            self.state = "sync"
+            return "sync-imminent"
     
     def timelapse_pause_state(self):
         logger.debug("Pausing for timelapse...")
-        if self.currentTimeStamp - self.last_timelapse_time >= self.settings["general"]["pause_for_timelapse"]:
-            self.state = "prep_timelapse_refresh"
+        if self.currentTimeStamp >= self.next_timelapse_time:
+            # Move on to the timelapse_refresh state.
+            # The Zeiss Zen software will start a new timelapse religiously every N seconds,
+            # so it's important that we don't lose any time here.
+            # We therefore just add the appropriate pause time on to the value of next_timelapse_time.
+            self.next_timelapse_time += self.settings["general"]["pause_for_timelapse"]
+            print("Commencing next timelapse timepoint")
+            return "prep_timelapse_refresh"
             
     def timelapse_refresh_state(self, pixelArray):
         """
@@ -404,7 +441,7 @@ class OpticalGater:
                 self.ref_seq_manager.targetFrameNum
             )
             # Return to sync state
-            self.state = "sync"
+            return "sync-imminent"
             
     def set_target_frame(self, new_target_frame, new_barrier):
         """ Impose a new target frame representing the heart phase that our code will aim to synchronize to.
@@ -458,6 +495,7 @@ class OpticalGater:
 
         # Append our current PixelArray object (including its metadata) to our frame_history list
         thisFrameMetadata = pixelArray.metadata
+        thisFrameMetadata["fit_barrier"] = 0.0
         thisFrameMetadata["unwrapped_phase"] = phase
         thisFrameMetadata["sad_min"] = np.argmin(sad)
         thisFrameMetadata["phase"] = current_phase
@@ -485,7 +523,7 @@ class OpticalGater:
 
             # Make a future prediction
             logger.trace("Predicting next trigger.")
-            timeToWait_s, estHeartPeriod_s = self.predictor.predict_trigger_wait(
+            timeToWait_s, estHeartPeriod_s, frames_used_for_fit = self.predictor.predict_trigger_wait(
                 self.frame_history,
                 self.ref_seq_manager.targetSyncPhase,
                 frameInterval_s,
@@ -494,6 +532,7 @@ class OpticalGater:
             logger.trace("Time to wait to trigger: {0} s.".format(timeToWait_s))
 
             this_predicted_trigger_time_s = thisFrameMetadata["timestamp"] + timeToWait_s
+            thisFrameMetadata["frames_used_for_fit"] = frames_used_for_fit;
 
             # If we have a prediction, consider actually sending the trigger
             if timeToWait_s > 0:
@@ -575,7 +614,7 @@ class OpticalGater:
         """
         Fluorescence triggers will rarely (if ever) overlap exactly in time with brightfield frames. 
         To achieve an accurate phase estimate at the time a fluorescence image was captured,
-        it is necessary to interpolated between times of known phase.
+        it is necessary to interpolate between times of known phase.
         
         This function interpolates phase between the TWO CLOSEST brightfield frames
         to a given sent trigger time in order to the estimate phase
@@ -592,15 +631,28 @@ class OpticalGater:
             triggerTime = self.latestTriggerPredictFrame.metadata["predicted_trigger_time_s"]
             if (aheadTime >= triggerTime        # Ensure the latest brightfield image is 'ahead' of the recently-sent trigger time
                 and behindTime <= triggerTime): # Ensure the previous brightfield image is 'behind' the recently-sent trigger time
+                # TODO: the following logic is largely duplicated in TriggerPhaseInterpolation. Can we consolidate duplicate code?
             
                 aheadPhase = self.frame_history[-1].metadata["unwrapped_phase"]
                 behindPhase = self.frame_history[-2].metadata["unwrapped_phase"]
 
-                interpolatedPhase = np.interp(triggerTime, [behindTime, aheadTime], [behindPhase, aheadPhase])
+                t1,t2 = behindTime,aheadTime
+                p1,p2 = behindPhase,aheadPhase
+                if aheadTime - behindTime > 0.1:
+                    try:
+                        behind2Time = self.frame_history[-3].metadata["timestamp"]
+                        behind2Phase = self.frame_history[-3].metadata["unwrapped_phase"]
+                        t1,t2 = behind2Time,behindTime
+                        p1,p2 = behind2Phase,behindPhase
+                    except:
+                        print("Failed to use earlier datapoints to resolve interpolation issue")
+                interpolatedPhase = interpolate.interp1d([t1, t2], [p1, p2], fill_value='extrapolate')(triggerTime)
                 wrappedPhaseAtSentTriggerTime = interpolatedPhase % (2 * np.pi)
             
                 # Compute the error between the target phase and the estimated phase
-                phaseError = wrappedPhaseAtSentTriggerTime - self.ref_seq_manager.targetSyncPhase
+                # Note that we must not use the *current* target phase, we must use the one
+                # in force at the time we scheduled the trigger (we might since have done a sync refresh)
+                phaseError = wrappedPhaseAtSentTriggerTime - self.latestTriggerPredictFrame.metadata["targetSyncPhase"]
             
                 # Adjust the phase error to lie in (-pi, pi)
                 if phaseError > np.pi:
@@ -685,9 +737,12 @@ class OpticalGater:
         )
         plt.figure()
         plt.title("Histogram of triggered phase errors")
+        histBins = np.linspace(np.min(phaseErrorList), np.max(phaseErrorList),  20) # Suitable for when it goes well
+        if (histBins[1]-histBins[0] > 0.03):
+            histBins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList),  0.03) # Suitable for when it goes less well!
         plt.hist(
             phaseErrorList,
-            bins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList) + 0.1,  0.03), 
+            bins = histBins,
             color = "tab:green", 
             label = "Triggered phase"
         )

@@ -99,7 +99,7 @@
 				<input class = "integer_updater" style = "top:71%;" type = "number" name = "triggers_per_timelapse" value = "{{triggers_per_timelapse}}">
 			</form>
 			
-		<div class = "integer_description" style = "top:78%; font-size:2.5vmin;">Timelapse pause (s) =</div>
+		<div class = "integer_description" style = "top:78%; font-size:2.5vmin;">Timelapse interval (s) =</div>
 			<form name = "timelapse_pause" action ="{{url_for('update_setting_live')}}" method = "POST">
 				<input class = "integer_updater" style = "top:78%;" type = "number" name = "timelapse_pause" value = "{{timelapse_pause}}">
 			</form>
@@ -115,7 +115,7 @@
 	
 		<div class = "integer_description" style = "top:15%; font-size:2.5vmin; color:red;">Ref frame selection =</div>
 		<form  name = "test" action = "{{url_for('print_data')}}" method = "POST">
-				<input class = "integer_updater" style = "top:15%; color:red;" type = "number" name = "test" value = 0 min = 0 max = "{{ref_sequence_length}}">
+				<input class = "integer_updater" style = "top:15%; color:red;" type = "number" name = "test" value = {{recommended_ref_value}} min = 0 max = "{{ref_sequence_length}}">
 		</form>
 		
 		<div id="myCarousel" class="carousel" data-ride="carousel" style = "top:21%; width:100%; margin-left:auto; margin-right:auto;">

@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import interpolate
 
 def TriggerPhaseInterpolation(timeStamps, states, phases, triggerTimes, targetPhases):
     """
@@ -25,23 +26,32 @@ def TriggerPhaseInterpolation(timeStamps, states, phases, triggerTimes, targetPh
         timeDifferences = syncTimeStamps - triggerTime
         # Only interpolate phases for triggers which are followed by further timestamps
         # Then split into negative and positive parts to find the closest behind time/phase and closest ahead time/phase
-        behindTime = timeDifferences[timeDifferences < 0][-1] + triggerTime
-        behindPhase = phases[syncTimeStamps == behindTime][0]
+        behindTimeLoc = np.where(timeDifferences < 0)[0][-1]
+        behindTime = timeDifferences[behindTimeLoc] + triggerTime
+        behindPhaseLoc = np.where(syncTimeStamps == behindTime)[0][0]
+        behindPhase = phases[behindPhaseLoc]
+            
         if not timeDifferences[-1] < 0:
             aheadTime = timeDifferences[timeDifferences > 0][0] + triggerTime
             aheadPhase = phases[syncTimeStamps == aheadTime][0]
             
-            if aheadTime - behindTime < 0.1:
-                triggerPhase = np.interp(triggerTime, [behindTime, aheadTime], [behindPhase, aheadPhase])
-                triggerPhaseError = triggerPhase % (2 * np.pi) - targetPhases[syncTimeStamps == aheadTime][0]
-                if triggerPhaseError > np.pi:
-                    triggerPhaseError = triggerPhaseError - (2 * np.pi)
-                elif triggerPhaseError < - np.pi:
-                    triggerPhaseError = triggerPhaseError + (2 * np.pi) 
-                triggerPhases.append(triggerPhase), triggerPhaseErrors.append(triggerPhaseError)
-                
-            else:
-                triggerPhases.append(behindPhase), triggerPhaseErrors.append(0)
+            t1,t2 = behindTime,aheadTime
+            p1,p2 = behindPhase,aheadPhase
+            if aheadTime - behindTime > 0.1:
+                try:
+                    behind2Time = timeDifferences[behindTimeLoc-1] + triggerTime
+                    behind2Phase = phases[behindPhaseLoc-1]
+                    t1,t2 = behind2Time,behindTime
+                    p1,p2 = behind2Phase,behindPhase
+                except:
+                    print("Failed to get earlier datapoints to resolve interpolation issue")
+            triggerPhase = interpolate.interp1d([t1, t2], [p1, p2], fill_value='extrapolate')(triggerTime)
+            triggerPhaseError = triggerPhase % (2 * np.pi) - targetPhases[syncTimeStamps == aheadTime][0]
+            if triggerPhaseError > np.pi:
+                triggerPhaseError = triggerPhaseError - (2 * np.pi)
+            elif triggerPhaseError < - np.pi:
+                triggerPhaseError = triggerPhaseError + (2 * np.pi)
+            triggerPhases.append(triggerPhase), triggerPhaseErrors.append(triggerPhaseError)
         else:
                 triggerPhases.append(behindPhase), triggerPhaseErrors.append(0)
 

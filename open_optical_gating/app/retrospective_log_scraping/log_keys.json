@@ -3,7 +3,8 @@
     "timeStampIndex": 13,
     "stateIndex": 17,
     "phaseIndex": 21,
-    "targetPhaseIndex": 26,
+    "predictedTime": 25,
+    "targetPhaseIndex": 30,
     "keyTypeB": "TYPE B",
     "triggerTimeScheduledIndex": 15,
     "triggerTimeSentIndex": 19

@@ -209,7 +209,7 @@ def index(index_setting = "Setup"):
         ):
         os.system("sudo reboot")
         
-    # Initialise global queues to send/recieved data from the concurrent sync process
+    # Initialise global queues to send/receive data from the concurrent sync process
     global eventQueue
     eventQueue = Queue()
     global stopQueue
@@ -291,7 +291,7 @@ def activate_ref_input():
     """
     # Find the most recent reference sequence folder
     print("prompted for reference selection")
-    ref_sequence_length = refActivateQueue.get()
+    ref_sequence_length,defaultTarget = refActivateQueue.get()
     all_folders = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*")
     most_recent_folder = max(all_folders, key = os.path.getctime)
     
@@ -304,7 +304,8 @@ def activate_ref_input():
 
     return render_template(
         "live.html", 
-        index_setting = "PickRefFrame", 
+        index_setting = "PickRefFrame",
+        recommended_ref_value = defaultTarget,
         ref_sequence_length = ref_sequence_length, 
         ref_frame_paths = ref_frame_paths
     )
@@ -360,21 +361,26 @@ def post_sync_setup():
     # Find the most recent log file in the user_log_folder
     all_logs = glob.glob("/home/pi/user_log_folder/*")
     most_recent_log = max(all_logs, key = os.path.getctime)
+    print(f"Most recent log: {most_recent_log}")
     
     all_vids = glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/VID*")
-    most_recent_vid = max(all_vids, key = os.path.getctime)
-    print(most_recent_vid)
+    if (len(all_vids) > 0):
+        most_recent_vid = max(all_vids, key = os.path.getctime)
+        print(f"Most recent video: {most_recent_vid}")
+        
+        with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/first_n_frames.zip", "w") as zipObj:
+            for imagePath in glob.glob(most_recent_vid + "/*.tiff"):
+                zipObj.write(imagePath, os.path.basename(imagePath))
+    else:
+        print(f"No recent videos found")
     
-    with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/first_n_frames.zip", "w") as zipObj:
-        for imagePath in glob.glob(most_recent_vid + "/*.tiff"):
-            zipObj.write(imagePath, os.path.basename(imagePath))
-    
-    # If the log is a real log (not empty) we move it to the static folder, overwriting the previous log
+    # If the log is a real log (not empty) we copy it to the static folder, overwriting the previous log
     if len(open(most_recent_log).readlines()) > 5:
-        os.rename(most_recent_log, "/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log")
+        shutil.copy2(most_recent_log, "/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log")
         
     # Run the log scraper on this log file
-    scrape.run("/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log", '/home/pi/open-optical-gating/open_optical_gating/app/retrospective_log_scraping/log_keys.json')
+    scrape.run("/home/pi/open-optical-gating/open_optical_gating/app/static/most_recent_log.log",
+               "/home/pi/open-optical-gating/open_optical_gating/app/retrospective_log_scraping/log_keys.json")
     
     # Zip all generated plots in the static folder to be downloaded by the user
     with ZipFile( "/home/pi/open-optical-gating/open_optical_gating/app/static/plots.zip", "w") as zipObj:
@@ -382,16 +388,17 @@ def post_sync_setup():
             zipObj.write(plotPath, os.path.basename(plotPath))
             
     refSequenceFolders = []
+    print(f"Searching for reference sequences matching log counter {settings['general']['log_counter']}")
     for refFolderName in glob.glob("/home/pi/open-optical-gating/open_optical_gating/app/reference_sequences/*"):
         if refFolderName.endswith("_" + str(settings["general"]["log_counter"])):
-            print(refFolderName)
+            print(f" {refFolderName}")
             refSequenceFolders.append(refFolderName)
     
     with ZipFile("/home/pi/open-optical-gating/open_optical_gating/app/static/refs.zip", "w") as zipObj:
         for refSequenceFolder in refSequenceFolders:
-            print(f"Current ref folder = {refSequenceFolder}")
+            print(f" Current ref folder = {refSequenceFolder}")
             for dirPath, dirNames, fileNames in os.walk(refSequenceFolder):
-                print(dirPath, dirNames, fileNames)
+                print(f"  {dirPath}, {dirNames}, {fileNames}")
                 for fileName in fileNames:
                     zipObj.write(
                         os.path.join(dirPath, fileName),
