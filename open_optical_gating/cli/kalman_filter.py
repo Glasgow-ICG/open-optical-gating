@@ -70,7 +70,10 @@ class KalmanFilter():
         self.Q_q = q_matrix
         self.q = q
 
-        self.Q = dt**self.Q_dt * self.Q_f * self.q * self.Q_q
+        np.random.seed()
+        #self.q = np.random.uniform(0.08, 0.14, 1)[0]
+
+        self.Q = self.get_process_noise_covariance_matrix(dt)#dt**self.Q_dt * self.Q_f * self.q * self.Q_q
 
         return self.Q
 
@@ -169,7 +172,8 @@ class KalmanFilter():
         self.e = z - self.H @ self.x
 
         # Get likelihood
-        self.L = np.exp(multivariate_normal.logpdf(z, np.dot(self.H, self.x), self.S))
+        self.L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
+        self.L = (1 / np.sqrt(2 * np.pi * self.S)) * np.exp(-0.5 * self.e * np.linalg.inv(self.S) * self.e)
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
@@ -398,6 +402,7 @@ class InteractingMultipleModelFilter():
 
             NOTE: This is problematic if our different filter models are of different order (e.g we have a constant
             acceleration filter and a constant-velocity filter.
+            TODO: Add some checks to ensure our vectors/matrices are of the correct dimensions.
             Few solutions:
                 Stick to filters of matching dimensions and vary our process noise in our models
                 Augment our lower dimensional filter with zeros in the higher order states
@@ -425,8 +430,10 @@ class InteractingMultipleModelFilter():
         self.settings = {
             "inhomogeneousfix" : "augmented" # Fix for when the IMM model state vectors have differing dimensions. Options are none, zero-augmented, augmented
         }
-        
-    def predict(self):       
+
+        self.mus = []
+
+    def predict(self):
         xs, Ps = [], []
         for i, (f, w) in enumerate(zip(self.models, self.omega.T)):
             x = np.zeros(self.x.shape)
@@ -460,9 +467,12 @@ class InteractingMultipleModelFilter():
 
         self.mu = self.likelihood * self.cbar
         self.mu /= np.sum(self.mu)
+        self.mus.append(self.mu)
+
         
         self.compute_mixing_probabilities()
         self.compute_state_estimate()
+
             
     def compute_mixing_probabilities(self):
         self.cbar = self.mu @ self.M
@@ -497,6 +507,7 @@ class InteractingMultipleModelFilter():
     def make_forward_prediction(self, x, t0, t):
         """
         Attempt to forward predict using a custom dt.
+        TODO: This only uses one of the models - need to adapt this to use multiple models
 
         Args:
             x (_type_): _description_

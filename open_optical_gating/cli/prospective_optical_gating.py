@@ -5,6 +5,8 @@
 import numpy as np
 from loguru import logger
 import scipy.optimize
+from filterpy.kalman import IMMEstimator as fIMM
+from filterpy.kalman import KalmanFilter as fKalmanFilter
 
 # Module imports
 import j_py_sad_correlation as jps
@@ -12,8 +14,6 @@ import j_py_sad_correlation as jps
 # Local imports
 from . import pixelarray as pa
 from . import determine_reference_period as ref
-from .kalman_filter import KalmanFilter
-from .kalman_filter import InteractingMultipleModelFilter as IMM
 
 class PredictorBase:
     """
@@ -307,7 +307,7 @@ class LinearPredictor(PredictorBase):
 
         # Add wait time to metadata
         thisFrameMetadata = full_frame_history[-1].metadata
-        thisFrameMetadata["states"] = np.array([radsPerSec, alpha])
+        thisFrameMetadata["states"] = np.array([alpha, radsPerSec])
         thisFrameMetadata["wait_times"] = timeToWait_s
 
         # Return our prediction
@@ -358,7 +358,7 @@ class KalmanPredictor(PredictorBase):
             # Initialise the using the current phase and velocity estimate
             # TODO: Replace the number 75 with the correct framerate
             # We can get this from the example_data_settings.json
-            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 75]), self.kf.P)
+            self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), self.kf.P)
             likelihood = 0
         else:
             # Run the KF
@@ -366,6 +366,7 @@ class KalmanPredictor(PredictorBase):
             current_state = self.kf.update(thisFrameMetadata["unwrapped_phase"])
 
             likelihood = current_state[5]
+
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.kf.get_current_state_vector()
@@ -382,7 +383,7 @@ class KalmanPredictor(PredictorBase):
         thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         # Return the remaining time and the estimated heart period
-        return timeToWait_s, estHeartPeriod_s    
+        return timeToWait_s, estHeartPeriod_s, None
 
 class IMMPredictor(PredictorBase):
     """
@@ -390,10 +391,21 @@ class IMMPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
-        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * 10, R, x_0, P_0)
-        #self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R * 10, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.95, 0.05],[0.05, 0.95]]))
+        # CV-CV
+        mc_rng = np.random.default_rng()
+        #multiplier = mc_rng.uniform(1e-300, 1)
+        multiplier = 0.03
+
+        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / multiplier, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * multiplier, R, x_0, P_0)
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.98, 0.02],[0.02, 0.98]]))
+
+        # CA-CV
+        """P_0 = np.diag([100, 100, 100])
+        x_0 = np.array([0, 0, 0])
+        self.kf_cv1 = KalmanFilter.constant_acceleration(predictor_settings, dt, q, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_3(predictor_settings, dt, q, R, x_0, P_0)
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))"""
 
         super().__init__(predictor_settings)
 
@@ -419,16 +431,6 @@ class IMMPredictor(PredictorBase):
             timeToWait_s (float): Time to wait for the next camera trigger,
             estHeartPeriod_s (float): Estimate period of the heart beat
         """        
-
-        """if self.kf.flags["initialised"] == False:
-            # Initialise the KF
-            self.kf.x = np.array([full_frame_history[-1].metadata["unwrapped_phase"], 10])
-            self.kf.flags["initialised"] = True
-        else:
-            # Run the KF
-            self.imm.predict()
-            self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
-            #self.kf.dt = full_frame_history[-1].metadata["timestamp"] - full_frame_history[-2].metadata["timestamp"]"""
         
         # Get the current frame's metadata
         thisFrameMetadata = full_frame_history[-1].metadata
@@ -436,16 +438,14 @@ class IMMPredictor(PredictorBase):
         for model in self.imm.models:
             if model.flags["initialised"] == False:
                 # Initialise the KF
-                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], 10.77]), model.P)
+                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), model.P)
         
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
 
-        print(self.imm.models[0].x)
-
         # Get KF Parameters
         thisFramePhase = self.imm.x[0] % (2 * np.pi)
-        radsPerSec = self.imm.x[1] # NOTE: should really encode acceleration into this
+        radsPerSec = self.imm.x[1] # NOTE: we should encode acceleration into this
 
         if radsPerSec < 0:
             logger.debug(
@@ -480,4 +480,4 @@ class IMMPredictor(PredictorBase):
 
         #thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
-        return timeToWait_s, estHeartPeriod_s
+        return timeToWait_s, estHeartPeriod_s, None

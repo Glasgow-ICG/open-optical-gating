@@ -17,7 +17,7 @@
     },
     
     "brightfield": {
-        "brightfield_framerate": 75,
+        "brightfield_framerate": 200,
         "save_first_n_frames": 0
     },
     
@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "kalman",
+        "prediction_method": "IMM",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -46,7 +46,7 @@
             "gating_method": "none",
             "gating_level": 5,
             "prediction_latency_s": 0.015,
-            "alpha": 1.01
+            "alpha": 1.0
         },
         "IMM": {
             "gating_method": "none",
