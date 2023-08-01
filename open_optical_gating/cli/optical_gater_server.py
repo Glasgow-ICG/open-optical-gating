@@ -849,13 +849,14 @@ class OpticalGater:
 
     def plot_IMM_probabilities(self):
         if type(self.predictor) is pog.IMMPredictor:
-            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="timestamp")
+            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="filter_probability")
             mus = np.array(self.predictor.imm.mus)
+            mus = pa.get_metadata_from_list(self.frame_history, "filter_probability", onlyIfKeyPresent="filter_probability")
 
             plt.figure()
             plt.title("Filter probabilities")
-            plt.plot(mus[:, 0], label = "Filter 1")
-            plt.plot(mus[:, 1], label = "Filter 2")
+            plt.scatter(timestamps, mus[:, 0] / mus[:, 1], label = "Filter 1", s = 5)
+            #plt.scatter(timestamps, mus[:, 1], label = "Filter 2", s = 5)
             plt.legend()
             plt.xlabel("Timestamp")
             plt.ylabel("IMM probabilities")

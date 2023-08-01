@@ -5,8 +5,6 @@
 import numpy as np
 from loguru import logger
 import scipy.optimize
-from filterpy.kalman import IMMEstimator as fIMM
-from filterpy.kalman import KalmanFilter as fKalmanFilter
 
 # Module imports
 import j_py_sad_correlation as jps
@@ -14,6 +12,8 @@ import j_py_sad_correlation as jps
 # Local imports
 from . import pixelarray as pa
 from . import determine_reference_period as ref
+from .kalman_filter import KalmanFilter
+from .kalman_filter import InteractingMultipleModelFilter as IMM
 
 class PredictorBase:
     """
@@ -469,6 +469,7 @@ class IMMPredictor(PredictorBase):
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.imm.get_current_state_vector()
         thisFrameMetadata["covariance"] = self.imm.get_current_covariance_matrix()
+        thisFrameMetadata["filter_probability"] = self.imm.mu
         #thisFrameMetadata["likelihood"] = likelihood
 
         # This code attempts to predict how long we need to wait until the next trigger by estimating the

@@ -58,24 +58,23 @@ class DynamicDrawer():
 
         # Motion model
         self.reset_motion_model()
-        self.add_random_acceleration(1)
+        self.add_random_acceleration(5)
 
         # Drift model
         self.drift_model = {
             0.0: 0,
-            2.2: 250,
-            2.5: -250,
-            2.8: 0
+            5.2: 250,
+            5.5: -250,
+            5.8: 0
         }
         self.initial_drift_velocity = 0
-        #self.add_twitch(5)
 
         self.plot_motion_model()
 
         #self.save_video()
 
         # FSM
-        self.state = 0
+        self.state = "beating"
 
     def save_video(self):
         import tifffile as tf
@@ -92,7 +91,8 @@ class DynamicDrawer():
         # Initialise our motion model
         self.motion_model_rng = np.random.default_rng(0)
         self.motion_model = {
-            0.0: 0
+            0.0: 0,
+            100.0: 0
         }
 
     def add_random_acceleration(self, sigma = 0):
@@ -102,6 +102,9 @@ class DynamicDrawer():
         # Set our acceleration to a random value for all times.
         for i, k in enumerate(np.linspace(0, 50, 5000)):
             self.motion_model[k] = self.motion_model_rng.normal(0, sigma)
+
+        # Ensure our keys are in ascending order
+        self.motion_model = dict(sorted(self.motion_model.items()))
 
  
     def clear_canvas(self):
@@ -119,11 +122,6 @@ class DynamicDrawer():
 
         self.initial_velocity = initial_velocity
         self.motion_model = motion_model
-
-    def add_twitch(self, size):
-        self.drift_model[10.] = size
-        self.drift_model[11.] - -size
-        self.drift_model[12.] = 0
 
 
     def set_drift_model(self, initial_drift_velocity, drift_model):
@@ -145,7 +143,6 @@ class DynamicDrawer():
         # Get our phase progression
         times = [*self.motion_model.keys()]
         accelerations = [*self.motion_model.values()]
-
         velocity = self.initial_velocity
         position = 0
 
@@ -175,16 +172,16 @@ class DynamicDrawer():
         drift_velocity = self.initial_drift_velocity
         drift_position = 0
 
-        end = False
+        drift_end = False
         for i in range(len(drift_times) - 1):
-            if end == False:
+            if drift_end == False:
                 # First we check if we are within the time period of interest
                 if drift_times[i] <= timestamp and drift_times[i + 1] >= timestamp:
                     delta_time = timestamp - drift_times[i]
-                    end = True
+                    drift_end = True
                 else:
                     delta_time = drift_times[i + 1] - drift_times[i]
-                    end = False
+                    drift_end = False
 
                 # Next we calculate the velocity and position.
                 drift_velocity = drift_velocities[i]
@@ -308,7 +305,7 @@ class DynamicDrawer():
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(server.FileOpticalGater, self).__init__(settings=settings)
-        self.synthetic_source = DynamicDrawer(196, 196, 1000, "normal", 24)
+        self.synthetic_source = DynamicDrawer(196, 196, 3000, "normal", 24)
         self.next_frame_index = 0
         self.number_of_frames = self.synthetic_source.settings["frames"]
         self.progress_bar = True  # May be updated during run_server

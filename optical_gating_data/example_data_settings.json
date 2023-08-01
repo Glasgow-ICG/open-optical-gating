@@ -2,7 +2,7 @@
     "general": {
         "log_level": "WARNING",
         "analyse_time_s": 100000,
-        "frame_buffer_length": 2000,
+        "frame_buffer_length": 10000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
         "pause_for_timelapse": 0,
