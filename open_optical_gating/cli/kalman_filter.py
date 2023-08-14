@@ -33,14 +33,24 @@ class KalmanFilter():
         self.d = 0
         self.S = None
 
+        # For saving results
         self.xs_prior = []
         self.xs_posteriori = []
 
-        self.alpha = self.settings["alpha"]**2 # used for fading memory Kalman filter. Set to a value close to 1 such as 1.01
+        # Fading memory filter
+        self.alpha = self.settings["alpha"]**2
 
         self.flags = {
             "initialised" : False
         }
+
+        self.random_q = False
+        self.random_q_rng = np.random.default_rng()
+
+        self.L = 0
+        self.NIS = 0
+        self.Ls = []
+        self.NISs = []
 
     def initialise(self, x, P):
         """
@@ -58,28 +68,35 @@ class KalmanFilter():
     def set_process_noise_covariance_matrix(self, dt_matrix, float_matrix, q_matrix, dt, q):
         """
         Set the process noise covariance matrix.
-        We use a slightly non-standard method here but this allows us to modify dt and q on the fly
-        by splitting our Q matrix into three parts.
-        The first part gives the powers to raise our dt to, the second part is our float array, and the third
-        part is the process noise value.
-
-        TODO: We should enforce the use of this for setting the Q matrix by using the @property decorator
+        This allows us to modify dt and q on the fly. 
+        
+        NOTE: For production code we should avoid using this because it is significantly slower.
+        
+        Args:
+            dt_matrix (np.ndarray): Powers of dt
+            float_matrix (np.ndarray): Floats
+            q_matrix (np.ndarray): Multiplier
+            dt (float): Time interval
+            q (float): Process noise
         """
         self.Q_dt = dt_matrix
         self.Q_f = float_matrix
         self.Q_q = q_matrix
         self.q = q
 
-        np.random.seed()
-        #self.q = np.random.uniform(0.08, 0.14, 1)[0]
+        # This is used for our tuning our filters
+        if self.random_q:
+            self.q = self.random_q_rng.uniform(0, 5000)
 
-        self.Q = self.get_process_noise_covariance_matrix(dt)#dt**self.Q_dt * self.Q_f * self.q * self.Q_q
+        self.Q = self.get_process_noise_covariance_matrix(dt)
 
         return self.Q
 
     def get_process_noise_covariance_matrix(self, dt):
         """
         Get the process noise covariance matrix with the given dt
+
+        NOTE: For production code we should avoid using this because it is significantly slower.
 
         Args:
             dt (_type_): 
@@ -120,9 +137,10 @@ class KalmanFilter():
             P: Prior covariance matrix
         """        
         # Predict our state using our model of the system
+        # Fading memory filter implementation from Optimal State estimation (Simon (2006))
         self.x = self.F @ self.x
         self.P = self.alpha * (self.F @ self.P @ self.F.transpose()) + self.Q
-
+                                                                                                                                                                                                                                                                                                                                        
         # Store prior state estimates
         self.xs_prior.append(self.x)
 
@@ -171,9 +189,11 @@ class KalmanFilter():
         # Residual
         self.e = z - self.H @ self.x
 
-        # Get likelihood
-        self.L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
-        self.L = (1 / np.sqrt(2 * np.pi * self.S)) * np.exp(-0.5 * self.e * np.linalg.inv(self.S) * self.e)
+        # Performance parameters
+        self.L = self.get_likelihood(z)
+        self.NIS = self.get_normalised_innovation_squared()
+        self.Ls.append(self.L)
+        self.NISs.append(self.NIS)
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
@@ -194,9 +214,13 @@ class KalmanFilter():
     
     def get_normalised_innovation_squared(self):
         if self.S is not None:
-            NIS = self.e @ np.linalg.inv(self.S) @ self.e
+            NIS = self.d @ np.linalg.inv(self.S) @ self.d
             return NIS
         
+    def get_likelihood(self, z):
+        L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
+
+        return L
 
     @classmethod
     def constant_acceleration(cls, settings, dt, q, R, x_0, P_0):

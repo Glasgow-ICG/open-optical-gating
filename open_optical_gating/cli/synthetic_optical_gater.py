@@ -13,14 +13,8 @@ import math
 # Module imports
 from loguru import logger
 from tqdm.auto import tqdm
-# See comment in pyproject.toml for why we have to try both of these:
-try:
-    import skimage.io as tiffio
-except:
-    import tifffile as tiffio
 
 # Local imports
-#from . import optical_gater_server as server
 from . import file_optical_gater as server
 from . import pixelarray as pa
 
@@ -46,7 +40,8 @@ class DynamicDrawer():
             "height" : height,
             "frames" : frames,
             "noise_type" : noise_type,
-            "noise_amount" : noise_level
+            "noise_amount" : noise_level,
+            "trigger_frames" : False
         }
 
         self.dimensions = (width, height)
@@ -59,22 +54,35 @@ class DynamicDrawer():
         # Motion model
         self.reset_motion_model()
         self.add_random_acceleration(5)
+        """self.add_velocity_spike(5, 1, 10000)
+        self.add_velocity_spike(6, 1, -10000)
+        self.add_velocity_spike(7, 1, 10000)
+        self.add_velocity_spike(8, 1, -10000)
+        self.add_velocity_spike(9, 1, 10000)
+        self.add_velocity_spike(10, 1, -10000)
+        self.add_velocity_spike(11, 1, 10000)"""
 
         # Drift model
         self.drift_model = {
             0.0: 0,
-            5.2: 250,
-            5.5: -250,
-            5.8: 0
+            1000: 0
         }
+        """self.drift_model = {
+            0.0: 0,
+            2.2: 250,
+            2.5: -250,
+            2.8: 0,
+            3.2: 250,
+            3.5: -250,
+            3.8: 0
+        }"""
         self.initial_drift_velocity = 0
 
-        self.plot_motion_model()
+        self.image_noise_rng = np.random.default_rng(0)
+
+        #self.plot_motion_model()
 
         #self.save_video()
-
-        # FSM
-        self.state = "beating"
 
     def save_video(self):
         import tifffile as tf
@@ -102,6 +110,17 @@ class DynamicDrawer():
         # Set our acceleration to a random value for all times.
         for i, k in enumerate(np.linspace(0, 50, 5000)):
             self.motion_model[k] = self.motion_model_rng.normal(0, sigma)
+
+        # Ensure our keys are in ascending order
+        self.motion_model = dict(sorted(self.motion_model.items()))
+
+    def add_velocity_spike(self, time, duration, magnitude):
+        """
+        Adds an acceleration spike
+        """
+        self.motion_model[time] = magnitude
+        #self.motion_model[time + duration / 2] = -magnitude
+        #self.motion_model[time + duration] = 0
 
         # Ensure our keys are in ascending order
         self.motion_model = dict(sorted(self.motion_model.items()))
@@ -219,10 +238,12 @@ class DynamicDrawer():
 
         # Add noise
         # For reproducibility of our synthetic data we set the random seed
-        np.random.seed(int((0 + timestamp) * 100))
+        #np.random.seed(int((0 + timestamp) * 100))
         if add_noise:
-            if self.settings["noise_type"] == "normal":
-                self.canvas += np.random.normal(0, self.settings["noise_amount"], self.canvas.shape)
+            if self.settings["noise_type"] == "poisson":
+                self.canvas += self.image_noise_rng.poisson(self.canvas, self.canvas.shape)
+            elif self.settings["noise_type"] == "normal":
+                self.canvas += self.image_noise_rng.normal(0, self.settings["noise_amount"], self.canvas.shape)
         
         self.canvas[self.canvas < 0] = 0
         self.canvas[self.canvas > 255] = 255
@@ -267,13 +288,13 @@ class DynamicDrawer():
         phase = self.get_state_at_timestamp(timestamp)[1] % (2 * np.pi)
         self.clear_canvas()
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32 + 8 * np.cos(phase), 32 + 8 * np.cos(phase), 0, 1.6, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 32 + 8 * np.cos(phase), 32 + 8 * np.cos(phase), 0, 1.6, 256)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26 + 8 * np.cos(phase), 26 + 8 * np.cos(phase), 0, 1.6, 1000)
+        self.draw_circular_gaussian(64 + 16 * np.sin(phase), 64 + 16 * np.cos(phase), 26 + 8 * np.cos(phase), 26 + 8 * np.cos(phase), 0, 1.6, 256)
         self.set_drawing_method(np.add)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32 + 8 * np.sin(phase), 32 + 8 * np.sin(phase), 0, 1.6, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 32 + 8 * np.sin(phase), 32 + 8 * np.sin(phase), 0, 1.6, 256)
         self.set_drawing_method(np.subtract)
-        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26 + 8 * np.sin(phase), 26 + 8 * np.sin(phase), 0, 1.6, 1000)
+        self.draw_circular_gaussian(128 + 16 * np.cos(phase), 128 + 16 * np.sin(phase), 26 + 8 * np.sin(phase), 26 + 8 * np.sin(phase), 0, 1.6, 256)
 
         return self.get_canvas(add_noise, timestamp), phase + self.phase_offset
     
@@ -292,10 +313,10 @@ class DynamicDrawer():
             accelerations.append(self.get_state_at_timestamp(x)[3])
 
         plt.figure()
-        plt.title("Motion model")
-        plt.plot(xs, positions, label = "Position (m)")
-        plt.plot(xs, velocities, label = "Velocity (m/s)")
-        plt.plot(xs, accelerations, label = "Acceleration (m/s^2)")
+        plt.title("Heart phase progression model")
+        plt.plot(xs, positions, label = "Phase ($m$)")
+        plt.plot(xs, velocities, label = "Phase velocity ($ms^{-1}$)")
+        plt.plot(xs, accelerations, label = "Phase acceleration ($ms^{-2}$)")
         plt.legend()
         plt.show()
     
@@ -305,7 +326,7 @@ class DynamicDrawer():
 class SyntheticOpticalGater(server.FileOpticalGater):
     def __init__(self, settings=None):        
         super(server.FileOpticalGater, self).__init__(settings=settings)
-        self.synthetic_source = DynamicDrawer(196, 196, 3000, "normal", 24)
+        self.synthetic_source = DynamicDrawer(196, 196, 1000, "normal", 24)
         self.next_frame_index = 0
         self.number_of_frames = self.synthetic_source.settings["frames"]
         self.progress_bar = True  # May be updated during run_server
@@ -344,9 +365,9 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         return next
 
     def trigger_fluorescence_image_capture(self, trigger_time_s):
-        # TODO: We can trigger synthetic fluorescence images here (maybe worth doing?)
-        import tifffile as tf
-        tf.imwrite(f"triggers/synthetic_fluorescence{trigger_time_s}.tif", self.synthetic_source.draw_frame_at_timestamp(trigger_time_s, add_noise = False)[0])
+        if self.synthetic_source.settings["trigger_frames"] == True:
+            import tifffile as tf
+            tf.imwrite(f"triggers/synthetic_fluorescence{trigger_time_s}.tif", self.synthetic_source.draw_frame_at_timestamp(trigger_time_s, add_noise = False)[0])
         return super().trigger_fluorescence_image_capture(trigger_time_s)
 
     def plot_future_predictions(self, prediction_s):
@@ -376,7 +397,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
             residuals.append(residual)
 
         plt.figure()
-        plt.scatter(timestamps, residuals)
+        plt.scatter(timestamps + prediction_s, residuals)
         plt.title(f"Prediction residual at t+{prediction_s}")
         sent_trigger_times = pa.get_metadata_from_list(
             self.frame_history,
@@ -407,6 +428,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
         timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states")
         state_estimates = pa.get_metadata_from_list(self.frame_history, "states", onlyIfKeyPresent="states")
         unwrapped_phases = pa.get_metadata_from_list(self.frame_history, "unwrapped_phase", onlyIfKeyPresent="states")
+        phases = pa.get_metadata_from_list(self.frame_history, "phase", onlyIfKeyPresent="states")
         first_timestamp = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent = "states")[0]
         state_offset = np.zeros_like(state_estimates[0])
         state_offset[0] = unwrapped_phases[0] - self.synthetic_source.get_state_at_timestamp(first_timestamp)[1]
@@ -416,6 +438,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
 
 
         state_residuals = []
+        measurement_residuals = []
         for i, state in enumerate(state_estimates):
             # Get the true phase at the predicted trigger time
             true_state = self.synthetic_source.get_state_at_timestamp(timestamps[i])[1:3]
@@ -425,14 +448,21 @@ class SyntheticOpticalGater(server.FileOpticalGater):
                 state[1] = state_estimates[i][1]
 
             state_residual = true_state - state + state_offset
+            measurement_residual = true_state[0] - unwrapped_phases[i] + state_offset[0]
 
+            measurement_residuals.append(measurement_residual)
             state_residuals.append(state_residual)
 
         state_residuals = np.array(state_residuals)
+        measurement_residuals = np.array(measurement_residuals)
+
+        print(state_residuals.shape)
+
         plt.figure()
         plt.title("Estimated state vs true state")
-        plt.scatter(timestamps, state_residuals[:, 0], label = "Position (m)", s = 10)
-        plt.scatter(timestamps, state_residuals[:, 1], label = "velocity (m/s)", s = 10)
+        #plt.scatter(timestamps, measurement_residuals, label = "Measured position (m)", s = 3)
+        plt.scatter(timestamps, state_residuals[:, 0], label = "State position (m)", s = 10)
+        plt.scatter(timestamps, state_residuals[:, 1], label = "State velocity (m/s)", s = 10)
         plt.legend()
         plt.xlabel("Timestamp (s)")
         plt.ylabel("State residual")
@@ -469,6 +499,10 @@ class SyntheticOpticalGater(server.FileOpticalGater):
                     estimated_phase = (self.predictor.imm.make_forward_prediction(states[i], timestamp, timestamp + prediction_s)[0][0] - phase_offset) % (2 * np.pi)
                 elif type(self.predictor) is pog.LinearPredictor:
                     estimated_phase = ((timestamp + prediction_s) * states[i][1] + states[i][0] - phase_offset) % (2 * np.pi)
+                elif type(self.predictor) is pog.RobustKalmanPredictor:
+                    estimated_phase = 0
+                else:
+                    raise NotImplementedError
 
                 residual = estimated_phase - true_phase - (2 * np.pi)
                 while residual < - np.pi:
@@ -574,26 +608,32 @@ def run(args, desc):
                   desc       str     Description to provide as command line help description
     '''
     
+    # Load
     def add_extra_args(parser):
         parser.add_argument("-r", "--realtime", dest="realtime", action="store_false", help="Replay in realtime (framerate as per settings file)")
     
+    # General test plots
     settings = load_settings(args, desc, add_extra_args)
 
+    # Init
     logger.success("Initialising gater...")
     analyser = SyntheticOpticalGater(settings=settings)
 
+    # Run
     logger.success("Running server...")
     analyser.run_server()
 
-    print(analyser.get_MSE(0.015, 500))
+    print(f"MSE: {analyser.get_MSE(0.015, 500)}")
 
+    # Plot
     logger.success("Plotting summaries...")
     analyser.plot_residuals()
     analyser.plot_IMM_probabilities()
     analyser.plot_state_residuals()
     analyser.plot_future_predictions(0.015)
     analyser.plot_NIS()
-    #analyser.plot_likelihood()
+    analyser.plot_likelihood()
+    analyser.plot_normalised_innovation_squared()
     analyser.plot_delta_phase_phase()
     analyser.plot_triggers()
     analyser.plot_prediction()
@@ -602,12 +642,13 @@ def run(args, desc):
     analyser.plot_phase_error_with_time()
     analyser.plot_running()
 
-    # Monte Carlo KF tuning
+    """# Monte Carlo KF tuning
     # Here we will run optical gating multiple times to find the optimal values for our R and Q matrices
-    """Qs = []
+    Qs = []
     Rs = []
     MSEs = []
-    iterations = 35
+    NIS_means = []
+    iterations = 10
     for i in range(iterations):
         print(f"\n{i}/{iterations}\n")
 
@@ -621,13 +662,14 @@ def run(args, desc):
         logger.success("Running server...")
         analyser.run_server()
 
-        MSEs.append(analyser.get_MSE(0, 500))
+        MSEs.append(analyser.get_MSE(0, 300))
+        NIS_means.append(np.mean(analyser.predictor.kf.NISs[300::]))
         Qs.append(analyser.predictor.kf.q)
         Rs.append(analyser.predictor.kf.R)
 
     Qs = np.array(Qs)
     Rs = np.array(Rs)
-    plt.scatter(Qs, MSEs, s = 10)
+    plt.scatter(Qs, NIS_means, s = 5)
     plt.colorbar()
     plt.xlabel("Qs")
     plt.ylabel("MSE")
@@ -638,9 +680,8 @@ def run(args, desc):
     # Testing what the optimal ratios between our two system models is
     multipliers = []
     MSEs = []
-    iterations = 30
+    iterations = 15
     for i in range(iterations):
-        mc_rng = np.random.default_rng()
 
         settings = load_settings(args, desc, add_extra_args)
 
@@ -651,15 +692,13 @@ def run(args, desc):
         analyser.run_server()
 
         print(f"\n{i}/{iterations}\n")
-        kf1 = analyser.predictor.kf_cv1
-        kf2 = analyser.predictor.kf_cv2
-        MSEs.append(analyser.get_MSE(0.015, 500))
+        MSEs.append(analyser.get_MSE(0.015, 200))
 
-        multipliers.append(kf2.q / kf1.q)
+        multipliers.append(analyser.predictor.multiplier)
 
     plt.figure()
     plt.scatter(multipliers, MSEs)
-    plt.show()"""
+    plt.show()()"""
 
 if __name__ == "__main__":
     run(sys.argv[1:], "Run optical gater on image data contained in tiff file")

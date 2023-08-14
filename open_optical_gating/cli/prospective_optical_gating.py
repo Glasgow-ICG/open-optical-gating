@@ -15,6 +15,10 @@ from . import determine_reference_period as ref
 from .kalman_filter import KalmanFilter
 from .kalman_filter import InteractingMultipleModelFilter as IMM
 
+# Robust KF
+from .robust_kalman import RobustKalman
+from .robust_kalman.utils import HuberScore, VariablesHistory, WindowStatisticsEstimator
+
 class PredictorBase:
     """
     Base class for predicting when to trigger the camera at a specific phase of the heart
@@ -25,53 +29,7 @@ class PredictorBase:
         self.mostRecentTriggerTime = -1000
 
     def target_and_barrier_updated(self, ref_seq_manager):
-        """ This function should be called whenever the reference and barrier frames are updated.
-            We generate a lookup table that enables us to identify how many frame phases to use
-            for forward-prediction of heart phase, depending on what our current frame phase is.
-            This is empirical code replicated from the spim-interface project.
-            The concept of the 'barrier frame' is used: we do not fit backwards past this
-            barrier frame. The barrier frame is identified empirically as a point in the
-            reference sequence "between" heartbeats, where we may we see increased variability
-            (variable pause between beats). Our forward-prediction is more reliable if
-            we do not attempt to extend our linear fit backwards past that point
-            of high variability in the heart cycle.
-            """
-        # JT TODO: this function is called when we acquire a new set of reference frames,
-        # but it is not updated if the parameters such as barrierFrame, min/maxFramesForFit
-        # are later altered by the user. It should be...
-        
-        # JT TODO: since it's not even that clear which class should manage this lookup,
-        # I might be better off thinking about whether I can write it as reasonably compact logic
-        # that does not require a lookup!
-        
-        # frames to consider based on reference point and no padding
-        refFrameCountPadded = ref_seq_manager.ref_frames.shape[0]
-        numToUseNoPadding = list(
-            range(refFrameCountPadded - (2 * ref.numExtraRefFrames))
-        )
-        numToUseNoPadding = np.asarray(
-            numToUseNoPadding[-int(ref_seq_manager.barrierFrameNum - ref.numExtraRefFrames - 1) :]
-            + numToUseNoPadding[: -int(ref_seq_manager.barrierFrameNum - ref.numExtraRefFrames - 1)]
-        )
-        ones = np.ones(refFrameCountPadded, dtype=int)
-
-        # Account for padding by setting extra frames equal to last/first unpadded number
-        numToUsePadding = numToUseNoPadding[-1] * ones
-        numToUsePadding[
-            ref.numExtraRefFrames : refFrameCountPadded - ref.numExtraRefFrames
-        ] = numToUseNoPadding
-
-        # Consider min and max number of frames to use, as determined by our settings parameters.
-        # This overrides any barrier frame considerations.
-        numToUsePadding = np.maximum(
-            numToUsePadding,
-            self.settings["minFramesForFit"] * ones
-        )
-        numToUsePadding = np.minimum(
-            numToUsePadding,
-            self.settings["maxFramesForFit"] * ones
-        )
-        self.framesForPredictionLookup = numToUsePadding
+        pass
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
@@ -312,19 +270,69 @@ class LinearPredictor(PredictorBase):
 
         # Return our prediction
         return timeToWait_s, estHeartPeriod_s, frame_history.shape[0]
+    
+    def target_and_barrier_updated(self, ref_seq_manager):
+        """ This function should be called whenever the reference and barrier frames are updated.
+            We generate a lookup table that enables us to identify how many frame phases to use
+            for forward-prediction of heart phase, depending on what our current frame phase is.
+            This is empirical code replicated from the spim-interface project.
+            The concept of the 'barrier frame' is used: we do not fit backwards past this
+            barrier frame. The barrier frame is identified empirically as a point in the
+            reference sequence "between" heartbeats, where we may we see increased variability
+            (variable pause between beats). Our forward-prediction is more reliable if
+            we do not attempt to extend our linear fit backwards past that point
+            of high variability in the heart cycle.
+            """
+        # JT TODO: this function is called when we acquire a new set of reference frames,
+        # but it is not updated if the parameters such as barrierFrame, min/maxFramesForFit
+        # are later altered by the user. It should be...
+        
+        # JT TODO: since it's not even that clear which class should manage this lookup,
+        # I might be better off thinking about whether I can write it as reasonably compact logic
+        # that does not require a lookup!
+        
+        # frames to consider based on reference point and no padding
+        refFrameCountPadded = ref_seq_manager.ref_frames.shape[0]
+        numToUseNoPadding = list(
+            range(refFrameCountPadded - (2 * ref.numExtraRefFrames))
+        )
+        numToUseNoPadding = np.asarray(
+            numToUseNoPadding[-int(ref_seq_manager.barrierFrameNum - ref.numExtraRefFrames - 1) :]
+            + numToUseNoPadding[: -int(ref_seq_manager.barrierFrameNum - ref.numExtraRefFrames - 1)]
+        )
+        ones = np.ones(refFrameCountPadded, dtype=int)
+
+        # Account for padding by setting extra frames equal to last/first unpadded number
+        numToUsePadding = numToUseNoPadding[-1] * ones
+        numToUsePadding[
+            ref.numExtraRefFrames : refFrameCountPadded - ref.numExtraRefFrames
+        ] = numToUseNoPadding
+
+        # Consider min and max number of frames to use, as determined by our settings parameters.
+        # This overrides any barrier frame considerations.
+        numToUsePadding = np.maximum(
+            numToUsePadding,
+            self.settings["minFramesForFit"] * ones
+        )
+        numToUsePadding = np.minimum(
+            numToUsePadding,
+            self.settings["maxFramesForFit"] * ones
+        )
+        self.framesForPredictionLookup = numToUsePadding
 
 class KalmanPredictor(PredictorBase):
     """
     This class implements the basic linear Kalman filter for phase prediction.
     """
 
-    def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
+    def __init__(self, predictor_settings, dt):
+        x_0 = np.array([0, 10])
+        P_0 = np.diag([100, 100])
+        q = 2.08
+        R = 1
         self.kf = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
 
         super().__init__(predictor_settings)
-
-    def target_and_barrier_updated(self, ref_seq_manager):
-        pass
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
@@ -359,19 +367,18 @@ class KalmanPredictor(PredictorBase):
             # TODO: Replace the number 75 with the correct framerate
             # We can get this from the example_data_settings.json
             self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), self.kf.P)
-            likelihood = 0
         else:
             # Run the KF
             self.kf.predict()
-            current_state = self.kf.update(thisFrameMetadata["unwrapped_phase"])
+            self.kf.update(thisFrameMetadata["unwrapped_phase"])
 
-            likelihood = current_state[5]
-
+        print(self.kf.x)
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.kf.get_current_state_vector()
         thisFrameMetadata["covariance"] = self.kf.get_current_covariance_matrix()
-        thisFrameMetadata["likelihood"] = likelihood
+        thisFrameMetadata["likelihood"] = self.kf.L
+        thisFrameMetadata["NIS"] = self.kf.NIS
 
         # This code attempts to predict how long we need to wait until the next trigger by estimating the
         # phase remaining and KF estimate of phase velocity.
@@ -380,7 +387,6 @@ class KalmanPredictor(PredictorBase):
         # Add wait time to metadata
         thisFrameMetadata["wait_times"] = timeToWait_s
 
-        thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s, None
@@ -390,27 +396,38 @@ class IMMPredictor(PredictorBase):
     This class implements the basic linear Kalman filter for phase prediction.
     """
 
-    def __init__(self, predictor_settings, dt, x_0, P_0, q, R):
-        # CV-CV
-        mc_rng = np.random.default_rng()
-        #multiplier = mc_rng.uniform(1e-300, 1)
-        multiplier = 0.03
+    def __init__(self, predictor_settings, dt):
+        # Multiplier for our process noise covariance matrices
+        self.multiplier = 1
+        #self.multiplier = 5.5e-5
+        self.multiplier = 0.004
+        #mc_rng = np.random.default_rng()
+        #self.multiplier = mc_rng.uniform(1e-10, 1e-2)
 
-        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / multiplier, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * multiplier, R, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.98, 0.02],[0.02, 0.98]]))
+        """# Initialise our filter bank
+        x_0 = np.array([0, 10])
+        P_0 = np.diag([100, 100])
+        q = 0.112
+        R = 1
+        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / self.multiplier, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
+        self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * self.multiplier, R, x_0, P_0)
 
-        # CA-CV
-        """P_0 = np.diag([100, 100, 100])
-        x_0 = np.array([0, 0, 0])
-        self.kf_cv1 = KalmanFilter.constant_acceleration(predictor_settings, dt, q, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_3(predictor_settings, dt, q, R, x_0, P_0)
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))"""
+        # Initialise our IMM
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2, self.kf_cv3]), np.array([0.34, 0.33, 0.33]), np.array([[0.97, 0.02, 0.01],[0.01, 0.98, 0.01],[0.01, 0.02, 0.97]]))"""
+
+        # Initialise our filter bank
+        x_0 = np.array([0, 10])
+        P_0 = np.diag([100, 100])
+        q = 2.08
+        R = 1
+        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / self.multiplier, R, x_0, P_0)
+        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * self.multiplier, R, x_0, P_0)
+
+        # Initialise our IMM
+        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))
 
         super().__init__(predictor_settings)
-
-    def target_and_barrier_updated(self, ref_seq_manager):
-        pass
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None):
         """
@@ -435,18 +452,21 @@ class IMMPredictor(PredictorBase):
         # Get the current frame's metadata
         thisFrameMetadata = full_frame_history[-1].metadata
 
+        # Initialise our filters
         for model in self.imm.models:
             if model.flags["initialised"] == False:
                 # Initialise the KF
                 model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), model.P)
         
+        # Run IMM
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
 
-        # Get KF Parameters
+        # Get our current state estimate
         thisFramePhase = self.imm.x[0] % (2 * np.pi)
-        radsPerSec = self.imm.x[1] # NOTE: we should encode acceleration into this
+        radsPerSec = self.imm.x[1]
 
+        # Ensure our phase velocity is reasonable
         if radsPerSec < 0:
             logger.debug(
                 "Kalman state velocity estimate is negative!"

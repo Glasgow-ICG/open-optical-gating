@@ -263,36 +263,26 @@ class OpticalGater:
         logger.debug("Preparing for state change")
         # Re-initialise the ref_seq_manager
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
+
         # Initialise our predictor
-        if self.settings["prediction"]["prediction_method"] == "kalman":
-            # Kalman filter-based predictor
-            logger.info("Initialising Kalman predictor")
-            # TODO: Currently these are set to 'good enough' starting values - set to better estimates
-            # TODO: initialise KF in predictor - don't need to define these here
-            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
-            x0 = np.array([0, 10])
-            P0 = np.diag([100, 100])
-            q = 0.112
-            R = 1
-            self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)
-        elif self.settings["prediction"]["prediction_method"] == "linear":
+        if self.settings["prediction"]["prediction_method"] == "linear":
             # Linear predictor
             logger.info("Initialising linear predictor")
             self.predictor = pog.LinearPredictor(self.settings["prediction"]["linear"])
+        elif self.settings["prediction"]["prediction_method"] == "kalman":
+            # Kalman filter predictor
+            logger.info("Initialising Kalman predictor")
+            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]
+            self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt)
         elif self.settings["prediction"]["prediction_method"] == "IMM":
-            # Interacting multiple model Kalman filter predictor
+            # IMM Kalman filter predictor
             logger.info("Initialising IMM predictor")
-            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]#Setting to framerate of forced framerate (1/63) seems to fix this
-            x0 = np.array([0, 10])
-            P0 = np.diag([100, 100])
-            q = 0.112
-            R = 1
-            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt, x0, P0, q, R)
-        elif self.settings["prediction"]["prediction_method"] == "filterpy":
-            self.predictor = pog.filterpyPredictor(self.settings["prediction"]["kalman"], dt, x0, P0, q, R)
+            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]
+            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt)
         else:
             logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
             raise NotImplementedError("Unknown prediction method '{0}'".format(self.settings["prediction"]["prediction_method"]))
+        
         # Initialise 2 aligners in the case that a full_reset is desired
         if target_state == "full_reset":
             self.aligner1 = oga.Aligner(self.settings["oga"])
@@ -816,12 +806,27 @@ class OpticalGater:
 
     def plot_likelihood(self):
         if self.settings["prediction"]["prediction_method"] == "kalman":
+            print(pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
+
             plt.figure()
             plt.title("Likelihood")
             plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
             plt.xlabel("Timestamp (s)")
             plt.ylabel("Likelihood")
             plt.show()
+
+    def plot_normalised_innovation_squared(self):
+        if self.settings["prediction"]["prediction_method"] == "kalman":
+            timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="NIS")
+            NIS = pa.get_metadata_from_list(self.frame_history, "NIS", onlyIfKeyPresent="NIS")
+            plt.figure()
+            plt.title("NIS")
+            plt.scatter(timestamps, NIS)
+            plt.xlabel("Timestamp (s)")
+            plt.ylabel("NIS")
+            plt.show()
+
+        print(np.mean(NIS))
 
     def plot_residuals(self):
         if type(self.predictor) is pog.KalmanPredictor or type(self.predictor) is pog.IMMPredictor:
@@ -850,14 +855,18 @@ class OpticalGater:
     def plot_IMM_probabilities(self):
         if type(self.predictor) is pog.IMMPredictor:
             timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="filter_probability")
-            mus = np.array(self.predictor.imm.mus)
             mus = pa.get_metadata_from_list(self.frame_history, "filter_probability", onlyIfKeyPresent="filter_probability")
 
             plt.figure()
             plt.title("Filter probabilities")
-            plt.scatter(timestamps, mus[:, 0] / mus[:, 1], label = "Filter 1", s = 5)
-            #plt.scatter(timestamps, mus[:, 1], label = "Filter 2", s = 5)
+            for i in range(mus[0].shape[0] - 1):
+                plt.scatter(timestamps, mus[:, i] / mus[:, i+1], label = f"Filter {i} / {i+1}", s = 5)
+            """for i in range(mus[0].shape[0]):
+                plt.scatter(timestamps, mus[:, i], label = f"Filter {i}", s = 5)"""
             plt.legend()
             plt.xlabel("Timestamp")
             plt.ylabel("IMM probabilities")
             plt.show()
+
+    def save_results(self, filename):
+        np.save(filename, self.frame_history)

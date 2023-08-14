@@ -311,12 +311,14 @@ def run(args, desc):
                   desc       str     Description to provide as command line help description
     '''
     
+    # Load
     def add_extra_args(parser):
         # Optional argument to force realtime playback (see FileOpticalGater constructor). Will default to false if command line option not specified
         parser.add_argument("-r", "--realtime", dest="realtime", action="store_true", help="Replay in realtime (framerate as per settings file)")
     
     settings = load_settings(args, desc, add_extra_args)
 
+    # Init
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["file"]["input_tiff_path"],
@@ -324,13 +326,18 @@ def run(args, desc):
         force_framerate=settings["parsed_args"].realtime
     )
 
+    # Run
     logger.success("Running server...")
     analyser.run_server()
 
+    # Save the data
+    analyser.save_results("data.npy")
+
+    # Plot
     logger.success("Plotting summaries...")
     analyser.plot_IMM_probabilities()
     analyser.plot_residuals()
-    #analyser.plot_likelihood()
+    analyser.plot_likelihood()
     analyser.plot_delta_phase_phase()
     analyser.plot_triggers()
     analyser.plot_prediction()
