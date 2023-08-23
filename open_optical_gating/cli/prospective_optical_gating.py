@@ -15,10 +15,6 @@ from . import determine_reference_period as ref
 from .kalman_filter import KalmanFilter
 from .kalman_filter import InteractingMultipleModelFilter as IMM
 
-# Robust KF
-from .robust_kalman import RobustKalman
-from .robust_kalman.utils import HuberScore, VariablesHistory, WindowStatisticsEstimator
-
 class PredictorBase:
     """
     Base class for predicting when to trigger the camera at a specific phase of the heart

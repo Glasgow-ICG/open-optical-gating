@@ -25,8 +25,6 @@ class DynamicDrawer():
         Takes a model describing our phase progression and then generates frames at a given timestamp.
         Used with the SyntheticOpticalGater class.
 
-        # TODO: Test images by sight to check that they look like they should - make sure dimensions are correct
-
         Args:
             width (_type_): _description_
             height (_type_): _description_

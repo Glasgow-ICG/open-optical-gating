@@ -1,6 +1,6 @@
 {
     "general": {
-        "log_level": "WARNING",
+        "log_level": "DEBUG",
         "analyse_time_s": 100000,
         "frame_buffer_length": 10000,
         "time_limit_seconds": 1000000,
@@ -11,7 +11,7 @@
     },
     
     "file": {
-        "input_tiff_path": "C:/Users/kross/basic_optical_gating/data.tif",
+        "input_tiff_path": "example_data.tif",
         "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
         "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
     },

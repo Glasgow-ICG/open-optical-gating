@@ -330,9 +330,6 @@ def run(args, desc):
     logger.success("Running server...")
     analyser.run_server()
 
-    # Save the data
-    analyser.save_results("data.npy")
-
     # Plot
     logger.success("Plotting summaries...")
     analyser.plot_IMM_probabilities()
