@@ -6,7 +6,7 @@
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
         "pause_for_timelapse": 40,
-        "log_counter": 150,
+        "log_counter": 158,
         "min_time_between_triggers": 0.0
     },
     "brightfield": {
@@ -27,7 +27,8 @@
             "SYNC-B": 12
         },
         "fluorescence_trigger_mode": "edge",
-        "fluorescence_exposure_us": 1000.0
+        "fluorescence_exposure_us": 1000.0,
+        "camera_laser_delay_us": 1.0 
     },
     "reference": {
         "minPeriod": 5,

@@ -165,6 +165,7 @@ class PiOpticalGater(server.OpticalGater):
             # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
                 delay_us,
+                self.settings["trigger"]["camera_laser_delay_us"],
                 self.settings["trigger"]["laser_trigger_pin"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["SYNC-B"],
@@ -173,6 +174,7 @@ class PiOpticalGater(server.OpticalGater):
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
                 delay_us,
+                self.settings["trigger"]["camera_laser_delay_us"],
                 self.settings["trigger"]["fluorescence_exposure_us"],
                 self.settings["trigger"]["laser_trigger_pin"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],
