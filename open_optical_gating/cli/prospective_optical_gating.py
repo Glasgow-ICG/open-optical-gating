@@ -322,11 +322,9 @@ class KalmanPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt):
-        x_0 = np.array([0, 10])
-        P_0 = np.diag([100, 100])
-        q = 2.08
-        R = 1
-        self.kf = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
+        self.flags = {
+            "initialised" : False
+        }
 
         super().__init__(predictor_settings)
 
@@ -341,7 +339,7 @@ class KalmanPredictor(PredictorBase):
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
             targetSyncPhase (float): Phase that we are supposed to be triggering at
-            frameInterval_s (float): Not used for KF
+            frameInterval_s (float): Expected time gap (in seconds) between brightfield frames
             fitBackToBarrier (bool): Not used for KF
             framesForFit (int): Not used for KF
 
@@ -358,17 +356,21 @@ class KalmanPredictor(PredictorBase):
         # NOTE: Currently, we don't provide an estimate for our phase velocity. Possible choices include,
         # calculating the expected velocity from our known brightfield framerate or using the first two phase
         # estimates from OOG
-        if self.kf.flags["initialised"] == 0:
+        if self.flags["initialised"] == False:
             # Initialise the using the current phase and velocity estimate
             # TODO: Replace the number 75 with the correct framerate
             # We can get this from the example_data_settings.json
+            x_0 = np.array([0, 10])
+            P_0 = np.diag([100, 100])
+            q = 2.08
+            R = 1
+            self.kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, x_0, P_0)
             self.kf.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), self.kf.P)
+            self.flags["initialised"] = True
         else:
             # Run the KF
             self.kf.predict()
             self.kf.update(thisFrameMetadata["unwrapped_phase"])
-
-        print(self.kf.x)
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.kf.get_current_state_vector()
@@ -393,35 +395,9 @@ class IMMPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt):
-        # Multiplier for our process noise covariance matrices
-        self.multiplier = 1
-        #self.multiplier = 5.5e-5
-        self.multiplier = 0.004
-        #mc_rng = np.random.default_rng()
-        #self.multiplier = mc_rng.uniform(1e-10, 1e-2)
-
-        """# Initialise our filter bank
-        x_0 = np.array([0, 10])
-        P_0 = np.diag([100, 100])
-        q = 0.112
-        R = 1
-        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / self.multiplier, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q, R, x_0, P_0)
-        self.kf_cv3 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * self.multiplier, R, x_0, P_0)
-
-        # Initialise our IMM
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2, self.kf_cv3]), np.array([0.34, 0.33, 0.33]), np.array([[0.97, 0.02, 0.01],[0.01, 0.98, 0.01],[0.01, 0.02, 0.97]]))"""
-
-        # Initialise our filter bank
-        x_0 = np.array([0, 10])
-        P_0 = np.diag([100, 100])
-        q = 2.08
-        R = 1
-        self.kf_cv1 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q / self.multiplier, R, x_0, P_0)
-        self.kf_cv2 = KalmanFilter.constant_velocity_2(predictor_settings, dt, q * self.multiplier, R, x_0, P_0)
-
-        # Initialise our IMM
-        self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))
+        self.flags = {
+            "initialised" : False
+        }
 
         super().__init__(predictor_settings)
 
@@ -436,7 +412,7 @@ class IMMPredictor(PredictorBase):
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
             targetSyncPhase (float): Phase that we are supposed to be triggering at
-            frameInterval_s (float): Not used for KF
+            frameInterval_s (float): Expected time gap (in seconds) between brightfield frames
             fitBackToBarrier (bool): Not used for KF
             framesForFit (int): Not used for KF
 
@@ -449,11 +425,18 @@ class IMMPredictor(PredictorBase):
         thisFrameMetadata = full_frame_history[-1].metadata
 
         # Initialise our filters
-        for model in self.imm.models:
-            if model.flags["initialised"] == False:
-                # Initialise the KF
-                model.initialise(np.array([thisFrameMetadata["unwrapped_phase"], thisFrameMetadata["delta_phase"] * 200]), model.P)
-        
+        if self.flags["initialised"] == False:
+            # Initialise our filter bank
+            self.multiplier = 0.004
+            x_0 = np.array([0, 10])
+            P_0 = np.diag([100, 100])
+            q = 0.5
+            R = 1
+            self.kf_cv1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / self.multiplier, R, x_0, P_0)
+            self.kf_cv2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * self.multiplier, R, x_0, P_0)
+            self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))
+            self.flags["initialised"] = True
+
         # Run IMM
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
