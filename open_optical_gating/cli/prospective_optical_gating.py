@@ -395,9 +395,7 @@ class IMMPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt):
-        self.flags = {
-            "initialised" : False
-        }
+        self.initialised = False
 
         super().__init__(predictor_settings)
 
@@ -425,17 +423,17 @@ class IMMPredictor(PredictorBase):
         thisFrameMetadata = full_frame_history[-1].metadata
 
         # Initialise our filters
-        if self.flags["initialised"] == False:
+        if self.initialised  == False:
             # Initialise our filter bank
             self.multiplier = 0.004
             x_0 = np.array([0, 10])
             P_0 = np.diag([100, 100])
-            q = 0.5
+            q = 0.01
             R = 1
             self.kf_cv1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / self.multiplier, R, x_0, P_0)
             self.kf_cv2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * self.multiplier, R, x_0, P_0)
             self.imm = IMM(np.array([self.kf_cv1, self.kf_cv2]), np.array([0.5, 0.5]), np.array([[0.97, 0.03],[0.03, 0.97]]))
-            self.flags["initialised"] = True
+            self.initialised = True
 
         # Run IMM
         self.imm.predict()
