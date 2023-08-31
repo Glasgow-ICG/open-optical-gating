@@ -28,7 +28,7 @@
         },
         "fluorescence_trigger_mode": "edge",
         "fluorescence_exposure_us": 1000.0,
-        "camera_laser_delay_us": 1.0 
+        "camera_laser_delay_us": 15000.0 
     },
     "reference": {
         "minPeriod": 5,
