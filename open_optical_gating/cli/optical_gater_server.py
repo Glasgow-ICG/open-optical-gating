@@ -806,8 +806,6 @@ class OpticalGater:
 
     def plot_likelihood(self):
         if self.settings["prediction"]["prediction_method"] == "kalman":
-            print(pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
-
             plt.figure()
             plt.title("Likelihood")
             plt.scatter(pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="likelihood"), pa.get_metadata_from_list(self.frame_history, "likelihood", onlyIfKeyPresent="likelihood"))
