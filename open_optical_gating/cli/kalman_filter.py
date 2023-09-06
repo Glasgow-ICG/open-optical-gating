@@ -65,69 +65,6 @@ class KalmanFilter():
 
         self.flags["initialised"] = True
 
-    def set_process_noise_covariance_matrix(self, dt_matrix, float_matrix, q_matrix, dt, q):
-        """
-        Set the process noise covariance matrix.
-        This allows us to modify dt and q on the fly. 
-        
-        NOTE: For production code we should avoid using this because it is significantly slower.
-        
-        Args:
-            dt_matrix (np.ndarray): Powers of dt
-            float_matrix (np.ndarray): Floats
-            q_matrix (np.ndarray): Multiplier
-            dt (float): Time interval
-            q (float): Process noise
-        """
-        self.Q_dt = dt_matrix
-        self.Q_f = float_matrix
-        self.Q_q = q_matrix
-        self.q = q
-
-        # This is used for our tuning our filters
-        if self.random_q:
-            self.q = self.random_q_rng.uniform(0, 5000)
-
-        self.Q = self.get_process_noise_covariance_matrix(dt)
-
-        return self.Q
-
-    def get_process_noise_covariance_matrix(self, dt):
-        """
-        Get the process noise covariance matrix with the given dt
-
-        NOTE: For production code we should avoid using this because it is significantly slower.
-
-        Args:
-            dt (_type_): 
-        """
-
-        Q = dt**self.Q_dt * self.Q_f * self.q * self.Q_q
-
-        return Q
-
-    def set_state_transition_matrix(self, dt_matrix, float_matrix, dt):
-        """
-        Set the state transition matrix.
-        We use a slightly non-standard method here but this allows us to modify dt on the fly
-        by splitting our F matrix into two parts.
-        The first part gives the powers to raise our dt to, the second part defines what to multiply
-        each value of the matrix by.
-        """
-
-        self.F_dt = dt_matrix
-        self.F_f = float_matrix
-
-        self.F = dt**dt_matrix * float_matrix
-
-    def get_state_transition_matrix(self, dt):
-        """
-        Return the state transition matrix with the given dt. 
-        As with above this allows us to modify dt on the fly for forward predction
-        """
-        return dt**self.F_dt * self.F_f
-
-
     def predict(self):
         """
         Predict next state from current state vector.
@@ -221,6 +158,77 @@ class KalmanFilter():
         L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
 
         return L
+    
+    # NOTE: These methods give us flexibility for predicting forward in time but in 
+    # production code it may be worth avoiding these and directly setting the matrix.
+
+    def set_process_noise_covariance_matrix(self, dt_matrix, float_matrix, q_matrix, dt, q):
+        """
+        Set the process noise covariance matrix.
+        This allows us to modify dt and q on the fly. 
+        
+        NOTE: This gives us flexibility for predicting forward in time but in 
+        production code it may be worth using a faster method.
+        
+        Args:
+            dt_matrix (np.ndarray): Powers of dt
+            float_matrix (np.ndarray): Floats
+            q_matrix (np.ndarray): Multiplier
+            dt (float): Time interval
+            q (float): Process noise
+        """
+
+        self.Q_dt = dt_matrix
+        self.Q_f = float_matrix
+        self.Q_q = q_matrix
+        self.q = q
+
+        # This is used for our tuning our filters
+        if self.random_q:
+            self.q = self.random_q_rng.uniform(0, 5000)
+
+        self.Q = self.get_process_noise_covariance_matrix(dt)
+
+        return self.Q
+
+    def get_process_noise_covariance_matrix(self, dt):
+        """
+        Get the process noise covariance matrix with the given dt
+
+        NOTE: This gives us flexibility for predicting forward in time but in 
+        production code it may be worth using a faster method.
+
+        Args:
+            dt (_type_): 
+        """
+
+        Q = dt**self.Q_dt * self.Q_f * self.q * self.Q_q
+
+        return Q
+
+    def set_state_transition_matrix(self, dt_matrix, float_matrix, dt):
+        """
+        Set the state transition matrix.
+        We use a slightly non-standard method here but this allows us to modify dt on the fly
+        by splitting our F matrix into two parts.
+        The first part gives the powers to raise our dt to, the second part defines what to multiply
+        each value of the matrix by.
+        """
+
+        self.F_dt = dt_matrix
+        self.F_f = float_matrix
+
+        self.F = dt**dt_matrix * float_matrix
+
+    def get_state_transition_matrix(self, dt):
+        """
+        Return the state transition matrix with the given dt. 
+        As with above this allows us to modify dt on the fly for forward predction
+        """
+
+        return dt**self.F_dt * self.F_f
+    
+    # These methods are used to create different types of Kalman filter
 
     @classmethod
     def constant_acceleration(cls, settings, dt, q, R, x_0, P_0):
@@ -357,7 +365,7 @@ class KalmanFilter():
                               [2, 1]])
         float_matrix = np.array([[1/3, 1/2],
                                 [1/2, 1]])
-        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, q, dt, q)
+        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, 1, dt, q)
 
         # Set the state transition matrix
         dt_matrix = np.array([[0, 1],
@@ -368,6 +376,7 @@ class KalmanFilter():
 
         return kf
     
+    # These methods are used for our prediction
     @staticmethod
     def get_time_til_phase(x, targetSyncPhase):
         # Get KF Parameters
