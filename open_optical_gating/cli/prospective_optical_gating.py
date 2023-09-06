@@ -32,8 +32,9 @@ class PredictorBase:
         """        
         self.settings = predictor_settings
         self.mostRecentTriggerTime = -1000
-        self.frameMethod = frameMethod
 
+        # If optical gating isn't handling our frame history then we need to keep track of it
+        self.frameMethod = frameMethod
         if self.frameMethod == "individual":
             self.full_frame_history = []
 
@@ -115,7 +116,7 @@ class LinearPredictor(PredictorBase):
     This class implements the linear predictor for phase prediction.
     """
 
-    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, fit_barrier = None):
         """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
             
             Parameters:
@@ -143,7 +144,7 @@ class LinearPredictor(PredictorBase):
             metadata={
                 "timestamp" : timestamp,
                 "unwrapped_phase" : unwrapped_phase,
-                "sad_min" : sad_min,
+                "sad_min" : 0,
                 "fit_barrier" : fit_barrier
             })
             self.full_frame_history.append(frame)
@@ -365,9 +366,12 @@ class KalmanPredictor(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt, frameMethod = None):
+        # TODO: Seems excessive to have a dictionary of flags with only a single flat
         self.flags = {
             "initialised" : False
         }
+
+        self.dt = dt
 
         super().__init__(predictor_settings, frameMethod)
 
@@ -417,12 +421,14 @@ class KalmanPredictor(PredictorBase):
         if self.flags["initialised"] == False:
             # Initialise the using the current phase and velocity estimate
             # We can get this from the example_data_settings.json
-            x_0 = np.array([0, 10])
+            x_0 = np.array([0, 0])
             P_0 = np.diag([100, 100])
-            q = 2.08
-            R = 1
+            q = 0.001
+            R = 0.1
             self.kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, x_0, P_0)
-            self.kf.initialise(np.array([full_frame_history[-1].metadata["unwrapped_phase"], (2 * np.pi / 38) / (1/80)]), self.kf.P)
+            # TODO: Need to pass the reference period to this so we can use this for our initial estimate.
+            # Alternatively for our initial estimate we could fit to the first few frames
+            self.kf.initialise(np.array([full_frame_history[-1].metadata["unwrapped_phase"], (2 * np.pi / 38) / self.dt]), self.kf.P)
             self.flags["initialised"] = True
 
             return -1, -1, -1
@@ -501,6 +507,8 @@ class IMMPredictor(PredictorBase):
         if self.initialised  == False:
             # Initialise our filter bank
             self.multiplier = 0.004
+            # TODO: We need a better initial estimate for our filters.
+            # This will be okay for now but it does mean filter convergence is slower
             x_0 = np.array([0, 10])
             P_0 = np.diag([100, 100])
             q = 0.01
@@ -592,10 +600,39 @@ def initialise_predictor(settings):
     return predictor
 
 if __name__ == "__main__":
+    """
+    To use the predictor class outside of the optical gating code, we need to load the settings file and initialise the predictor
+    then we run the predict_trigger_wait function for every frame.
+
+    The parameters for trigger_times_kf are:
+        targetSyncPhase     (float)     Phase that we are supposed to be triggering at
+            frameInterval_s     (float)     The time period between frames. Equal to 1 / settings["brightfield"]["brightfield_framerate"]
+            framesForFit        (int)       The number of frames to use for linear fit. Used for barrier logic, not needed when KF is being used
+            timestamp           (int)       Current frame timestamp. not needed when KF is being used
+            unwrapped_phase     (float)     Unwrapped phase of current frame
+            fit_barrier         (bool)      Whether the current frame is a barrier frame. Unsure if this is actually used at the moment but included just in case. not needed when KF is being used
+
+    To run use:
+    settings = load_settings("./optical_gating_data/example_data_settings.json")
+    predictor = initialise_predictor(settings)
+
+    while True:
+        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit, timestamp, unwrapped_phase, sad_min, fit_barrier)[0])
+    """    
+
     import matplotlib.pyplot as plt
+    import sys
+    
     # Load the settings and setup our predictor
     settings = load_settings("./optical_gating_data/example_data_settings.json")
     predictor = initialise_predictor(settings)
+
+    # Set up logging
+    logger.remove()
+    logger.remove()
+    logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+    logger.add(sys.stderr, level = settings["general"]["log_level"])
+    logger.enable("open_optical_gating")
 
     # Set the reference period
     reference_period = 38
@@ -604,18 +641,36 @@ if __name__ == "__main__":
     targetSyncPhase = 0
     frameInterval_s =  1 / settings["brightfield"]["brightfield_framerate"]
 
-    # Generate an array of test phases
-    phases = np.arange(0, 1000 * 2 * np.pi / reference_period, 2 * np.pi / reference_period)
+    # Generate some test data
+    def generate_data(dt, T, x0, v0, sigma_x, sigma_v):
+        rng = np.random.default_rng()
+
+        x = np.zeros(int(T / dt))
+        v = np.zeros(int(T / dt))
+
+        x[0] = x0
+        v[0] = v0
+
+        for i in range(1, int(T / dt)):
+            x[i] = x[i - 1] + v[i - 1] * dt + rng.normal(0, sigma_x)
+            v[i] = v[i - 1] + rng.normal(0, sigma_v)
+
+        return x
+    measurement_noise = 0.01
+    process_noise = 0.001
+    phases = generate_data(1 / settings["brightfield"]["brightfield_framerate"], 10, 0, (2 * np.pi / 38) / (1/80), measurement_noise, process_noise)
+    timestamps = np.arange(0, len(phases) * frameInterval_s, frameInterval_s)
     sad_min = np.round(phases)
-    phases += np.random.normal(0, 0.1, len(phases))
-    timestamps = np.arange(0, 1000 * frameInterval_s, frameInterval_s)
-    trigger_times_kf = []
+
+    # Plot our phase progression
+    plt.plot(timestamps, phases)
+    plt.show()
 
     # Loop through our phases and get our time til trigger
+    trigger_times_kf = []
     for i in range(len(phases)):
-        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = 0)[0])
+        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], fit_barrier = 0)[0])
 
-    trigger_times = np.array(trigger_times_kf)
-
-    plt.plot(timestamps, timestamps + trigger_times)
+    # Staircase plot
+    plt.plot(timestamps, timestamps + trigger_times_kf)
     plt.show()
