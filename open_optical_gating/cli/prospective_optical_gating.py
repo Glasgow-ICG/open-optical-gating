@@ -599,8 +599,9 @@ def load_settings(settings_file_path):
     return settings
 
 
-def initialise_predictor(settings):
+def initialise_predictor(settingsPath):
     # Initialise our predictor
+    settings = load_settings(settingsPath)
     if settings["prediction"]["prediction_method"] == "linear":
         # Linear predictor
         predictor = LinearPredictor(settings["prediction"]["linear"], frameMethod = "individual")
@@ -629,8 +630,7 @@ if __name__ == "__main__":
             fit_barrier         (bool)      Whether the current frame is a barrier frame. Unsure if this is actually used at the moment but included just in case. not needed when KF is being used
 
     To run use:
-    settings = load_settings("./optical_gating_data/example_data_settings.json")
-    predictor = initialise_predictor(settings)
+    predictor = initialise_predictor(settingsPath)
 
     while True:
         trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit, timestamp, unwrapped_phase, sad_min, fit_barrier)[0])
@@ -640,12 +640,13 @@ if __name__ == "__main__":
     import sys
     
     # Load the settings and setup our predictor
-    settings = load_settings("./optical_gating_data/example_data_settings.json")
-    predictor = initialise_predictor(settings)
+    settingsPath = "./optical_gating_data/example_data_settings.json"
+    predictor = initialise_predictor(settingsPath)
 
     # Set up logging
     logger.remove()
     logger.remove()
+    settings = load_settings(settingsPath)
     logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
     logger.add(sys.stderr, level = settings["general"]["log_level"])
     logger.enable("open_optical_gating")
