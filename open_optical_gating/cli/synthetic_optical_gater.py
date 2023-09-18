@@ -420,7 +420,7 @@ class SyntheticOpticalGater(server.FileOpticalGater):
             plt.show()
 
     def plot_state_residuals(self):
-        # TODO: Make this work for linear fit
+        # Karlin TODO: Make this work for linear fit
 
         #if self.settings["prediction"]["prediction_method"] == "kalman" or self.settings["prediction"]["prediction_method"] == "IMM":
         timestamps = pa.get_metadata_from_list(self.frame_history, "timestamp", onlyIfKeyPresent="states")
@@ -526,8 +526,6 @@ def load_settings(raw_args, desc, add_extra_args=None):
         as relative to the *settings file*, not the current working directory.
         That seems the only sane behaviour, since when writing the settings file we cannot know
         what the current working directory will be when it is used.
-
-        # TODO: Clean this up and remove any unnecessary settings - rewrite the settings file specifically for synthetic data.
         '''
     parser = argparse.ArgumentParser(description=desc,
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)

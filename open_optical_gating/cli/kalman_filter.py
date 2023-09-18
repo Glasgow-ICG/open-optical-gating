@@ -376,6 +376,35 @@ class KalmanFilter():
 
         return kf
     
+    @classmethod
+    def constant_position_2(cls, settings, dt, q, R, x_0, P_0):
+        x = x_0
+        P = P_0
+        Q = np.array([[dt, 0],
+                    [0, 0]]) * q
+        F = np.array([[1, 0],
+                    [0, 0]])
+        H = np.array([[1, 0]])
+
+        # Create the instance
+        kf = cls(settings, dt, x, P, Q, R, F, H)
+
+        # Set the process noise covariance matrix
+        dt_matrix = np.array([[1, 0],
+                                [0, 0]])
+        float_matrix = np.array([[1, 0],
+                                [0, 0]])
+        kf.set_process_noise_covariance_matrix(dt_matrix, float_matrix, 1, dt, q)
+
+        # Set the state transition matrix
+        dt_matrix = np.array([[0, 0],
+                            [0, 0]])
+        float_matrix = np.array([[1, 0],
+                                [0, 0]])
+        kf.set_state_transition_matrix(dt_matrix, float_matrix, dt)
+
+        return kf
+    
     # These methods are used for our prediction
     @staticmethod
     def get_time_til_phase(x, targetSyncPhase):

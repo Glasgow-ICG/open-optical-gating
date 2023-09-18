@@ -46,7 +46,9 @@
             "gating_method": "none",
             "gating_level": 5,
             "prediction_latency_s": 0.015,
-            "alpha": 1.0
+            "alpha": 1.0,
+            "q": 1,
+            "r": 1
         },
         "IMM": {
             "gating_method": "none",

@@ -380,8 +380,7 @@ class KalmanPredictor(PredictorBase):
         Predicts how long we need to wait for the heart to be at the target phase we are triggering to based upon the Kalman filter
         estimate of the current phase and phase progressions.
 
-        TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
-        TODO: Add parameters for KF performance evaluation
+        Karlin TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
 
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
@@ -423,10 +422,12 @@ class KalmanPredictor(PredictorBase):
             # We can get this from the example_data_settings.json
             x_0 = np.array([0, 0])
             P_0 = np.diag([100, 100])
-            q = 0.001
-            R = 0.1
+            R = 0.014243342551451595
+            R = 1.1981257084023873
+            q = 0.03505305912751678
+            q = 0.054061663463639185
             self.kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, x_0, P_0)
-            # TODO: Need to pass the reference period to this so we can use this for our initial estimate.
+            # Karlin TODO: Need to pass the reference period to this so we can use this for our initial estimate.
             # Alternatively for our initial estimate we could fit to the first few frames
             self.kf.initialise(np.array([full_frame_history[-1].metadata["unwrapped_phase"], (2 * np.pi / 38) / self.dt]), self.kf.P)
             self.flags["initialised"] = True
@@ -464,13 +465,21 @@ class IMMPredictor(PredictorBase):
 
         super().__init__(predictor_settings, frameMethod)
 
+    def initialise(self, x_0, P_0, q, R):
+        mu = np.array([0.5, 0.5])
+        self.kf1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / 10, R, x_0, P_0)
+        self.kf2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * 10, R, x_0, P_0)
+        models = [self.kf1, self.kf2]
+        self.imm = IMM(models, mu, M)
+        self.initialised = True
+
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
         """
         Predicts how long we need to wait for the heart to be at the target phase we are triggering to based upon the Kalman filter
         estimate of the current phase and phase progressions.
 
-        TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
-        TODO: Initialise the Kalman filter with the initial phase estimate
+        Karlin TODO: Make the function take the Kalman filter state progression matrix and use that to predict the phase progression
+        Karlin TODO: Initialise the Kalman filter with the initial phase estimate
 
         Args:
             full_frame_history (list): List of PixelArray objects, including appropriate metadata
@@ -507,24 +516,30 @@ class IMMPredictor(PredictorBase):
         if self.initialised  == False:
             # Initialise our filter bank
             self.multiplier = 0.004
-            # TODO: We need a better initial estimate for our filters.
+            # Karlin TODO: We need a better initial estimate for our filters.
             # This will be okay for now but it does mean filter convergence is slower
             x_0 = np.array([0, 10])
             P_0 = np.diag([100, 100])
-            q = 0.01
+            q = 0.001
             R = 1
             mu = np.array([0.5, 0.5])
             M = np.array([[0.97, 0.03],[0.03, 0.97]])
             self.kf1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / 10, R, x_0, P_0)
+            #self.kf2 = KalmanFilter.constant_position_2(self.settings, frameInterval_s, q, R, x_0, P_0)
             self.kf2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * 10, R, x_0, P_0)
             models = [self.kf1, self.kf2]
             self.imm = IMM(models, mu, M)
             self.initialised = True
             return -1, -1, -1
+        
+        for model in models:
+            if model.dt != frameInterval_s:
+                model.dt = frameInterval_s
 
         # Run IMM
         self.imm.predict()
         self.imm.update(full_frame_history[-1].metadata["unwrapped_phase"])
+
 
         # Get our current state estimate
         thisFramePhase = self.imm.x[0] % (2 * np.pi)
@@ -566,6 +581,7 @@ class IMMPredictor(PredictorBase):
         #thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         return timeToWait_s, estHeartPeriod_s, None
+    
     
 def load_settings(settings_file_path):
     '''
@@ -656,14 +672,16 @@ if __name__ == "__main__":
             v[i] = v[i - 1] + rng.normal(0, sigma_v)
 
         return x
-    measurement_noise = 0.01
-    process_noise = 0.001
+    measurement_noise = 0.025
+    process_noise = 0.01
     phases = generate_data(1 / settings["brightfield"]["brightfield_framerate"], 10, 0, (2 * np.pi / 38) / (1/80), measurement_noise, process_noise)
     timestamps = np.arange(0, len(phases) * frameInterval_s, frameInterval_s)
     sad_min = np.round(phases)
 
     # Plot our phase progression
     plt.plot(timestamps, phases)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Phase (rad)")
     plt.show()
 
     # Loop through our phases and get our time til trigger
@@ -673,4 +691,6 @@ if __name__ == "__main__":
 
     # Staircase plot
     plt.plot(timestamps, timestamps + trigger_times_kf)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Prediction (s)")
     plt.show()
