@@ -109,6 +109,22 @@ class PredictorBase:
             self.mostRecentTriggerTime = timestamp + timeToWait_s
 
         return timeToWait_s, sendTriggerReason
+    
+    def build_frame_history(self, timestamp, unwrapped_phase, sad_min, fit_barrier, max_frames = 30):
+        # Manually build our frame history
+        frame = pa.PixelArray(
+        np.array([]),
+        metadata={
+            "timestamp" : timestamp,
+            "unwrapped_phase" : unwrapped_phase,
+            "sad_min" : sad_min,
+            "fit_barrier" : fit_barrier
+        })
+        self.full_frame_history.append(frame)
+
+        # Clear our frame history if it is too long
+        if len(self.full_frame_history) > max_frames:
+            del self.full_frame_history[0]
 
 
 class LinearPredictor(PredictorBase):
@@ -116,7 +132,7 @@ class LinearPredictor(PredictorBase):
     This class implements the linear predictor for phase prediction.
     """
 
-    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, fit_barrier = None):
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
         """ Predict how long we need to wait until the heart is at the target phase we are triggering to.
             
             Parameters:
@@ -139,20 +155,9 @@ class LinearPredictor(PredictorBase):
         # If we are being passed individual frames, we need to build our own pixelarray and
         # append it to our full_frame_history
         if self.frameMethod == "individual":
-            frame = pa.PixelArray(
-            np.array([]),
-            metadata={
-                "timestamp" : timestamp,
-                "unwrapped_phase" : unwrapped_phase,
-                "sad_min" : 0,
-                "fit_barrier" : fit_barrier
-            })
-            self.full_frame_history.append(frame)
-
-            # We only need to keep a limited number of frames in our history
-            if len(self.full_frame_history) > self.settings["maxFramesForFit"]:
-                del self.full_frame_history[0]
+            self.build_frame_history(timestamp, unwrapped_phase, sad_min, fit_barrier, max_frames = self.settings["maxFramesForFit"])
             full_frame_history = self.full_frame_history
+
 
         # Deal with the barrier frame logic (if fitBackToBarrier is True):
         # Rather than fitting to a number of frames that depends on how far forward we are predicting,
@@ -367,9 +372,7 @@ class KalmanPredictor(PredictorBase):
 
     def __init__(self, predictor_settings, dt, frameMethod = None):
         # TODO: Seems excessive to have a dictionary of flags with only a single flat
-        self.flags = {
-            "initialised" : False
-        }
+        self.initialisation_state = "phase"
 
         self.dt = dt
 
@@ -394,49 +397,37 @@ class KalmanPredictor(PredictorBase):
             estHeartPeriod_s (float): Estimate period of the heart beat
         """        
         # If we are being passed individual frames, we need to build our own pixelarray and
-        # append it to our full_frame_history
+        # append it to our full_frame_history.
+        # This allows our predictor class to work with file optical gater which passes full_frame_history
+        # to the predictor class.
+        # Karlin TODO: This seems to cause some performance issues on the SPIM system so we may want to rewrite this at some point
         if self.frameMethod == "individual":
-            frame = pa.PixelArray(
-            np.array([]),
-            metadata={
-                "timestamp" : timestamp,
-                "unwrapped_phase" : unwrapped_phase,
-                "sad_min" : sad_min,
-                "fit_barrier" : fit_barrier
-            })
-            self.full_frame_history.append(frame)
+            self.build_frame_history(timestamp, unwrapped_phase, sad_min, fit_barrier)
+        thisFrameMetadata = self.full_frame_history[-1].metadata
 
-            # We only need to keep a limited number of frames in our history
-            if len(self.full_frame_history) > 1:
-                del self.full_frame_history[0]
-            full_frame_history = self.full_frame_history
-        thisFrameMetadata = full_frame_history[-1].metadata
-
-        # We need to initialise the KF with an initial state estimate. For this we use the first phase estimate from
-        # open optical gating. If the Kalman filter is already initialised we run the KF.
-        # NOTE: Currently, we don't provide an estimate for our phase velocity. Possible choices include,
-        # calculating the expected velocity from our known brightfield framerate or using the first two phase
-        # estimates from OOG
-        if self.flags["initialised"] == False:
-            # Initialise the using the current phase and velocity estimate
-            # We can get this from the example_data_settings.json
-            x_0 = np.array([0, 0])
-            P_0 = np.diag([100, 100])
-            R = 0.014243342551451595
-            R = 1.1981257084023873
-            q = 0.03505305912751678
-            q = 0.054061663463639185
-            self.kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, x_0, P_0)
-            # Karlin TODO: Need to pass the reference period to this so we can use this for our initial estimate.
-            # Alternatively for our initial estimate we could fit to the first few frames
-            self.kf.initialise(np.array([full_frame_history[-1].metadata["unwrapped_phase"], (2 * np.pi / 38) / self.dt]), self.kf.P)
-            self.flags["initialised"] = True
-
+        # Kalman filter
+        if self.initialisation_state == "phase":
+            # We cannot initialise our KF as we don't currently have an estimate of the delta phase
+            # We therefore store our current phase for the next timestep for KF initialisation
+            self.previous_phase = thisFrameMetadata["unwrapped_phase"]
+            self.initialisation_state = "delta_phase"
             return -1, -1, -1
-        else:
-            # Run the KF
+        elif self.initialisation_state == "delta_phase":
+            # Initialise our filter with our initial phase and delta phase estimate
+            x_0 = np.array([thisFrameMetadata["unwrapped_phase"], (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s])
+            P_0 = np.diag([100, 100])
+            q = self.settings["q"]
+            R = self.settings["r"]
+            self.kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, x_0, P_0)
+            del self.previous_phase
+            self.initialisation_state = "initialised"
+            return -1, -1, -1
+        elif self.initialisation_state == "initialised":
+            # After initialisation run our KF
             self.kf.predict()
             self.kf.update(thisFrameMetadata["unwrapped_phase"])
+        else:
+            raise Exception("Invalid initialisation state")
 
         # Add KF state estimates to our pixelarray metadata
         thisFrameMetadata["states"] = self.kf.get_current_state_vector()
@@ -450,7 +441,6 @@ class KalmanPredictor(PredictorBase):
 
         # Add wait time to metadata
         thisFrameMetadata["wait_times"] = timeToWait_s
-
 
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s, None
@@ -467,6 +457,7 @@ class IMMPredictor(PredictorBase):
 
     def initialise(self, x_0, P_0, q, R):
         mu = np.array([0.5, 0.5])
+        M = np.array([[0.97, 0.03],[0.03, 0.97]])
         self.kf1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / 10, R, x_0, P_0)
         self.kf2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * 10, R, x_0, P_0)
         models = [self.kf1, self.kf2]
@@ -531,10 +522,6 @@ class IMMPredictor(PredictorBase):
             self.imm = IMM(models, mu, M)
             self.initialised = True
             return -1, -1, -1
-        
-        for model in models:
-            if model.dt != frameInterval_s:
-                model.dt = frameInterval_s
 
         # Run IMM
         self.imm.predict()
@@ -577,8 +564,6 @@ class IMMPredictor(PredictorBase):
 
         # Add wait time to metadata
         thisFrameMetadata["wait_times"] = timeToWait_s
-
-        #thisFrameMetadata["NIS"] = self.kf.get_normalised_innovation_squared()
 
         return timeToWait_s, estHeartPeriod_s, None
     
@@ -688,7 +673,7 @@ if __name__ == "__main__":
     # Loop through our phases and get our time til trigger
     trigger_times_kf = []
     for i in range(len(phases)):
-        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], fit_barrier = 0)[0])
+        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = 0)[0])
 
     # Staircase plot
     plt.plot(timestamps, timestamps + trigger_times_kf)

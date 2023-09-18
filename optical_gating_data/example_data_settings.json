@@ -2,7 +2,7 @@
     "general": {
         "log_level": "WARNING",
         "analyse_time_s": 100000,
-        "frame_buffer_length": 10000,
+        "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
         "pause_for_timelapse": 0,
@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "linear",
+        "prediction_method": "IMM",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -47,7 +47,7 @@
             "gating_level": 5,
             "prediction_latency_s": 0.015,
             "alpha": 1.0,
-            "q": 1,
+            "q": 0.001,
             "r": 1
         },
         "IMM": {
