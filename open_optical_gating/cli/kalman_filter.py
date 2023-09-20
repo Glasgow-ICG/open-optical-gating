@@ -127,10 +127,10 @@ class KalmanFilter():
         self.e = z - self.H @ self.x
 
         # Performance parameters
-        self.L = self.get_likelihood(z)
+        """self.L = self.get_likelihood(z)
         self.NIS = self.get_normalised_innovation_squared()
         self.Ls.append(self.L)
-        self.NISs.append(self.NIS)
+        self.NISs.append(self.NIS)"""
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
