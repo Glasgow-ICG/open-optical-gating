@@ -127,10 +127,10 @@ class KalmanFilter():
         self.e = z - self.H @ self.x
 
         # Performance parameters
-        """self.L = self.get_likelihood(z)
+        self.L = self.get_likelihood(z)
         self.NIS = self.get_normalised_innovation_squared()
         self.Ls.append(self.L)
-        self.NISs.append(self.NIS)"""
+        self.NISs.append(self.NIS)
 
         # Return the most recent state estimate
         return self.x, self.P, self.e, self.d, self.S, self.L
@@ -155,7 +155,13 @@ class KalmanFilter():
             return NIS
         
     def get_likelihood(self, z):
-        L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
+        try:
+            L = multivariate_normal.logpdf(z, self.H @ self.x, self.S)
+        except:
+            # For now just return 0 if we get an error
+            # In future we will handle this better
+            print("There was a problem calculating likelihood")
+            L = 0
 
         return L
     

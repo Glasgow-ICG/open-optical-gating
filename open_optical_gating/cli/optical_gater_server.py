@@ -728,7 +728,7 @@ class OpticalGater:
             onlyIfKeyPresent="triggerPhaseError"
         )
         plt.figure()
-        plt.title("Histogram of triggered phase errors")
+        plt.title(f"Histogram of triggered phase errors. MSE: {np.mean(np.array(phaseErrorList)**2):.4f} rad")
         histBins = np.linspace(np.min(phaseErrorList), np.max(phaseErrorList),  20) # Suitable for when it goes well
         if (histBins[1]-histBins[0] > 0.03):
             histBins = np.arange(np.min(phaseErrorList), np.max(phaseErrorList),  0.03) # Suitable for when it goes less well!

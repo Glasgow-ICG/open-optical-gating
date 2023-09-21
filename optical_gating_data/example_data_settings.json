@@ -1,6 +1,6 @@
 {
     "general": {
-        "log_level": "WARNING",
+        "log_level": "INFO",
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,
@@ -46,17 +46,17 @@
             "gating_method": "none",
             "gating_level": 5,
             "prediction_latency_s": 0.015,
-            "alpha": 1.0,
+            "alpha": 1.05,
             "tuning_method": "none",
-            "q": 0.001,
-            "R": 1
+            "q": 7.615,
+            "R": 0.0008
         },
         "IMM": {
             "gating_method": "none",
             "gating_level": 5,
             "prediction_latency_s": 0.015,
             "alpha": 1.0,
-            "q": 0.001,
+            "q": 1.28,
             "R": 1
         }
     },

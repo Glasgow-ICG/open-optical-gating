@@ -372,16 +372,15 @@ class KalmanPredictor(PredictorBase):
     def __init__(self, predictor_settings, dt, frameMethod = None):
         # TODO: Seems excessive to have a dictionary of flags with only a single flat
         self.state = "phase"
+        self.q = predictor_settings["q"]
+        self.R = predictor_settings["R"]
 
         self.dt = dt
 
         super().__init__(predictor_settings, frameMethod)
 
-    def initialise_filter(self, x_0, P_0, frameInterval_s):
+    def initialise_filter(self, x_0, P_0, frameInterval_s, q, R):
         # Initialise our KF
-        q = self.settings["q"]
-        R = self.settings["R"]
-
         logger.info("Initialising KF")
         logger.info(f"x_0: {x_0}")
         logger.info(f"P_0: {P_0}")
@@ -424,14 +423,15 @@ class KalmanPredictor(PredictorBase):
             # We cannot initialise our KF as we don't currently have an estimate of the delta phase
             # We therefore store our current phase for the next timestep for KF initialisation
             self.previous_phase = thisFrameMetadata["unwrapped_phase"]
-            # Update our initialisation state
             self.state = "delta_phase"
             return -1, -1, -1
         elif self.state == "delta_phase":
             # Initialise our filter with our initial phase and delta phase estimate
             x_0 = np.array([thisFrameMetadata["unwrapped_phase"], (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s])
             P_0 = np.diag([100, 100])
-            self.initialise_filter(x_0, P_0, frameInterval_s)
+            q = self.settings["q"]
+            R = self.settings["R"]
+            self.initialise_filter(x_0, P_0, frameInterval_s, q, R)
             self.state = "estimate_QR"
             return -1, -1, -1
         elif self.state == "estimate_QR":
@@ -443,43 +443,69 @@ class KalmanPredictor(PredictorBase):
             if self.settings["tuning_method"] == "mse":
                 self.previous_phase = thisFrameMetadata["unwrapped_phase"]
 
-                if len(full_frame_history) == 300:
+                if len(full_frame_history) == 400:
                     frame_history = pa.get_metadata_from_list(
                             full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"]
                             )
                     phases = frame_history[:, 1] % (2 * np.pi)
                     phase_differences = phases - targetSyncPhase
                     phase_differences[phase_differences < -np.pi] += 2 * np.pi
-                    trigger_indices = np.where(abs(phase_differences > 0.1))
+
+                    # Find indices of phases close to our target trigger phase
+                    minPhasesForTuning = 100
+                    phase_range = 0.1
+                    trigger_indices = [[]]
+                    while len(trigger_indices[0]) < minPhasesForTuning:
+                        trigger_indices = np.where(abs(phase_differences < phase_range))
+                        phase_range += 0.1
+                        logger.warning("Not enough phases close to target phase, increasing phase range to {0}", phase_range)
+                        if phase_range > 2 * np.pi:
+                            logger.critical("Not enough phases in sequence for tuning, proceeding with full sequence")
+                            break
                     
+                    # Define our optimisation function
                     def get_mse(parameters):
                         q, R = parameters
+                        R = self.settings["R"]
                         kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, self.kf.x, self.kf.P)
                         trigger_squared_error = []
                         for i in range(frame_history[:, 1].shape[0] - 1):
                             kf.predict()
                             if i in trigger_indices[0]:
-                                phase_residual = kf.x[0] - frame_history[i + 1, 1]
-                                trigger_squared_error.append(np.square(phase_residual))
+                                # Skip the first 100 phases to allow the KF to stabilise
+                                if i > 100:
+                                    phase_residual = kf.x[0] - frame_history[i, 1]
+                                    trigger_squared_error.append(np.square(phase_residual))
                             kf.update(frame_history[i, 1])
                         return np.mean(trigger_squared_error)
                     
                     # Estimate Q and R
-                    optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]])
-                    print(optimisation)
+                    logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using {len(trigger_indices[0])} phases")
+                    optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                    logger.info(f"Kalman filter optimisation results: {optimisation}")
 
-                    self.kf.Q = optimisation.x[0]
-                    self.kf.R = optimisation.x[1]
-                    self.kf.x[0] = thisFrameMetadata["unwrapped_phase"]
-                    self.kf.x[1] = (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s
+                    self.q = optimisation.x[0]
+                    self.R = optimisation.x[1]
 
-                    self.state = "initialised"
+                    self.state = "phase_delta_phase"
                 return -1, -1, -1
             else:
-                self.state = "initialised"
+                self.state = "phase_delta_phase"
                 return -1, -1, -1
+        elif self.state == "phase_delta_phase":
+            # We have now estimated our Q and R so we can now run our KF
+            # Reinitialise our KF with our new Q and R
+            print("Phase delta phase")
+            x_0 = np.array([thisFrameMetadata["unwrapped_phase"], (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s])
+            P_0 = np.diag([10,10])
+            q = self.q
+            R = self.R
+            self.initialise_filter(x_0, P_0, frameInterval_s, q, R)
+            self.state = "initialised"
+            return -1, -1, -1
         elif self.state == "initialised":
             # After initialisation run our KF
+            print("Running KF")
             self.kf.predict()
             self.kf.update(thisFrameMetadata["unwrapped_phase"])
         else:
@@ -516,8 +542,8 @@ class IMMPredictor(PredictorBase):
         R = self.settings["R"]
 
         # Initialise our bank of Kalman filters
-        self.kf1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / 10, R, x_0, P_0)
-        self.kf2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * 10, R, x_0, P_0)
+        self.kf1 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q / 3, R, x_0, P_0)
+        self.kf2 = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q * 3, R, x_0, P_0)
         models = [self.kf1, self.kf2]
 
         # Initialise our IMM
