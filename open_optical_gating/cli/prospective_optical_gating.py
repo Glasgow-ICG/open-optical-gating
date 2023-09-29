@@ -440,7 +440,10 @@ class KalmanPredictor(PredictorBase):
             # We use the KF to perform a prediction at the phase preceeding the target sync phase and calculate the MSE
             # These are then used to estimate the process and measurement noise using a minimiser
 
-            if self.settings["tuning_method"] == "mse":
+            # Karlin TODO: Add minimiser to estimate Q and R over every phase
+            # Currently we only minimise over a range of phases around our target sync phase
+
+            if self.settings["tuning_method"] == "mse_local":
                 self.previous_phase = thisFrameMetadata["unwrapped_phase"]
 
                 if len(full_frame_history) == 400:
@@ -466,7 +469,7 @@ class KalmanPredictor(PredictorBase):
                     # Define our optimisation function
                     def get_mse(parameters):
                         q, R = parameters
-                        R = self.settings["R"]
+                        #R = self.settings["R"]
                         kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, self.kf.x, self.kf.P)
                         trigger_squared_error = []
                         for i in range(frame_history[:, 1].shape[0] - 1):
@@ -479,11 +482,47 @@ class KalmanPredictor(PredictorBase):
                             kf.update(frame_history[i, 1])
                         return np.mean(trigger_squared_error)
                     
-                    # Estimate Q and R
+                    # Get our optimal q and R values
                     logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using {len(trigger_indices[0])} phases")
                     optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
                     logger.info(f"Kalman filter optimisation results: {optimisation}")
 
+                    # Save our optimisation results
+                    self.q = optimisation.x[0]
+                    self.R = optimisation.x[1]
+
+                    self.state = "phase_delta_phase"
+                return -1, -1, -1
+            elif self.settings["tuning_method"] == "mse_global":
+                self.previous_phase = thisFrameMetadata["unwrapped_phase"]
+
+                if len(full_frame_history) == 400:
+                    frame_history = pa.get_metadata_from_list(
+                            full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"]
+                            )
+                    phases = frame_history[:, 1] % (2 * np.pi)
+                    phase_differences = phases - targetSyncPhase
+                    phase_differences[phase_differences < -np.pi] += 2 * np.pi
+                    
+                    # Define our optimisation function
+                    def get_mse(parameters):
+                        q, R = parameters
+                        #R = self.settings["R"]
+                        kf = KalmanFilter.constant_velocity_2(self.settings, frameInterval_s, q, R, self.kf.x, self.kf.P)
+                        trigger_squared_error = []
+                        for i in range(frame_history[:, 1].shape[0] - 1):
+                            kf.predict()
+                            phase_residual = kf.x[0] - frame_history[i, 1]
+                            trigger_squared_error.append(np.square(phase_residual))
+                            kf.update(frame_history[i, 1])
+                        return np.mean(trigger_squared_error)
+                    
+                    # Get our optimal q and R values
+                    logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using all phases")
+                    optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                    logger.info(f"Kalman filter optimisation results: {optimisation}")
+
+                    # Save our optimisation results
                     self.q = optimisation.x[0]
                     self.R = optimisation.x[1]
 
