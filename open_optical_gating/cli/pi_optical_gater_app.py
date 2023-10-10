@@ -238,6 +238,7 @@ class PiOpticalGater(server.OpticalGater):
         Function inputs:
             trigger_time_s = time (in seconds) at which the trigger should be sent
         """
+        delay_us = int((trigger_time_s - time.time()) * 1e6)
         logger.debug(
             "Sending RPi camera trigger at {0:.6f}s".format(trigger_time_s)
         )
@@ -245,7 +246,8 @@ class PiOpticalGater(server.OpticalGater):
         if trigger_mode == "edge":
             # The fluorescence camera captures an image when it detects a rising edge on the trigger pin
             fp.edge(
-                (trigger_time_s - time.time()) * 1e6,
+                delay_us,
+                self.settings["trigger"]["camera_laser_delay_us"],
                 self.settings["trigger"]["laser_trigger_pin"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["SYNC-B"],
@@ -253,7 +255,8 @@ class PiOpticalGater(server.OpticalGater):
         elif trigger_mode == "expose":
             # The fluorescence camera exposes an image for the duration that the trigger pin is high
             fp.pulse(
-                (trigger_time_s - time.time()) * 1e6,
+                delay_us,
+                self.settings["trigger"]["camera_laser_delay_us"],
                 self.settings["trigger"]["fluorescence_exposure_us"],
                 self.settings["trigger"]["laser_trigger_pin"],
                 self.settings["trigger"]["fluorescence_camera_pins"]["trigger"],

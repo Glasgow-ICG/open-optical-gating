@@ -5,8 +5,8 @@
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,
         "trigger_limit": 2000000,
-        "pause_for_timelapse": 40,
-        "log_counter": 158,
+        "pause_for_timelapse": 0,
+        "log_counter": 251,
         "min_time_between_triggers": 0.0
     },
     "brightfield": {
@@ -14,10 +14,10 @@
         "brightfield_resolution": 96,
         "awb_mode": "off",
         "exposure_mode": "off",
-        "shutter_speed_us": 10000,
+        "shutter_speed_us": 10000000,
         "image_denoise": 0,
         "contrast": 0,
-        "save_first_n_frames": 0
+        "save_first_n_frames": 200
     },
     "trigger": {
         "laser_trigger_pin": 22,
@@ -39,8 +39,8 @@
         "target_frame_selection_method": "user",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
-        "update_after_n_criterions": 2000,
-        "triggers_between_timelapse": 2000
+        "update_after_n_criterions": 5,
+        "triggers_between_timelapse": 52
     },
     "prediction": {
         "minFramesForFit": 3,
