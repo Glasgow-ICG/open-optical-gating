@@ -38,6 +38,14 @@ class PredictorBase:
         if self.frameMethod == "individual":
             self.full_frame_history = []
 
+        # This is temporary for implementation into the C code
+        # Set up logging, now receives level from settings
+        logger.remove()
+        logger.remove()
+        logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+        logger.add(sys.stderr, level = settings["general"]["log_level"])
+        logger.enable("open_optical_gating")
+
     def target_and_barrier_updated(self, ref_seq_manager):
         pass
 
@@ -540,7 +548,6 @@ class KalmanPredictor(PredictorBase):
         elif self.state == "phase_delta_phase":
             # We have now estimated our Q and R so we can now run our KF
             # Reinitialise our KF with our new Q and R
-            print("Phase delta phase")
             x_0 = np.array([thisFrameMetadata["unwrapped_phase"], (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s])
             P_0 = np.diag([10,10])
             q = self.q
@@ -550,7 +557,6 @@ class KalmanPredictor(PredictorBase):
             return -1, -1, -1
         elif self.state == "initialised":
             # After initialisation run our KF
-            print("Running KF")
             self.kf.predict()
             self.kf.update(thisFrameMetadata["unwrapped_phase"])
         else:
