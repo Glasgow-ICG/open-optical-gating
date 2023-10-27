@@ -440,9 +440,6 @@ class KalmanPredictor(PredictorBase):
             # We use the KF to perform a prediction at the phase preceeding the target sync phase and calculate the MSE
             # These are then used to estimate the process and measurement noise using a minimiser
 
-            # Karlin TODO: Add minimiser to estimate Q and R over every phase
-            # Currently we only minimise over a range of phases around our target sync phase
-
             if self.settings["tuning_method"] == "mse_local":
                 self.previous_phase = thisFrameMetadata["unwrapped_phase"]
 
@@ -484,12 +481,17 @@ class KalmanPredictor(PredictorBase):
                     
                     # Get our optimal q and R values
                     logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using {len(trigger_indices[0])} phases")
-                    optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
-                    logger.info(f"Kalman filter optimisation results: {optimisation}")
+                    try:
+                        optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                        logger.info(f"Kalman filter optimisation results: {optimisation}")
 
-                    # Save our optimisation results
-                    self.q = optimisation.x[0]
-                    self.R = optimisation.x[1]
+                        # Save our optimisation results
+                        self.q = optimisation.x[0]
+                        self.R = optimisation.x[1]
+                    except:
+                        logger.warning(f"Failed to find optimal Q and R values, using default values: q = {self.settings['q']}, R = {self.settings['R']}")
+                        self.q = self.settings["q"]
+                        self.R = self.settings["R"]
 
                     self.state = "phase_delta_phase"
                 return -1, -1, -1
@@ -519,12 +521,16 @@ class KalmanPredictor(PredictorBase):
                     
                     # Get our optimal q and R values
                     logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using all phases")
-                    optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                    try:
+                        optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                        # Save our optimisation results
+                        self.q = optimisation.x[0]
+                        self.R = optimisation.x[1]
+                    except:
+                        logger.warning(f"Failed to find optimal Q and R values, using default values: q = {self.settings['q']}, R = {self.settings['R']}")
+                        self.q = self.settings["q"]
+                        self.R = self.settings["R"]
                     logger.info(f"Kalman filter optimisation results: {optimisation}")
-
-                    # Save our optimisation results
-                    self.q = optimisation.x[0]
-                    self.R = optimisation.x[1]
 
                     self.state = "phase_delta_phase"
                 return -1, -1, -1
