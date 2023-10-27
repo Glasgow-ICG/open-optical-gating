@@ -524,6 +524,7 @@ class KalmanPredictor(PredictorBase):
                     logger.info(f"Performing optimisation to estimate Q and R with initial values: q = {self.settings['q']}, R = {self.settings['R']} using all phases")
                     try:
                         optimisation = scipy.optimize.minimize(get_mse, [self.settings["q"], self.settings["R"]], bounds = ((0, None), (0, None)))
+                        logger.info(f"Kalman filter optimisation results: {optimisation}")
                         # Save our optimisation results
                         self.q = optimisation.x[0]
                         self.R = optimisation.x[1]
@@ -531,7 +532,6 @@ class KalmanPredictor(PredictorBase):
                         logger.warning(f"Failed to find optimal Q and R values, using default values: q = {self.settings['q']}, R = {self.settings['R']}")
                         self.q = self.settings["q"]
                         self.R = self.settings["R"]
-                    logger.info(f"Kalman filter optimisation results: {optimisation}")
 
                     self.state = "phase_delta_phase"
                 return -1, -1, -1
