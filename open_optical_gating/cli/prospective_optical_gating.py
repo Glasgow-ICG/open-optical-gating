@@ -706,14 +706,25 @@ def load_settings(settings_file_path):
 def initialise_predictor(settingsPath):
     # Initialise our predictor
     settings = load_settings(settingsPath)
+
+    # Set up logging
+    logger.remove()
+    logger.remove()
+    logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
+    logger.add(sys.stderr, level = settings["general"]["log_level"])
+    logger.enable("open_optical_gating")
+
     if settings["prediction"]["prediction_method"] == "linear":
         # Linear predictor
+        logger.info("Initialising linear predictor")
         predictor = LinearPredictor(settings["prediction"]["linear"], frameMethod = "individual")
     elif settings["prediction"]["prediction_method"] == "kalman":
         # Kalman filter predictor
+        logger.info("Initialising Kalman filter predictor")
         predictor = KalmanPredictor(settings["prediction"]["kalman"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
     elif settings["prediction"]["prediction_method"] == "IMM":
         # IMM Kalman filter predictor
+        logger.info("Initialising IMM Kalman filter predictor")
         predictor = IMMPredictor(settings["prediction"]["IMM"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
     else:
         raise NotImplementedError("Unknown prediction method '{0}'".format(settings["prediction"]["prediction_method"]))
@@ -747,13 +758,7 @@ if __name__ == "__main__":
     settingsPath = "./optical_gating_data/example_data_settings.json"
     predictor = initialise_predictor(settingsPath)
 
-    # Set up logging
-    logger.remove()
-    logger.remove()
     settings = load_settings(settingsPath)
-    logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
-    logger.add(sys.stderr, level = settings["general"]["log_level"])
-    logger.enable("open_optical_gating")
 
     # Set the reference period
     reference_period = 38
