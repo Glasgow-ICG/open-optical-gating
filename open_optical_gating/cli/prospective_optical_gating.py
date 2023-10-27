@@ -6,6 +6,7 @@ import numpy as np
 from loguru import logger
 import scipy.optimize
 import json
+import sys
 
 # Module imports
 import j_py_sad_correlation as jps
