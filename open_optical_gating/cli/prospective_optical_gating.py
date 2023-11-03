@@ -185,6 +185,9 @@ class LinearPredictor(PredictorBase):
         else:
             allowedToExtendNumberOfFittedPoints = False
 
+        if framesForFit < self.settings["minFramesForFit"]:
+            framesForFit = self.settings["minFramesForFit"]
+
         # Check whether we have enough frames to fit to
         if len(full_frame_history) < framesForFit:
             logger.debug("Fit failed due to too few frames")
@@ -203,6 +206,8 @@ class LinearPredictor(PredictorBase):
         # has likely been superseded by the next test on tsdiffs.
         # I can probably remove this first test now
         # (but to be sure I should monitor if it would ever be hit where the second test would not...)
+
+        print(frame_history)
 
         if np.sum(frame_history[:, 3]) > 0:
             logger.info("Fit failed due to too few frames (due to presence of fit barrier)")
