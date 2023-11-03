@@ -112,7 +112,7 @@ class PredictorBase:
 
         return timeToWait_s, sendTriggerReason
     
-    def build_frame_history(self, timestamp, unwrapped_phase, sad_min, fit_barrier, max_frames = 30):
+    def build_frame_history(self, timestamp, unwrapped_phase, sad_min, fit_barrier, max_frames = 400):
         # Manually build our frame history
 
         if fit_barrier is None:
@@ -128,9 +128,9 @@ class PredictorBase:
         })
         self.full_frame_history.append(frame)
 
-        """# Clear our frame history if it is too long
+        # Clear our frame history if it is too long
         if len(self.full_frame_history) > max_frames:
-            del self.full_frame_history[0]"""
+            del self.full_frame_history[0]
 
 
 class LinearPredictor(PredictorBase):
