@@ -1,6 +1,6 @@
 {
     "general": {
-        "log_level": "INFO",
+        "log_level": "DEBUG",
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,

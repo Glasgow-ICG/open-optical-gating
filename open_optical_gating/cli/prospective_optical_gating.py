@@ -613,8 +613,6 @@ class kalmanPredictorPyKalman(PredictorBase):
         
         # Karlin TODO: Implement optimisation to minimise MSE for a given targetSyncPhase
         if self.state == "init":
-            # We cannot initialise our KF as we don't currently have an estimate of the delta phase
-            # We therefore store our current phase for the next timestep for KF initialisation
             self.initialise_filter(frameInterval_s)
             self.state = "EM"
             return -1, -1, -1
@@ -622,20 +620,12 @@ class kalmanPredictorPyKalman(PredictorBase):
             # Check if we have enough frames to perform EM
 
             if len(full_frame_history) == self.settings["EM_frames"]:
-                import time
-                start_time = time.time()
                 frame_history = pa.get_metadata_from_list(full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"])
                 unwrapped_phases = frame_history[:, 1]
 
+                logger.debug(f"Running EM on unwrapped phases:\n {unwrapped_phases}")
+
                 self.kf.em(unwrapped_phases, n_iter = self.settings["EM_iterations"])
-
-                # End timer
-                end_time = time.time()
-
-                # Calculate elapsed time
-                elapsed_time = end_time - start_time
-
-                print(f"Elapsed time: {end_time - start_time}")
 
                 filtered_state_means, filtered_state_covariances = self.kf.filter(unwrapped_phases)
 
