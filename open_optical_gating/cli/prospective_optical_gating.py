@@ -607,7 +607,7 @@ class kalmanPredictorPyKalman(PredictorBase):
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
         if self.frameMethod == "individual":
-            self.build_frame_history(timestamp, unwrapped_phase, sad_min, fit_barrier, 600)
+            self.build_frame_history(timestamp, unwrapped_phase, sad_min, fit_barrier, self.settings["EM_frames"])
             full_frame_history = self.full_frame_history
         thisFrameMetadata = full_frame_history[-1].metadata
         
@@ -621,13 +621,13 @@ class kalmanPredictorPyKalman(PredictorBase):
         elif self.state == "EM":
             # Check if we have enough frames to perform EM
 
-            if len(full_frame_history) == 300:
+            if len(full_frame_history) == self.settings["EM_frames"]:
                 import time
                 start_time = time.time()
                 frame_history = pa.get_metadata_from_list(full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"])
                 unwrapped_phases = frame_history[:, 1]
 
-                self.kf.em(unwrapped_phases, n_iter = 5)
+                self.kf.em(unwrapped_phases, n_iter = self.settings["EM_iterations"])
 
                 # End timer
                 end_time = time.time()
@@ -830,7 +830,7 @@ def initialise_predictor(settingsPath):
     elif settings["prediction"]["prediction_method"] == "kalman_pykalman":
         # Pykalman method with EM
         logger.info("Initialising Kalman filter predictor with EM")
-        predictor = kalmanPredictorPyKalman(settings["prediction"]["kalman"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
+        predictor = kalmanPredictorPyKalman(settings["prediction"]["kalman_pykalman"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
     else:
         raise NotImplementedError("Unknown prediction method '{0}'".format(settings["prediction"]["prediction_method"]))
     

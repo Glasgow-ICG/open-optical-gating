@@ -35,7 +35,7 @@
     },
     
     "prediction": {
-        "prediction_method": "linear",
+        "prediction_method": "kalman_pykalman",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -58,6 +58,10 @@
             "alpha": 1.0,
             "q": 1.28,
             "R": 1
+        },
+        "kalman_pykalman": {
+            "EM_iterations": 5,
+            "EM_frames": 200
         }
     },
     
