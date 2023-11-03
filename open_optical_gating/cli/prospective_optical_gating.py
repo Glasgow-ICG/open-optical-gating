@@ -10,6 +10,7 @@ import sys
 
 # Module imports
 import j_py_sad_correlation as jps
+from pykalman import KalmanFilter as pyKalmanFilter
 
 # Local imports
 from . import pixelarray as pa
@@ -500,6 +501,8 @@ class KalmanPredictor(PredictorBase):
                 self.previous_phase = thisFrameMetadata["unwrapped_phase"]
 
                 if len(full_frame_history) == 400:
+                    import time
+                    start_time = time.time()
                     frame_history = pa.get_metadata_from_list(
                             full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"]
                             )
@@ -534,6 +537,10 @@ class KalmanPredictor(PredictorBase):
                         self.R = self.settings["R"]
 
                     self.state = "phase_delta_phase"
+
+                    end_time = time.time()
+
+                    print(f"Elapsed time: {end_time - start_time}")
                 return -1, -1, -1
             else:
                 self.state = "phase_delta_phase"
@@ -546,6 +553,8 @@ class KalmanPredictor(PredictorBase):
             q = self.q
             R = self.R
             self.initialise_filter(x_0, P_0, frameInterval_s, q, R)
+            self.kf.Q = np.array([[0.19810255, 0.08150296], [0.08150296, 0.17488476]])
+            self.kf.R = 0.07322038
             self.state = "initialised"
             return -1, -1, -1
         elif self.state == "initialised":
@@ -570,6 +579,81 @@ class KalmanPredictor(PredictorBase):
 
         # Return the remaining time and the estimated heart period
         return timeToWait_s, estHeartPeriod_s, None
+    
+class kalmanPredictorPyKalman(PredictorBase):
+    """
+    This class implements the basic linear Kalman filter for phase prediction.
+    It used pyKalman to perform the Kalman filtering.
+    This has the advantage of having implemented the expectation maximisation algorithm to estimate
+    the process and measurement noise.
+    """
+
+    def __init__(self, predictor_settings, dt, frameMethod = None):
+        self.state = "init"
+
+        super().__init__(predictor_settings, frameMethod)
+
+    def initialise_filter(self, dt):
+        # Initialise our KF
+        logger.info("Initialising KF")
+        q = 1
+        Q = np.array([[dt**3 / 3, dt**2 / 2], 
+                            [dt**2 / 2, dt]]) * q**2
+        self.kf = pyKalmanFilter(observation_matrices=[[1, 0]], transition_matrices = [[1, 1], [0, 1]], observation_covariance = [[0.1]], transition_covariance=Q, em_vars = ['transition_covariance'])
+
+    def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
+        if self.frameMethod == "individual":
+            self.build_frame_history(timestamp, unwrapped_phase, sad_min, fit_barrier, 600)
+            full_frame_history = self.full_frame_history
+        thisFrameMetadata = full_frame_history[-1].metadata
+        
+        # Karlin TODO: Implement optimisation to minimise MSE for a given targetSyncPhase
+        if self.state == "init":
+            # We cannot initialise our KF as we don't currently have an estimate of the delta phase
+            # We therefore store our current phase for the next timestep for KF initialisation
+            self.initialise_filter(frameInterval_s)
+            self.state = "EM"
+            return -1, -1, -1
+        elif self.state == "EM":
+            # Check if we have enough frames to perform EM
+
+            if len(full_frame_history) == 300:
+                import time
+                start_time = time.time()
+                frame_history = pa.get_metadata_from_list(full_frame_history, ["timestamp", "unwrapped_phase", "sad_min", "fit_barrier"])
+                unwrapped_phases = frame_history[:, 1]
+
+                self.kf.em(unwrapped_phases, n_iter = 5)
+
+                # End timer
+                end_time = time.time()
+
+                # Calculate elapsed time
+                elapsed_time = end_time - start_time
+
+                print(f"Elapsed time: {end_time - start_time}")
+
+                filtered_state_means, filtered_state_covariances = self.kf.filter(unwrapped_phases)
+
+                logger.log("INFO", f"Observation covariance:\n {self.kf.observation_covariance}")
+                logger.log("INFO", f"Transition covariance:\n {self.kf.transition_covariance}")
+
+                self.filtered_state_mean = filtered_state_means[-1]
+                self.filtered_state_covariance = filtered_state_covariances[-1]
+
+                self.state = "initialised"
+            return -1, -1, -1
+        elif self.state == "initialised":
+            # After initialisation run our KF
+            self.filtered_state_mean, self.filtered_state_covariance = self.kf.filter_update(self.filtered_state_mean, self.filtered_state_covariance, observation = thisFrameMetadata["unwrapped_phase"])
+
+            timeToWait_s, estHeartPeriod_s = KalmanFilter.get_time_til_phase(self.filtered_state_mean, targetSyncPhase)
+
+            # Return the remaining time and the estimated heart period
+            return timeToWait_s * frameInterval_s, estHeartPeriod_s, None
+
+            
+
 
 class IMMPredictor(PredictorBase):
     """
@@ -705,11 +789,23 @@ def load_settings(settings_file_path):
 
 
 def initialise_predictor(settingsPath):
+    """
+    Used for the C spim setup to initialise the predictor class
+
+    Args:
+        settingsPath (str): Path to the settings file
+
+    Raises:
+        NotImplementedError: If the prediction method is not recognised
+
+    Returns:
+        PredictorBase: Predictor class instance
+    """    
+
     # Initialise our predictor
     settings = load_settings(settingsPath)
 
     # Set up logging
-    logger.remove()
     logger.remove()
     logger.add("user_log_folder/oog_{time}.log", level = settings["general"]["log_level"], format = "{time:YYYY-MM-DD | HH:mm:ss:SSSSS} | {level} | {module}:{name}:{function}:{line} --- {message}")
     logger.add(sys.stderr, level = settings["general"]["log_level"])
@@ -727,6 +823,10 @@ def initialise_predictor(settingsPath):
         # IMM Kalman filter predictor
         logger.info("Initialising IMM Kalman filter predictor")
         predictor = IMMPredictor(settings["prediction"]["IMM"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
+    elif settings["prediction"]["prediction_method"] == "kalman_pykalman":
+        # Pykalman method with EM
+        logger.info("Initialising Kalman filter predictor with EM")
+        predictor = kalmanPredictorPyKalman(settings["prediction"]["kalman"], dt = 1 / settings["brightfield"]["brightfield_framerate"], frameMethod = "individual")
     else:
         raise NotImplementedError("Unknown prediction method '{0}'".format(settings["prediction"]["prediction_method"]))
     
@@ -759,6 +859,7 @@ if __name__ == "__main__":
     settingsPath = "./optical_gating_data/example_data_settings.json"
     predictor = initialise_predictor(settingsPath)
 
+    # Load settings for generating data
     settings = load_settings(settingsPath)
 
     # Set the reference period
@@ -784,24 +885,32 @@ if __name__ == "__main__":
 
         return x
     measurement_noise = 0.025
-    process_noise = 0.01
+    process_noise = 0.025
     phases = generate_data(1 / settings["brightfield"]["brightfield_framerate"], 10, 0, (2 * np.pi / 38) / (1/80), measurement_noise, process_noise)
     timestamps = np.arange(0, len(phases) * frameInterval_s, frameInterval_s)
     sad_min = np.round(phases)
 
-    # Plot our phase progression
+    """# Plot our phase progression
     plt.plot(timestamps, phases)
     plt.xlabel("Time (s)")
     plt.ylabel("Phase (rad)")
-    plt.show()
+    plt.show()"""
 
     # Loop through our phases and get our time til trigger
     trigger_times_kf = []
+    heart_period_kf = []
     for i in range(len(phases)):
-        trigger_times_kf.append(predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = 0)[0])
+        predictor_state = predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = 0)
+        trigger_times_kf.append(predictor_state[0])
+        heart_period_kf.append(predictor_state[1])
 
     # Staircase plot
     plt.plot(timestamps, timestamps + trigger_times_kf)
     plt.xlabel("Time (s)")
     plt.ylabel("Prediction (s)")
+    plt.show()
+
+    plt.plot(timestamps, heart_period_kf)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Heart period (s)")
     plt.show()
