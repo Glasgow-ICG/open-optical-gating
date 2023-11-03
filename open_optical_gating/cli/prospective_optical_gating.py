@@ -599,7 +599,7 @@ class kalmanPredictorPyKalman(PredictorBase):
         q = 1
         Q = np.array([[dt**3 / 3, dt**2 / 2], 
                             [dt**2 / 2, dt]]) * q**2
-        self.kf = pyKalmanFilter(observation_matrices=[[1, 0]], transition_matrices = [[1, 1], [0, 1]], observation_covariance = [[0.1]], transition_covariance=Q, em_vars = ['transition_covariance'])
+        self.kf = pyKalmanFilter(observation_matrices=[[1, 0]], transition_matrices = [[1, dt], [0, 1]], observation_covariance = [[0.1]], transition_covariance=Q, em_vars = ['transition_covariance'])
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
         if self.frameMethod == "individual":
@@ -650,7 +650,7 @@ class kalmanPredictorPyKalman(PredictorBase):
             timeToWait_s, estHeartPeriod_s = KalmanFilter.get_time_til_phase(self.filtered_state_mean, targetSyncPhase)
 
             # Return the remaining time and the estimated heart period
-            return timeToWait_s * frameInterval_s, estHeartPeriod_s, None
+            return timeToWait_s, estHeartPeriod_s, None
 
             
 
