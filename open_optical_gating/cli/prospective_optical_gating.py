@@ -114,6 +114,10 @@ class PredictorBase:
     
     def build_frame_history(self, timestamp, unwrapped_phase, sad_min, fit_barrier, max_frames = 30):
         # Manually build our frame history
+
+        if fit_barrier is None:
+            fit_barrier = 0
+
         frame = pa.PixelArray(
         np.array([]),
         metadata={
@@ -185,9 +189,6 @@ class LinearPredictor(PredictorBase):
         else:
             allowedToExtendNumberOfFittedPoints = False
 
-        if framesForFit < self.settings["minFramesForFit"]:
-            framesForFit = self.settings["minFramesForFit"]
-
         # Check whether we have enough frames to fit to
         if len(full_frame_history) < framesForFit:
             logger.debug("Fit failed due to too few frames")
@@ -206,8 +207,6 @@ class LinearPredictor(PredictorBase):
         # has likely been superseded by the next test on tsdiffs.
         # I can probably remove this first test now
         # (but to be sure I should monitor if it would ever be hit where the second test would not...)
-
-        print(frame_history)
 
         if np.sum(frame_history[:, 3]) > 0:
             logger.info("Fit failed due to too few frames (due to presence of fit barrier)")
@@ -905,7 +904,7 @@ if __name__ == "__main__":
     trigger_times_kf = []
     heart_period_kf = []
     for i in range(len(phases)):
-        predictor_state = predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = 0)
+        predictor_state = predictor.predict_trigger_wait(None, targetSyncPhase, frameInterval_s, framesForFit = 30, timestamp = timestamps[i], unwrapped_phase = phases[i], sad_min = sad_min[i], fit_barrier = None)
         trigger_times_kf.append(predictor_state[0])
         heart_period_kf.append(predictor_state[1])
 
