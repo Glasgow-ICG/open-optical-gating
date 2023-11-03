@@ -593,17 +593,17 @@ class kalmanPredictorPyKalman(PredictorBase):
     """
 
     def __init__(self, predictor_settings, dt, frameMethod = None):
-        self.state = "init"
+        self.state = "phase"
 
         super().__init__(predictor_settings, frameMethod)
 
-    def initialise_filter(self, dt):
+    def initialise_filter(self, dt, x_0):
         # Initialise our KF
         logger.info("Initialising KF")
         q = 1
         Q = np.array([[dt**3 / 3, dt**2 / 2], 
                             [dt**2 / 2, dt]]) * q**2
-        self.kf = pyKalmanFilter(observation_matrices=[[1, 0]], transition_matrices = [[1, dt], [0, 1]], observation_covariance = [[0.1]], transition_covariance=Q, em_vars = ['transition_covariance'])
+        self.kf = pyKalmanFilter(initial_state_mean = x_0, observation_matrices=[[1, 0]], transition_matrices = [[1, dt], [0, 1]], observation_covariance = [[0.1]], transition_covariance=Q, em_vars = ['transition_covariance'])
 
     def predict_trigger_wait(self, full_frame_history, targetSyncPhase, frameInterval_s, fitBackToBarrier=True, framesForFit=None, timestamp = None, unwrapped_phase = None, sad_min = None, fit_barrier = None):
         if self.frameMethod == "individual":
@@ -612,8 +612,15 @@ class kalmanPredictorPyKalman(PredictorBase):
         thisFrameMetadata = full_frame_history[-1].metadata
         
         # Karlin TODO: Implement optimisation to minimise MSE for a given targetSyncPhase
-        if self.state == "init":
-            self.initialise_filter(frameInterval_s)
+        if self.state == "phase":
+            # We cannot initialise our KF as we don't currently have an estimate of the delta phase
+            # We therefore store our current phase for the next timestep for KF initialisation
+            self.previous_phase = thisFrameMetadata["unwrapped_phase"]
+            self.state = "init_kf"
+            return -1, -1, -1
+        if self.state == "init_kf":
+            x_0 = [thisFrameMetadata["unwrapped_phase"], (thisFrameMetadata["unwrapped_phase"] - self.previous_phase) / frameInterval_s]
+            self.initialise_filter(frameInterval_s, x_0)
             self.state = "EM"
             return -1, -1, -1
         elif self.state == "EM":
@@ -880,7 +887,7 @@ if __name__ == "__main__":
         return x
     measurement_noise = 0.025
     process_noise = 0.025
-    phases = generate_data(1 / settings["brightfield"]["brightfield_framerate"], 10, 0, (2 * np.pi / 38) / (1/80), measurement_noise, process_noise)
+    phases = generate_data(1 / settings["brightfield"]["brightfield_framerate"], 10, 1000, (2 * np.pi / 38) / (1/80), measurement_noise, process_noise)
     timestamps = np.arange(0, len(phases) * frameInterval_s, frameInterval_s)
     sad_min = np.round(phases)
 
