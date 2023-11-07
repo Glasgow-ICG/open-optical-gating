@@ -12,6 +12,8 @@
     
     "file": {
         "input_tiff_path": "example_data.tif",
+        "input_tiff_path_ref": "",
+        "ref_frame_period": 0.0,
         "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
         "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
     },
@@ -30,7 +32,7 @@
         "target_frame_selection_method": "auto",
         "target_frame_adaptive_update": 1,
         "ref_update_criterion": "triggers",
-        "update_after_n_criterions": 10,
+        "update_after_n_criterions": 1000,
         "triggers_between_timelapse": 2000
     },
     
