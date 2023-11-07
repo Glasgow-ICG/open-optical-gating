@@ -12,6 +12,8 @@
     
     "file": {
         "input_tiff_path": "example_data.tif",
+        "input_tiff_path_ref": "",
+        "ref_frame_period": 0.0,
         "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
         "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
     },

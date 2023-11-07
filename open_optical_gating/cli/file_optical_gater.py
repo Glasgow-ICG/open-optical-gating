@@ -66,11 +66,13 @@ class FileOpticalGater(server.OpticalGater):
         # Load the data
         self.load_data(source)
 
-    def load_data(self, filename):
-        """Load data file"""
+    @staticmethod
+    def load_tif(filename):
+        """
+        Load a tif file, returning a numpy array
+        """
+        import os
         # Load
-        logger.success("Loading image data...")
-        self.data = None
         # We accumulate the individual files as a list of arrays, and then concatenate them all together
         # This copes with the wildcard case where there is more than one image being loaded,
         # and this chosen strategy performs much better than np.append when we have lots of individual images.
@@ -95,9 +97,23 @@ class FileOpticalGater(server.OpticalGater):
                 warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
                 imageData = np.moveaxis(imageData, -1, 0)
             imageList.append(imageData)
-        if len(imageList) > 0:
-            self.data = np.concatenate(imageList)
-        else:
+
+            if len(imageList) > 0:
+                data = np.concatenate(imageList)
+
+        return data
+
+    def load_data(self, filename):
+        """Load data file"""
+        # Load
+        logger.success("Loading image data...")
+        self.data = None
+        # We accumulate the individual files as a list of arrays, and then concatenate them all together
+        # This copes with the wildcard case where there is more than one image being loaded,
+        # and this chosen strategy performs much better than np.append when we have lots of individual images.
+        self.data = self.load_tif(filename)
+
+        if self.data.shape[0] == 0:
             # No files found matching the pattern 'filename'
             if "source_url" in self.settings["file"]:
                 if (sys.platform == "win32"):
@@ -318,10 +334,20 @@ def run(args, desc):
     
     settings = load_settings(args, desc, add_extra_args)
 
-    # Init
+    if settings["file"]["input_tiff_path_ref"] != "":
+        # Load the reference frames
+        logger.success("Loading reference frames...")
+        ref_frames = FileOpticalGater.load_tif(settings["file"]["input_tiff_path_ref"])
+        ref_frame_period = settings["file"]["ref_frame_period"]
+    else:
+        ref_frames = None
+        ref_frame_period = None
+
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["file"]["input_tiff_path"],
+        ref_frames=ref_frames,
+        ref_frame_period=ref_frame_period,
         settings=settings,
         force_framerate=settings["parsed_args"].realtime
     )
