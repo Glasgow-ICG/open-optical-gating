@@ -263,24 +263,24 @@ class OpticalGater:
         logger.debug("Preparing for state change")
         # Re-initialise the ref_seq_manager
         self.ref_seq_manager = ref.ReferenceSequenceManager(self.settings["reference"])
-
-        # Initialise our predictor
+        
         if self.settings["prediction"]["prediction_method"] == "linear":
             # Linear predictor
             logger.info("Initialising linear predictor")
             self.predictor = pog.LinearPredictor(self.settings["prediction"]["linear"])
         elif self.settings["prediction"]["prediction_method"] == "kalman":
             # Kalman filter predictor
-            logger.info("Initialising Kalman predictor")
-            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]
-            self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt)
+            logger.info("Initialising Kalman filter predictor")
+            self.predictor = pog.KalmanPredictor(self.settings["prediction"]["kalman"], dt = 1 / self.settings["brightfield"]["brightfield_framerate"])
         elif self.settings["prediction"]["prediction_method"] == "IMM":
             # IMM Kalman filter predictor
-            logger.info("Initialising IMM predictor")
-            dt = 1 / self.settings["brightfield"]["brightfield_framerate"]
-            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt)
+            logger.info("Initialising IMM Kalman filter predictor")
+            self.predictor = pog.IMMPredictor(self.settings["prediction"]["IMM"], dt = 1 / self.settings["brightfield"]["brightfield_framerate"])
+        elif self.settings["prediction"]["prediction_method"] == "kalman_pykalman":
+            # Pykalman method with EM
+            logger.info("Initialising Kalman filter predictor with EM")
+            self.predictor = pog.kalmanPredictorPyKalman(self.settings["prediction"]["kalman_pykalman"], dt = 1 / self.settings["brightfield"]["brightfield_framerate"])
         else:
-            logger.critical("Unknown prediction method '{0}'", self.settings["prediction"]["prediction_method"])
             raise NotImplementedError("Unknown prediction method '{0}'".format(self.settings["prediction"]["prediction_method"]))
         
         # Initialise 2 aligners in the case that a full_reset is desired

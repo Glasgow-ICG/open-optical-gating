@@ -51,6 +51,10 @@ class FileOpticalGater(server.OpticalGater):
 
         """
 
+        if settings["file"]["input_tiff_path_ref"] != "":
+            ref_frames = self.load_tif(settings["file"]["input_tiff_path_ref"])
+            ref_frame_period = settings["file"]["ref_frame_period"]
+
         # Initialise parent
         super(FileOpticalGater, self).__init__(
             settings=settings, ref_frames=ref_frames, ref_frame_period=ref_frame_period)
@@ -66,16 +70,15 @@ class FileOpticalGater(server.OpticalGater):
         # Load the data
         self.load_data(source)
 
-    @staticmethod
-    def load_tif(filename):
+    def load_tif(self, filename):
         """
         Load a tif file, returning a numpy array
         """
-        import os
         # Load
         # We accumulate the individual files as a list of arrays, and then concatenate them all together
         # This copes with the wildcard case where there is more than one image being loaded,
         # and this chosen strategy performs much better than np.append when we have lots of individual images.
+
         imageList = []
         for fn in tqdm(sorted(glob.glob(filename)), desc='Loading image data'):
             logger.debug("Loading image data from file {0}", fn)
@@ -98,8 +101,10 @@ class FileOpticalGater(server.OpticalGater):
                 imageData = np.moveaxis(imageData, -1, 0)
             imageList.append(imageData)
 
-            if len(imageList) > 0:
-                data = np.concatenate(imageList)
+        if len(imageList) > 0:
+            data = np.concatenate(imageList)
+
+        logger.success(f"returning tif of shape {data.shape} and dtype {data.dtype}")
 
         return data
 
@@ -334,23 +339,16 @@ def run(args, desc):
     
     settings = load_settings(args, desc, add_extra_args)
 
-    if settings["file"]["input_tiff_path_ref"] != "":
-        # Load the reference frames
-        logger.success("Loading reference frames...")
-        ref_frames = FileOpticalGater.load_tif(settings["file"]["input_tiff_path_ref"])
-        ref_frame_period = settings["file"]["ref_frame_period"]
-    else:
-        ref_frames = None
-        ref_frame_period = None
-
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source=settings["file"]["input_tiff_path"],
-        ref_frames=ref_frames,
-        ref_frame_period=ref_frame_period,
+        ref_frames=None,
+        ref_frame_period=None,
         settings=settings,
         force_framerate=settings["parsed_args"].realtime
     )
+
+
 
     # Run
     logger.success("Running server...")

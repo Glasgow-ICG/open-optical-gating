@@ -1,6 +1,6 @@
 {
     "general": {
-        "log_level": "DEBUG",
+        "log_level": "INFO",
         "analyse_time_s": 100000,
         "frame_buffer_length": 1000,
         "time_limit_seconds": 1000000,
@@ -11,15 +11,15 @@
     },
     
     "file": {
-        "input_tiff_path": "example_data.tif",
-        "input_tiff_path_ref": "",
-        "ref_frame_period": 0.0,
+        "input_tiff_path": "E:/data/From server/24 Hour Stacks/2018-07_30 trab7/0010/Brightfield - Prosilica/*tif",
+        "input_tiff_path_ref": "E:/data/From server/24 Hour Stacks/2018-07_30 trab7/0010/ref-frames-2018-07-30-14.16.28/251396.tif",
+        "ref_frame_period": 33.093436,
         "source_url": "https://github.com/Glasgow-ICG/open-optical-gating/raw/main/optical_gating_data/example_data.tif",
         "dataset_comment": "This dataset is 3x downsampled from Chas original dataset at 226fps"
     },
     
     "brightfield": {
-        "brightfield_framerate": 75,
+        "brightfield_framerate": 80,
         "save_first_n_frames": 0
     },
     
@@ -37,7 +37,7 @@
     },
     
     "prediction": {
-        "prediction_method": "kalman_pykalman",
+        "prediction_method": "linear",
         "linear": {
             "minFramesForFit": 3,
             "maxFramesForFit": 32,
@@ -63,7 +63,8 @@
         },
         "kalman_pykalman": {
             "EM_iterations": 5,
-            "EM_frames": 200
+            "EM_frames": 200,
+            "prediction_latency_s": 0.015
         }
     },
     
