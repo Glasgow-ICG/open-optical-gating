@@ -423,7 +423,7 @@ def run(args, desc):
     if settings["file"]["input_tiff_path_ref"] != "":
         # Load the reference frames
         logger.success("Loading reference frames...")
-        ref_frames = FileOpticalGater.load_tif(settings["file"]["input_tiff_path_ref"])
+        ref_frames = load_tif(settings["file"]["input_tiff_path_ref"])
         ref_frame_period = settings["file"]["ref_frame_period"]
     else:
         ref_frames = None
