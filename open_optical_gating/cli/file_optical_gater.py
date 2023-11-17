@@ -138,11 +138,11 @@ class FrameLazyLoader:
                 if self.current_frame_index == self.current_image_array.shape[0]:
                     self.current_frame_index = 0
                     self.current_source_path_index += 1
+                    self.current_image_array = None
                     if self.current_source_path_index == len(self.source_paths):
                         self.repeats_remaining -= 1
                         if self.repeats_remaining > 0:
                             self.current_source_path_index = 0
-                            self.decimation_counter = 1
         self.decimation_counter = self.decimation_factor
         return (result, self.repeats_remaining <= 0)
         
