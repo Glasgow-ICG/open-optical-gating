@@ -19,6 +19,144 @@ except:
 from . import optical_gater_server as server
 from . import pixelarray as pa
 
+def load_tif(filename, progress_bar=tqdm):
+    """
+    Load a tif file, returning a numpy array
+    """
+    import os
+    # Load
+    # We accumulate the individual files as a list of arrays, and then concatenate them all together
+    # This copes with the wildcard case where there is more than one image being loaded,
+    # and this chosen strategy performs much better than np.append when we have lots of individual images.
+    imageList = []
+    for fn in progress_bar(sorted(glob.glob(filename)), desc='Loading image data'):
+        logger.debug("Loading image data from file {0}", fn)
+        imageData = tiffio.imread(fn)
+        if len(imageData.shape) == 2:
+            # Cope with loading a single image - convert it to a 1xMxN array
+            # We have a performance risk here: np.append is inefficient so we can't just append each image individually
+            # Instead we accumulate a list and then do a single np.array() call at the end.
+            imageData = imageData[np.newaxis,:,:]
+        if (((imageData.shape[-1] == 3) or (imageData.shape[-1] == 4))
+            and (imageData.strides[-1] != 1)):
+            # skimage.io.imread() seems to automatically reinterpret a 3xMxN array as a colour array,
+            # and reorder it as MxNx3. We don't want that! I can't find a way to tell imread not to
+            # do that (as_grayscale does *not* do what I want...). For now I just detect it empirically
+            # and undo it.
+            # The test of 'strides' is an empirical one - clearly imread tweaks that to
+            # reinterpret the original data in a different way to what was intended, but that
+            # makes it easy to spot
+            warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
+            imageData = np.moveaxis(imageData, -1, 0)
+        imageList.append(imageData)
+
+        if len(imageList) > 0:
+            data = np.concatenate(imageList)
+    return data
+    
+class FramePreloader:
+    """
+        This class is probably most efficient under most circumstances.
+        It loads all the image data and combines it into a single array that we iterate through (one or more times)
+    """
+    def __init__(self, source_path, repeats, decimate=1):
+        """Function inputs:
+            source_path                       str     A path (which may include wildcards) to a tiff file(s)
+                                                       to be processed as image data.
+            repeats                           int     Number of times to play through the frames in the source .tif file
+            decimate                          int     Only use every nth frame
+        """
+        # We accumulate the individual files as a list of arrays, and then concatenate them all together
+        # This copes with the wildcard case where there is more than one image being loaded,
+        # and this chosen strategy performs much better than np.append when we have lots of individual images.
+        self.data = load_tif(source_path)
+        # Process just every nth frame.
+        # Note that I do this after all the data has loaded. While that is temporarily wasteful of memory,
+        # it's the easiest way to ensure equal decimation even when the data is split across multiple files of unknown length
+        self.data = self.data[::decimate]
+        self.repeats_remaining = repeats
+        self.next_frame_index = 0
+        self.total_frames = self.data.shape[0] * repeats
+    
+    def next_frame(self):
+        """
+            Returns:    ndarray(2D)     The frame image
+                        bool            Is this the last frame?
+        """
+        result = self.peek_next()
+        self.next_frame_index += 1
+        if self.next_frame_index == self.data.shape[0]:
+            self.repeats_remaining -= 1
+            if self.repeats_remaining > 0:
+                # Start again at the first frame in the sequence
+                self.next_frame_index = 0
+        return (result, self.repeats_remaining <= 0)
+        
+    def peek_next(self):
+        """
+            Returns:    ndarray(2D)     The frame image
+        """
+        if (self.next_frame_index < self.data.shape[0]):
+            return self.data[self.next_frame_index, :, :]
+        else:
+            return None
+            
+            
+class FrameLazyLoader:
+    """
+        This class can cope well with huge datasets spread over multiple .tif files, as it will only load one .tif file into memory at a time.
+        Note that it will likely be inefficient in datasets consisting of large numbers of single-image .tif files... certainly if we
+         iterate through them multiple times.
+    """
+    def __init__(self, source_path, repeats, decimate=1):
+        """Function inputs:
+            source_path                       str     A path (which may include wildcards) to a tiff file(s)
+                                                       to be processed as image data.
+            repeats                           int     Number of times to play through the frames in the source .tif file
+            decimate                          int     Only use every nth frame
+        """
+        self.source_paths = sorted(glob.glob(source_path))
+        self.repeats_remaining = repeats
+        self.current_source_path_index = 0
+        self.current_frame_index = 0
+        self.current_image_array = None
+        self.decimation_factor = decimate
+        self.decimation_counter = 1   # Start like this to make sure we start by choosing the first frame not the Nth
+        self.total_frames = None # No way of knowing how many frames, until we have loaded the data
+
+    def next_frame(self):
+        """
+            Returns:    ndarray(2D)     The frame image
+                        bool            Is this the last frame?
+        """
+        while self.decimation_counter > 0:
+            result = self.peek_next()
+            self.decimation_counter -= 1
+            if result is not None:
+                # Move counters on to the next frame
+                self.current_frame_index += 1
+                if self.current_frame_index == self.current_image_array.shape[0]:
+                    self.current_frame_index = 0
+                    self.current_source_path_index += 1
+                    if self.current_source_path_index == len(self.source_paths):
+                        self.repeats_remaining -= 1
+                        if self.repeats_remaining > 0:
+                            self.current_source_path_index = 0
+                            self.decimation_counter = 1
+        self.decimation_counter = self.decimation_factor
+        return (result, self.repeats_remaining <= 0)
+        
+    def peek_next(self):
+        """
+            Returns:    ndarray(2D)     The frame image
+        """
+        if (self.current_image_array is None) and (self.current_source_path_index < len(self.source_paths)):
+            no_progress_bar = lambda x,desc:x   # No-op to replace the usual tqdm() wrapper
+            self.current_image_array = load_tif(self.source_paths[self.current_source_path_index], progress_bar=no_progress_bar)
+        if self.current_image_array is None:
+            return None
+        else:
+            return self.current_image_array[self.current_frame_index]
 
 class FileOpticalGater(server.OpticalGater):
     """Extends the optical gater server for a pre-captured data file.
@@ -26,15 +164,16 @@ class FileOpticalGater(server.OpticalGater):
 
     def __init__(
         self,
-        source=None,
+        source_path=None,
         settings=None,
         ref_frames=None,
         ref_frame_period=None,
         repeats=1,
-        force_framerate=False
+        force_framerate=False,
+        lazy_load=False
     ):
         """Function inputs:
-            source                            str     A path (which may include wildcards) to a tiff file(s)
+            source_path                       str     A path (which may include wildcards) to a tiff file(s)
                                                        to be processed as image data.
                                                        If NULL, we will look in the settings dictionary
             settings                          dict    Parameters affecting operation
@@ -48,6 +187,8 @@ class FileOpticalGater(server.OpticalGater):
             repeats                           int     Number of times to play through the frames in the source .tif file
             force_framerate                   bool    Whether or not to slow down the rate at which new frames
                                                        are delivered, such that we emulate real-world speeds
+            lazy_load                         bool    If true, only load image .tif files as and when they are needed.
+                                                      This can help with memory issues for large datasets
 
         """
 
@@ -63,57 +204,24 @@ class FileOpticalGater(server.OpticalGater):
         # How many times to repeat the sequence
         self.repeats_remaining = repeats
 
+        if "decimate" in self.settings:
+            # Process just every nth frame from the sequence
+            decimate = self.settings["decimate"]
+        else:
+            decimate = 1
+
         # Load the data
-        self.load_data(source)
+        self.load_data(source_path, repeats, decimate, lazy_load)
 
-    @staticmethod
-    def load_tif(filename):
-        """
-        Load a tif file, returning a numpy array
-        """
-        import os
-        # Load
-        # We accumulate the individual files as a list of arrays, and then concatenate them all together
-        # This copes with the wildcard case where there is more than one image being loaded,
-        # and this chosen strategy performs much better than np.append when we have lots of individual images.
-        imageList = []
-        for fn in tqdm(sorted(glob.glob(filename)), desc='Loading image data'):
-            logger.debug("Loading image data from file {0}", fn)
-            imageData = tiffio.imread(fn)
-            if len(imageData.shape) == 2:
-                # Cope with loading a single image - convert it to a 1xMxN array
-                # We have a performance risk here: np.append is inefficient so we can't just append each image individually
-                # Instead we accumulate a list and then do a single np.array() call at the end.
-                imageData = imageData[np.newaxis,:,:]
-            if (((imageData.shape[-1] == 3) or (imageData.shape[-1] == 4))
-                and (imageData.strides[-1] != 1)):
-                # skimage.io.imread() seems to automatically reinterpret a 3xMxN array as a colour array,
-                # and reorder it as MxNx3. We don't want that! I can't find a way to tell imread not to
-                # do that (as_grayscale does *not* do what I want...). For now I just detect it empirically
-                # and undo it.
-                # The test of 'strides' is an empirical one - clearly imread tweaks that to
-                # reinterpret the original data in a different way to what was intended, but that
-                # makes it easy to spot
-                warnings.warn("Looks like imread converted a {0}-timepoint array into a colour array of shape {1}. We will fix that".format(imageData.shape[-1], imageData.shape))
-                imageData = np.moveaxis(imageData, -1, 0)
-            imageList.append(imageData)
-
-            if len(imageList) > 0:
-                data = np.concatenate(imageList)
-
-        return data
-
-    def load_data(self, filename):
+    def load_data(self, source_path, repeats, decimate, lazy_load):
         """Load data file"""
-        # Load
         logger.success("Loading image data...")
-        self.data = None
-        # We accumulate the individual files as a list of arrays, and then concatenate them all together
-        # This copes with the wildcard case where there is more than one image being loaded,
-        # and this chosen strategy performs much better than np.append when we have lots of individual images.
-        self.data = self.load_tif(filename)
+        if lazy_load:
+            self.frame_loader = FrameLazyLoader(source_path, repeats, decimate)
+        else:
+            self.frame_loader = FramePreloader(source_path, repeats, decimate)
 
-        if self.data.shape[0] == 0:
+        if self.frame_loader.peek_next() is None:
             # No files found matching the pattern 'filename'
             if "source_url" in self.settings["file"]:
                 if (sys.platform == "win32"):
@@ -129,29 +237,23 @@ class FileOpticalGater(server.OpticalGater):
                                                    reporthook=tqdm_hook(t))
                     logger.info("Downloaded file {0}".format(filename))
                     # Try again
-                    self.data = tiffio.imread(filename)
+                    self.frame_loader = FramePreloader(filename, repeats, decimate)
                 else:
                     raise
             else:
                 logger.error("File {0} not found".format(filename))
                 raise FileNotFoundError("File {0} not found".format(filename))
 
-        if "decimate" in self.settings:
-            # Process just every nth frame.
-            # Note that I do this after all the data has loaded. While that is temporarily wasteful of memory,
-            # it's the easiest way to ensure equal decimation even when the data is split across multiple files of unknown length
-            self.data = self.data[::self.settings["decimate"]]
-    
-        self.height, self.width = self.data[0].shape
+        self.height, self.width = self.frame_loader.peek_next().shape
 
         # Initialise frame iterator and time tracker
-        self.next_frame_index = 0
+        self.frame_counter = 0
         self.start_time = time.time()  # we use this to sanitise our timestamps
         self.last_frame_wallclock_time = None
 
     def run_server(self, show_progress_bar=True):
         if show_progress_bar:
-            self.progress_bar = tqdm(total=self.data.shape[0]*self.repeats_remaining, desc="Processing frames")
+            self.progress_bar = tqdm(total=self.frame_loader.total_frames, desc="Processing frames")
         super().run_server()
 
     def run_and_analyze_until_stopped(self):
@@ -177,7 +279,7 @@ class FileOpticalGater(server.OpticalGater):
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s). " \
                                "But that is no particular surprise, because we just did a {3}".format(
                         self.settings["brightfield"]["brightfield_framerate"],
-                        self.next_frame_index,
+                        self.frame_counter,
                         wait_s,
                         self.slow_action_occurred
                     )
@@ -186,7 +288,7 @@ class FileOpticalGater(server.OpticalGater):
                 logger.warning(
                     "File optical gater failed to sustain requested framerate {0}fps for frame {1} (requested negative delay {2}s)".format(
                         self.settings["brightfield"]["brightfield_framerate"],
-                        self.next_frame_index,
+                        self.frame_counter,
                         wait_s,
                     )
                 )
@@ -194,14 +296,10 @@ class FileOpticalGater(server.OpticalGater):
         if self.progress_bar is not None:
             self.progress_bar.update(1)
         
-        if self.next_frame_index == self.data.shape[0] - 1:
-            self.repeats_remaining -= 1
-            if self.repeats_remaining <= 0:
-                # If this is our last frame we set the stop flag for the user/app to know
-                self.stop = 'out-of-frames'
-            else:
-                # Start again at the first frame in the file
-                self.next_frame_index = 0
+        frameData, finalFrame = self.frame_loader.next_frame()
+        if finalFrame:
+            # If this is our last frame we set the stop flag for the user/app to know
+            self.stop = 'out-of-frames'
 
         if self.force_framerate:
             # We are being asked to follow the specified framerate exactly.
@@ -215,15 +313,10 @@ class FileOpticalGater(server.OpticalGater):
             # we are just running at whatever speed we can manage.
             # Since the analysis code may be looking at the timestamps,
             # we need to make sure they contain sane numbers
-            this_frame_timestamp = self.next_frame_index / float(self.settings["brightfield"]["brightfield_framerate"])
+            this_frame_timestamp = self.frame_counter / float(self.settings["brightfield"]["brightfield_framerate"])
         
-        next = pa.PixelArray(
-            self.data[self.next_frame_index, :, :],
-            metadata={
-                "timestamp": this_frame_timestamp
-            },
-        )
-        self.next_frame_index += 1
+        next = pa.PixelArray(frameData, metadata={"timestamp": this_frame_timestamp})
+        self.frame_counter += 1
         self.last_frame_wallclock_time = time.time()
         return next
 
@@ -338,7 +431,7 @@ def run(args, desc):
 
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
-        source=settings["file"]["input_tiff_path"],
+        source_path=settings["file"]["input_tiff_path"],
         ref_frames=ref_frames,
         ref_frame_period=ref_frame_period,
         settings=settings,
