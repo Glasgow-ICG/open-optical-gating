@@ -473,7 +473,13 @@ def update_drift_estimate(frame0, bestMatch0, drift0):
         Returns
             new_drift      (int,int)       New drift parameters
         """
-    return get_drift_estimate(frame0, [bestMatch0], dxRange=range(drift0[0]-1, drift0[0]+2), dyRange=range(drift0[1]-1, drift0[1]+2))
+    # Note that these parameters mean we consider the current drift value first, before trying different values.
+    # The search order shouldn't make any difference in most situations, but this way the drift values won't go
+    # beyond the frame width/height if the drift values diverge.
+    # I think the situation where the drift diverges is unrecoverable with the code in its current form,
+    # but this way we avoid ever-increasing values for drift. That seems to have led to a memory-related crash in the past,
+    # though I haven't managed to figure out exactly what code was crashing.
+    return get_drift_estimate(frame0, [bestMatch0], dxRange=drift0[0]+np.array([0,-1,1]), dyRange=drift0[1]+np.array([0,-1,1]))
 
 def get_drift_estimate(frame, refs, matching_frame=None, dxRange=range(-30,31,3), dyRange=range(-30,31,3)):
     """ Determine an initial estimate of the sample drift.

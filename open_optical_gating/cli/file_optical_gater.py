@@ -434,6 +434,15 @@ def run(args, desc):
     
     settings = load_settings(args, desc, add_extra_args)
 
+    if settings["file"]["input_tiff_path_ref"] != "":
+        # Load the reference frames
+        logger.success("Loading reference frames...")
+        ref_frames = load_tif(settings["file"]["input_tiff_path_ref"])
+        ref_frame_period = settings["file"]["ref_frame_period"]
+    else:
+        ref_frames = None
+        ref_frame_period = None
+
     logger.success("Initialising gater...")
     analyser = FileOpticalGater(
         source_path=settings["file"]["input_tiff_path"],
