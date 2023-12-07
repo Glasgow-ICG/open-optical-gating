@@ -19,8 +19,12 @@ flask = "^1.1.2"
 #     and the source code will need to try importing both.
 #     TODO: It would be tidier to work out how to get tifffile to install on the RPi,
 #     or at least figure out how to specify to use tifffile one everything *except* the RPi
+# JT: I didnt realise that ^0.15 will only allow 0.15.x. That was causing problems on python 3.9,
+#     since 0.15 is not compatible with that. Switched so we accept any 0.x version of skimage.
+#     I am not sure what best policy is re version compatibility, but we are only using it for tifffile,
+#     so hopefully forward-compatibility will be ok.
 tifffile = { version = "^2019.7.26", markers = "sys_platform == 'win32'"}
-scikit-image = { version = "^0.15", markers = "sys_platform != 'win32'"}
+scikit-image = { version = "0.*", markers = "sys_platform != 'win32'"}
 # scipy is a dependency for scikit-image, but on RPi it is not automatically installed, for some reason.
 # That really seems like a bug somewhere - and this explicit dependency here is the fix.
 scipy = { version = ">=0.17", markers = "sys_platform != 'win32'"}
